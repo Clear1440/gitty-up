@@ -1,6 +1,7 @@
 import { CheckoutDialog } from './CheckoutDialog.jsx';
 import { CreateBranchDialog } from './CreateBranchDialog.jsx';
 import { DeleteBranchDialog } from './DeleteBranchDialog.jsx';
+import { DeleteRemoteBranchDialog } from './DeleteRemoteBranchDialog.jsx';
 import { MergeDialog } from './MergeDialog.jsx';
 import { MergeIntoDialog } from './MergeIntoDialog.jsx';
 import { StashDialog } from './StashDialog.jsx';
@@ -9,6 +10,7 @@ const DIALOGS = {
   checkout: CheckoutDialog,
   createBranch: CreateBranchDialog,
   deleteBranch: DeleteBranchDialog,
+  deleteRemoteBranch: DeleteRemoteBranchDialog,
   merge: MergeDialog,
   mergeInto: MergeIntoDialog,
   stash: StashDialog,

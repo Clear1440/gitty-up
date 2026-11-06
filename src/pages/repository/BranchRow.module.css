@@ -5,7 +5,8 @@
 }
 
 .row:hover,
-.row:focus-within {
+.row:focus-within,
+.row:global(.ant-dropdown-open) {
   background: var(--color-surface-hover);
 }
 
@@ -21,7 +22,7 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  padding: 6px var(--space-1) 6px var(--space-3);
+  padding: 6px var(--space-1) 6px calc(var(--space-3) + var(--branch-depth, 0) * var(--space-4));
   border: 0;
   border-radius: var(--radius-md);
   background: none;
@@ -57,6 +58,7 @@
 
 .row:hover .menu,
 .row:focus-within .menu,
+.row:global(.ant-dropdown-open) .menu,
 .menu:global(.ant-dropdown-open) {
   opacity: 1;
 }

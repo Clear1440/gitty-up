@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   parseBranches,
+  parseCheckouts,
   parseCommits,
   parseNameStatus,
   parseStashes,
@@ -156,29 +157,56 @@ describe('parseCommits', () => {
       'Ada',
       'ada@example.com',
       '2026-01-01T00:00:00+00:00',
-      'HEAD -> main, tag: v1, origin/main',
+      'HEAD -> refs/heads/main, tag: refs/tags/v1, refs/remotes/origin/feature/x, refs/heads/dev',
       'Merge: a, b',
     ].join('\0');
 
-    const [commit] = parseCommits(`${record}\x1e\n`);
+    const [commit] = parseCommits(`${record}\x1e\n`, ['origin']);
 
     expect(commit.parents).toEqual(['p1', 'p2']);
     expect(commit.subject).toBe('Merge: a, b');
     expect(commit.refs).toEqual([
       { type: 'head', name: 'main' },
       { type: 'tag', name: 'v1' },
-      { type: 'branch', name: 'origin/main' },
+      { type: 'remote', name: 'origin/feature/x', remote: 'origin', localName: 'feature/x' },
+      { type: 'branch', name: 'dev' },
     ]);
   });
 
   it('marks a detached HEAD and hides remote HEAD aliases', () => {
-    const record = ['h', 's', '', 'A', 'a@b.c', 'date', 'HEAD, origin/HEAD, origin/main', 'x'];
+    const refs = 'HEAD, refs/remotes/origin/HEAD, refs/remotes/origin/main';
+    const record = ['h', 's', '', 'A', 'a@b.c', 'date', refs, 'x'];
 
-    const [commit] = parseCommits(`${record.join('\0')}\x1e`);
+    const [commit] = parseCommits(`${record.join('\0')}\x1e`, ['origin']);
 
     expect(commit.refs).toEqual([
       { type: 'head', name: 'HEAD' },
-      { type: 'branch', name: 'origin/main' },
+      { type: 'remote', name: 'origin/main', remote: 'origin', localName: 'main' },
     ]);
+  });
+});
+
+describe('parseCheckouts', () => {
+  const entry = (seconds, subject) => `HEAD@{${seconds}}\0${subject}`;
+  const iso = (seconds) => new Date(seconds * 1000).toISOString();
+
+  it('keeps the latest time for each branch, on either side of a move', () => {
+    const checkouts = parseCheckouts(
+      [
+        entry(300, 'checkout: moving from main to feature/x'),
+        entry(200, 'commit: Add thing'),
+        entry(100, 'checkout: moving from old to main'),
+      ].join('\n'),
+    );
+
+    expect(Object.fromEntries(checkouts)).toEqual({
+      main: iso(300),
+      'feature/x': iso(300),
+      old: iso(100),
+    });
+  });
+
+  it('handles an empty reflog', () => {
+    expect(parseCheckouts('').size).toBe(0);
   });
 });

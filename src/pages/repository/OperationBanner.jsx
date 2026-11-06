@@ -12,7 +12,7 @@ export function OperationBanner() {
   const conflictCount = status.conflicted.length;
   const title =
     conflictCount > 0
-      ? `${label} in progress: ${conflictCount} conflicted ${conflictCount === 1 ? 'file' : 'files'}. Fix them, then mark them resolved under Changes.`
+      ? `${label} in progress: ${conflictCount} conflicted ${conflictCount === 1 ? 'file' : 'files'}. Fix them, then mark them resolved under Uncommitted changes.`
       : `${label} in progress: all conflicts resolved.`;
 
   return (

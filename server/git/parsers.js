@@ -1,3 +1,5 @@
+import { avatarUrl } from './avatar.js';
+
 const STATUS_NAMES = {
   A: 'added',
   C: 'copied',
@@ -101,6 +103,12 @@ function parseTracking(track) {
   };
 }
 
+/** Splits "origin/feature/x" into its remote and the branch's name on that remote. */
+function splitRemoteName(name, remoteNames) {
+  const remote = remoteNames.find((candidate) => name.startsWith(`${candidate}/`));
+  return { remote: remote ?? null, localName: remote ? name.slice(remote.length + 1) : name };
+}
+
 /** Parses `git for-each-ref` output produced with BRANCH_FORMAT. */
 export function parseBranches(output, remoteNames) {
   const branches = { local: [], remote: [] };
@@ -122,44 +130,81 @@ export function parseBranches(output, remoteNames) {
       });
     } else {
       const name = ref.slice('refs/remotes/'.length);
-      const remote = remoteNames.find((candidate) => name.startsWith(`${candidate}/`));
-      branches.remote.push({
-        name,
-        remote: remote ?? null,
-        localName: remote ? name.slice(remote.length + 1) : name,
-        lastCommit,
-      });
+      branches.remote.push({ name, ...splitRemoteName(name, remoteNames), lastCommit });
     }
   }
   return branches;
 }
 
-export const COMMIT_FORMAT = `${['%H', '%h', '%P', '%an', '%ae', '%aI', '%D', '%s'].join('%x00')}%x1e`;
+const CHECKOUT_ENTRY = /^checkout: moving from (.+) to (.+)$/;
 
-function parseDecoration(decoration) {
-  if (decoration.startsWith('tag: ')) {
-    return { type: 'tag', name: decoration.slice('tag: '.length) };
+// The selector carries the entry's own time, unlike %ct, which is its commit's.
+export const CHECKOUT_FORMAT = ['%gd', '%gs'].join('%x00');
+
+/**
+ * Parses `git reflog --date=unix` output produced with CHECKOUT_FORMAT into a map of
+ * branch name to when it was last left or switched to, as an ISO date.
+ */
+export function parseCheckouts(output) {
+  const checkouts = new Map();
+
+  for (const line of output.split('\n').filter(Boolean)) {
+    const [selector, subject] = line.split('\0');
+    const moved = CHECKOUT_ENTRY.exec(subject ?? '');
+    const seconds = Number(/@\{(\d+)\}$/.exec(selector)?.[1]);
+    if (!moved || !seconds) continue;
+
+    // Newest comes first, so the first sighting of a branch is its latest.
+    const date = new Date(seconds * 1000).toISOString();
+    for (const branch of moved.slice(1)) {
+      if (!checkouts.has(branch)) checkouts.set(branch, date);
+    }
   }
-  if (decoration.startsWith('HEAD -> ')) {
-    return { type: 'head', name: decoration.slice('HEAD -> '.length) };
-  }
-  // A bare HEAD means a detached checkout.
-  return { type: decoration === 'HEAD' ? 'head' : 'branch', name: decoration };
+  return checkouts;
 }
 
-function parseDecorations(decorations) {
+export const COMMIT_FORMAT = `${['%H', '%h', '%P', '%an', '%ae', '%aI', '%D', '%s'].join('%x00')}%x1e`;
+
+/** Goes with COMMIT_FORMAT: full ref names are what tell a local branch from a remote one. */
+export const COMMIT_LOG_FLAGS = ['--decorate=full', `--format=${COMMIT_FORMAT}`];
+
+function parseBranchRef(ref, remoteNames) {
+  if (ref.startsWith('refs/heads/')) {
+    return { type: 'branch', name: ref.slice('refs/heads/'.length) };
+  }
+  if (ref.startsWith('refs/remotes/')) {
+    const name = ref.slice('refs/remotes/'.length);
+    return { type: 'remote', name, ...splitRemoteName(name, remoteNames) };
+  }
+  return { type: 'branch', name: ref };
+}
+
+function parseDecoration(decoration, remoteNames) {
+  if (decoration.startsWith('tag: ')) {
+    return { type: 'tag', name: decoration.slice('tag: refs/tags/'.length) };
+  }
+  if (decoration.startsWith('HEAD -> ')) {
+    const { name } = parseBranchRef(decoration.slice('HEAD -> '.length), remoteNames);
+    return { type: 'head', name };
+  }
+  // A bare HEAD means a detached checkout.
+  if (decoration === 'HEAD') return { type: 'head', name: 'HEAD' };
+  return parseBranchRef(decoration, remoteNames);
+}
+
+function parseDecorations(decorations, remoteNames) {
   if (!decorations) return [];
   return (
     decorations
       .split(', ')
       // Aliases such as origin/HEAD only repeat the branch they point at.
       .filter((decoration) => !decoration.endsWith('/HEAD'))
-      .map(parseDecoration)
+      .map((decoration) => parseDecoration(decoration, remoteNames))
   );
 }
 
-/** Parses `git log` output produced with COMMIT_FORMAT. */
-export function parseCommits(output) {
+/** Parses `git log` output produced with COMMIT_LOG_FLAGS. */
+export function parseCommits(output, remoteNames = []) {
   return output
     .split('\x1e')
     .map((record) => record.trim())
@@ -172,8 +217,9 @@ export function parseCommits(output) {
         parents: parents ? parents.split(' ') : [],
         author,
         email,
+        avatarUrl: avatarUrl(email),
         date,
-        refs: parseDecorations(refs),
+        refs: parseDecorations(refs, remoteNames),
         subject,
       };
     });

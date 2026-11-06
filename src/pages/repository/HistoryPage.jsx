@@ -1,15 +1,19 @@
-import { Button, Empty, Result, Spin, Tag } from 'antd';
+import { CloudOutlined, LaptopOutlined } from '@ant-design/icons';
+import { Avatar, Button, Empty, Result, Spin, Tag } from 'antd';
 import clsx from 'clsx';
 import { useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { RelativeTime } from '../../components/RelativeTime.jsx';
 import { ResizeHandle } from '../../components/ResizeHandle.jsx';
 import { useResizableSizes } from '../../components/useResizableSizes.js';
-import { paths } from '../../paths.js';
+import { UNCOMMITTED, paths } from '../../paths.js';
 import { useCommits } from '../../queries/git.js';
 import { layoutCommitGraph } from './history/commitGraph.js';
 import { CommitGraphCell } from './history/CommitGraphCell.jsx';
 import { CommitPane } from './history/CommitPane.jsx';
+import { GraphTooltipArea } from './history/GraphTooltipArea.jsx';
+import { groupRefs } from './history/groupRefs.js';
+import { WorkingTreePane } from './history/WorkingTreePane.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
 import styles from './HistoryPage.module.css';
 
@@ -54,6 +58,64 @@ function ColumnHeadings({ handleFor }) {
   );
 }
 
+function describeRefGroup({ name, local, remotes }) {
+  return [local && `Local: ${name}`, ...remotes.map((remote) => `Remote: ${remote}`)]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function RefTag({ group }) {
+  return (
+    <Tag
+      className={REF_TAG_STYLES[group.type]}
+      title={group.type === 'tag' ? group.name : describeRefGroup(group)}
+    >
+      <span className={styles.refName}>{group.name}</span>
+      {group.local && <LaptopOutlined className={styles.refIcon} aria-label="Local" />}
+      {group.remotes.length > 0 && (
+        <CloudOutlined className={styles.refIcon} aria-label="On a remote" />
+      )}
+    </Tag>
+  );
+}
+
+function countChangedFiles({ staged, unstaged, conflicted }) {
+  return new Set([...staged, ...unstaged, ...conflicted].map((file) => file.path)).size;
+}
+
+/** Stands in for the work in progress, so that the tree can draw it as HEAD's next commit. */
+function uncommittedCommit(branch, headHash) {
+  return {
+    hash: UNCOMMITTED,
+    parents: headHash ? [headHash] : [],
+    refs: [{ type: 'head', name: branch ?? 'HEAD' }],
+  };
+}
+
+function UncommittedRow({ graphRow, columnCount, fileCount, selected, onSelect }) {
+  return (
+    <li
+      className={clsx(styles.commit, selected && styles.selectedCommit)}
+      onClick={() => onSelect(UNCOMMITTED)}
+    >
+      <div className={styles.tree}>
+        <CommitGraphCell row={graphRow} columnCount={columnCount} isUncommitted />
+      </div>
+      <div />
+      <div />
+      <button
+        type="button"
+        className={clsx(styles.subject, styles.uncommitted)}
+        aria-pressed={selected}
+      >
+        Uncommitted changes
+      </button>
+      <span className={styles.time}>{fileCount === 1 ? '1 file' : `${fileCount} files`}</span>
+      <div />
+    </li>
+  );
+}
+
 function CommitRow({ commit, graphRow, columnCount, selected, onSelect }) {
   return (
     <li
@@ -69,14 +131,16 @@ function CommitRow({ commit, graphRow, columnCount, selected, onSelect }) {
         />
       </div>
       <div className={styles.refs}>
-        {commit.refs.map((ref) => (
-          <Tag key={ref.name} className={REF_TAG_STYLES[ref.type]} title={ref.name}>
-            {ref.name}
-          </Tag>
+        {groupRefs(commit.refs).map((group) => (
+          <RefTag key={group.key} group={group} />
         ))}
       </div>
-      <span className={styles.author} title={commit.author}>
-        {commit.author}
+      <span className={styles.author} title={`${commit.author} <${commit.email}>`}>
+        {/* Shows the initial until the picture loads, and for good if there is none. */}
+        <Avatar className={styles.avatar} size={20} src={commit.avatarUrl} alt="">
+          {commit.author.charAt(0).toUpperCase()}
+        </Avatar>
+        <span className={styles.authorName}>{commit.author}</span>
       </span>
       {/* The whole row is clickable. This is what keyboards and screen readers use. */}
       <button
@@ -96,19 +160,33 @@ function CommitRow({ commit, graphRow, columnCount, selected, onSelect }) {
 }
 
 export function HistoryPage() {
-  const { repository } = useRepositoryContext();
+  const { repository, status } = useRepositoryContext();
   const [searchParams, setSearchParams] = useSearchParams();
   const ref = searchParams.get('ref') ?? undefined;
   const selectedHash = searchParams.get('commit');
   const { data: commits, error, isPending, hasNextPage, isFetchingNextPage, fetchNextPage } =
     useCommits(repository.id, ref);
-  const graph = useMemo(() => layoutCommitGraph(commits ?? []), [commits]);
+  const fileCount = countChangedFiles(status);
+  // Work in progress sits on the checked out branch, so other branches' histories omit it.
+  // A paused merge counts even with no files left, as it still has to be committed.
+  const showUncommitted =
+    (fileCount > 0 || Boolean(status.operation)) && (!ref || ref === status.branch);
+  const { branch: currentBranch, headHash } = status;
+  const graph = useMemo(
+    () =>
+      layoutCommitGraph([
+        ...(showUncommitted ? [uncommittedCommit(currentBranch, headHash)] : []),
+        ...(commits ?? []),
+      ]),
+    [commits, showUncommitted, currentBranch, headHash],
+  );
+  const graphRowOffset = showUncommitted ? 1 : 0;
   const tableRef = useRef(null);
   const { style, handleFor } = useResizableSizes(tableRef, 'history', COLUMN_LIMITS);
   const layoutRef = useRef(null);
   const pane = useResizableSizes(layoutRef, 'commit-pane', PANE_LIMITS);
 
-  /** Opens a commit, or closes it if it was already open. */
+  /** Opens a commit or the uncommitted changes, or closes it if it was already open. */
   const toggleCommit = (hash) => {
     setSearchParams(
       (current) => {
@@ -138,9 +216,12 @@ export function HistoryPage() {
       />
     );
   }
-  if (commits.length === 0) {
+  // A first commit is still to be made from here, so changes keep an empty history open.
+  if (commits.length === 0 && !showUncommitted && !selectedHash) {
     return <Empty className="centered" description="No commits yet" />;
   }
+
+  const paneHandle = <ResizeHandle label="Resize details" {...pane.handleFor('width', 'left')} />;
 
   return (
     <div
@@ -155,18 +236,29 @@ export function HistoryPage() {
         </header>
         <div ref={tableRef} className={styles.table} style={style}>
           <ColumnHeadings handleFor={handleFor} />
-          <ol className={styles.list}>
-            {commits.map((commit, index) => (
-              <CommitRow
-                key={commit.hash}
-                commit={commit}
-                graphRow={graph.rows[index]}
-                columnCount={graph.columnCount}
-                selected={commit.hash === selectedHash}
-                onSelect={toggleCommit}
-              />
-            ))}
-          </ol>
+          <GraphTooltipArea>
+            <ol className={styles.list}>
+              {showUncommitted && (
+                <UncommittedRow
+                  graphRow={graph.rows[0]}
+                  columnCount={graph.columnCount}
+                  fileCount={fileCount}
+                  selected={selectedHash === UNCOMMITTED}
+                  onSelect={toggleCommit}
+                />
+              )}
+              {commits.map((commit, index) => (
+                <CommitRow
+                  key={commit.hash}
+                  commit={commit}
+                  graphRow={graph.rows[index + graphRowOffset]}
+                  columnCount={graph.columnCount}
+                  selected={commit.hash === selectedHash}
+                  onSelect={toggleCommit}
+                />
+              ))}
+            </ol>
+          </GraphTooltipArea>
         </div>
         {hasNextPage && (
           <div className={styles.loadMore}>
@@ -176,14 +268,15 @@ export function HistoryPage() {
           </div>
         )}
       </div>
-      {selectedHash && (
+      {selectedHash === UNCOMMITTED && (
+        <WorkingTreePane onClose={() => toggleCommit(UNCOMMITTED)} resizeHandle={paneHandle} />
+      )}
+      {selectedHash && selectedHash !== UNCOMMITTED && (
         <CommitPane
           key={selectedHash}
           hash={selectedHash}
           onClose={() => toggleCommit(selectedHash)}
-          resizeHandle={
-            <ResizeHandle label="Resize commit details" {...pane.handleFor('width', 'left')} />
-          }
+          resizeHandle={paneHandle}
         />
       )}
     </div>

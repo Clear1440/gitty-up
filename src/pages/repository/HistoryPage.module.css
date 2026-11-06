@@ -42,7 +42,7 @@
   grid-template-columns:
     var(--history-tree, auto)
     var(--history-branch, 150px)
-    var(--history-author, 104px)
+    var(--history-author, 132px)
     minmax(160px, 1fr)
     var(--history-time, 108px)
     var(--history-sha, 72px);
@@ -132,7 +132,7 @@
 }
 
 .subject,
-.author,
+.authorName,
 .time {
   min-width: 0;
   overflow: hidden;
@@ -152,10 +152,28 @@
   cursor: pointer;
 }
 
+.uncommitted {
+  color: var(--color-warning);
+}
+
 .author,
 .time {
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
+}
+
+.author {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.avatar {
+  flex: none;
+  background: var(--color-surface-hover);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
 }
 
 .refs {
@@ -166,12 +184,24 @@
 }
 
 .refs :global(.ant-tag) {
+  display: inline-flex;
   flex: 0 1 auto;
+  align-items: center;
+  gap: var(--space-1);
   min-width: 0;
   margin: 0;
+}
+
+.refName {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The name gives way first, so a long one never pushes these out of the tag. */
+.refIcon {
+  flex: none;
 }
 
 .refHead {
@@ -199,6 +229,28 @@
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   text-overflow: ellipsis;
+}
+
+/* Rows stay subgrids of the table, as if this wrapper weren't there. */
+.graphTooltipArea {
+  display: contents;
+}
+
+/* Portaled to the body, as a fixed element can't escape the table's scrolling otherwise. */
+.graphTooltip {
+  position: fixed;
+  z-index: 1100;
+  max-width: 320px;
+  padding: var(--space-1) var(--space-2);
+  overflow-wrap: anywhere;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-popup);
+  color: var(--color-text);
+  font-size: var(--font-size-xs);
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - var(--space-3)));
 }
 
 .loadMore {

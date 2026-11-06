@@ -257,6 +257,45 @@ describe('branches', () => {
     expect(body.local.map((branch) => branch.name)).toEqual(['main']);
   });
 
+  it('deletes a branch from its remote and keeps the local copy', async () => {
+    git(repo.work, 'switch', '--create', 'feature/login');
+    git(repo.work, 'push', '--set-upstream', 'origin', 'feature/login');
+    git(repo.work, 'switch', 'main');
+
+    const encoded = encodeURIComponent('origin/feature/login');
+    const { status } = await request('DELETE', `${repo.api}/remote-branches/${encoded}`);
+
+    expect(status).toBe(204);
+    expect(git(repo.remote, 'branch', '--list')).not.toContain('feature/login');
+    const { body } = await request('GET', `${repo.api}/branches`);
+    expect(body.remote.map((branch) => branch.name)).toEqual(['origin/main']);
+    expect(body.local.map((branch) => branch.name)).toContain('feature/login');
+  });
+
+  it('refuses to delete a remote branch it does not know', async () => {
+    const { status } = await request('DELETE', `${repo.api}/remote-branches/origin%2Fnope`);
+    expect(status).toBe(400);
+  });
+
+  it('reports when each branch was last checked out', async () => {
+    git(repo.work, 'switch', '--create', 'topic');
+    git(repo.work, 'switch', 'main');
+
+    const { body } = await request('GET', `${repo.api}/branches`);
+
+    const topic = body.local.find((branch) => branch.name === 'topic');
+    expect(Date.parse(topic.lastCheckout)).not.toBeNaN();
+  });
+
+  it('tells local and remote branches apart on a commit', async () => {
+    const { body: commits } = await request('GET', `${repo.api}/commits`);
+
+    expect(commits[0].refs).toEqual([
+      { type: 'head', name: 'main' },
+      { type: 'remote', name: 'origin/main', remote: 'origin', localName: 'main' },
+    ]);
+  });
+
   it('rejects names git would read as options or refuse', async () => {
     const dash = await request('POST', `${repo.api}/branches`, { name: '--force' });
     const spaces = await request('POST', `${repo.api}/branches`, { name: 'has spaces' });

@@ -1,33 +1,44 @@
-import { SearchOutlined } from '@ant-design/icons';
-import { Collapse, Input, Spin } from 'antd';
+import { SearchOutlined, SortAscendingOutlined } from '@ant-design/icons';
+import { Button, Collapse, Dropdown, Input, Spin, Tooltip } from 'antd';
 import { useState } from 'react';
-import { useMatch, useSearchParams } from 'react-router';
+import { useSearchParams } from 'react-router';
 import { useBranches, useStashes } from '../../queries/git.js';
-import { BranchRow } from './BranchRow.jsx';
+import { BRANCH_SORTS, buildBranchTree, sortBranches } from './branchTree.js';
+import { BranchTree, useFolderChoices } from './BranchTree.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { StashList } from './StashList.jsx';
+import { useBranchSort } from './useBranchSort.js';
 import styles from './BranchSidebar.module.css';
 
-const byCurrentFirst = (a, b) => Number(b.isCurrent ?? false) - Number(a.isCurrent ?? false);
+const SORT_ITEMS = BRANCH_SORTS.map(({ value, label, hint }) => ({
+  key: value,
+  label,
+  title: hint,
+}));
 
 function filterBranches(branches, filter) {
   const text = filter.trim().toLowerCase();
   return branches.filter((branch) => branch.name.toLowerCase().includes(text));
 }
 
-function BranchList({ branches, kind, selectedRef }) {
-  if (branches.length === 0) return <p className={styles.empty}>No branches</p>;
+function SortMenu({ sort, onChange }) {
   return (
-    <ul className={styles.list}>
-      {branches.map((branch) => (
-        <BranchRow
-          key={branch.name}
-          branch={branch}
-          kind={kind}
-          selected={branch.name === selectedRef}
-        />
-      ))}
-    </ul>
+    <Tooltip title="Sort branches">
+      {/* The dropdown needs the button itself, so the tooltip wraps it from out here. */}
+      <span>
+        <Dropdown
+          menu={{
+            items: SORT_ITEMS,
+            selectable: true,
+            selectedKeys: [sort],
+            onClick: ({ key }) => onChange(key),
+          }}
+          trigger={['click']}
+        >
+          <Button icon={<SortAscendingOutlined />} aria-label="Sort branches" />
+        </Dropdown>
+      </span>
+    </Tooltip>
   );
 }
 
@@ -36,23 +47,39 @@ export function BranchSidebar({ resizeHandle }) {
   const { data: branches, isPending } = useBranches(repository.id);
   const { data: stashes = [] } = useStashes(repository.id);
   const [filter, setFilter] = useState('');
+  const [sort, setSort] = useBranchSort();
+  const [folderChoices, setFolderOpen] = useFolderChoices(repository.id);
   const [searchParams] = useSearchParams();
-  const onHistory = useMatch('/repositories/:repositoryId/history');
-  const selectedRef = onHistory ? searchParams.get('ref') : null;
+  const selectedRef = searchParams.get('ref');
 
-  const local = filterBranches(branches?.local ?? [], filter).sort(byCurrentFirst);
-  const remote = filterBranches(branches?.remote ?? [], filter);
+  const local = sortBranches(filterBranches(branches?.local ?? [], filter), sort);
+  const remote = sortBranches(filterBranches(branches?.remote ?? [], filter), sort);
+
+  const renderBranches = (list, kind) => {
+    if (list.length === 0) return <p className={styles.empty}>No branches</p>;
+    return (
+      <BranchTree
+        nodes={buildBranchTree(list)}
+        kind={kind}
+        selectedRef={selectedRef}
+        // A match inside a closed folder would otherwise look like no match at all.
+        showAll={Boolean(filter.trim())}
+        folderChoices={folderChoices}
+        onFolderToggle={setFolderOpen}
+      />
+    );
+  };
 
   const sections = [
     {
       key: 'local',
       label: `Local (${local.length})`,
-      children: <BranchList branches={local} kind="local" selectedRef={selectedRef} />,
+      children: renderBranches(local, 'local'),
     },
     {
       key: 'remote',
       label: `Remote (${remote.length})`,
-      children: <BranchList branches={remote} kind="remote" selectedRef={selectedRef} />,
+      children: renderBranches(remote, 'remote'),
     },
     {
       key: 'stashes',
@@ -72,6 +99,7 @@ export function BranchSidebar({ resizeHandle }) {
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
         />
+        <SortMenu sort={sort} onChange={setSort} />
       </div>
       <div className={styles.body}>
         {isPending ? (

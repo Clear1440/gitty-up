@@ -11,7 +11,9 @@ import {
   SyncOutlined,
 } from '@ant-design/icons';
 import { App, Button, Divider, Dropdown, Space, Tooltip } from 'antd';
+import { useNavigate } from 'react-router';
 import { AheadBehind } from '../../components/AheadBehind.jsx';
+import { paths } from '../../paths.js';
 import { useStashes } from '../../queries/git.js';
 import { useRepositoryContext } from './RepositoryContext.js';
 import styles from './ActionBar.module.css';
@@ -59,14 +61,19 @@ function CurrentBranch({ status }) {
 }
 
 export function ActionBar() {
-  const { repository, status, run, openDialog, focusCommitMessage, isBusy, pendingAction } =
-    useRepositoryContext();
+  const { repository, status, run, openDialog, isBusy, pendingAction } = useRepositoryContext();
   const { data: stashes = [] } = useStashes(repository.id);
+  const navigate = useNavigate();
   const { modal } = App.useApp();
 
   const hasChanges =
     status.staged.length + status.unstaged.length + status.conflicted.length > 0;
   const midOperation = Boolean(status.operation);
+
+  // The time makes every press a new request, even with the commit box already open.
+  const openCommitMessage = () => {
+    navigate(paths.uncommitted(repository.id), { state: { focusCommitMessage: Date.now() } });
+  };
 
   const confirmForcePush = () => {
     modal.confirm({
@@ -144,7 +151,7 @@ export function ActionBar() {
         hint="Jump to the commit message"
         icon={<CheckOutlined />}
         count={status.staged.length}
-        onClick={focusCommitMessage}
+        onClick={openCommitMessage}
       />
       <ActionButton
         label="Branch"

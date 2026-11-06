@@ -25,6 +25,11 @@ const GIT_ACTIONS = {
     title: 'Delete branch',
     success: ({ name }) => `Deleted ${name}`,
   },
+  deleteRemoteBranch: {
+    run: gitApi.deleteRemoteBranch,
+    title: 'Delete remote branch',
+    success: ({ name }) => `Deleted ${name}`,
+  },
   merge: { run: gitApi.merge, title: 'Merge', success: ({ branch }) => `Merged ${branch}` },
   mergeInto: {
     run: gitApi.mergeInto,

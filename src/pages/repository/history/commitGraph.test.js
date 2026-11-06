@@ -5,6 +5,98 @@ const commit = (hash, ...parents) => ({ hash, parents });
 const ofKind = (row, kind) => row.segments.filter((segment) => segment.kind === kind);
 const withoutColor = (segments) => segments.map(({ from, to }) => ({ from, to }));
 
+describe('naming the branch of each row and line', () => {
+  const on = (type, name) => ({ type, name });
+  const tipOf = (hash, name, ...parents) => ({ ...commit(hash, ...parents), refs: [on('branch', name)] });
+
+  it('carries a branch name down its lane', () => {
+    const { rows } = layoutCommitGraph([tipOf('b', 'topic', 'a'), commit('a')]);
+
+    expect(rows.map((row) => row.branch)).toEqual(['topic', 'topic']);
+    expect(ofKind(rows[0], 'bottom')[0].branch).toBe('topic');
+    expect(ofKind(rows[1], 'top')[0].branch).toBe('topic');
+  });
+
+  it('names a remote only branch without its remote', () => {
+    const remoteRef = { type: 'remote', name: 'origin/topic', remote: 'origin', localName: 'topic' };
+    const { rows } = layoutCommitGraph([{ ...commit('a'), refs: [remoteRef] }]);
+
+    expect(rows[0].branch).toBe('topic');
+  });
+
+  it('prefers the checked out branch among several on one commit', () => {
+    const refs = [on('branch', 'other'), on('head', 'mine')];
+    const { rows } = layoutCommitGraph([{ ...commit('a'), refs }]);
+
+    expect(rows[0].branch).toBe('mine');
+  });
+
+  it('names lines passing through other rows', () => {
+    const { rows } = layoutCommitGraph([
+      tipOf('m', 'main', 'base'),
+      tipOf('t', 'topic', 'base'),
+      commit('base'),
+    ]);
+
+    expect(ofKind(rows[1], 'through')[0].branch).toBe('main');
+  });
+
+  it('gives the history below a fork to the trunk, even when a topic got there first', () => {
+    const { rows } = layoutCommitGraph([
+      tipOf('t', 'topic', 'base'),
+      tipOf('m', 'main', 'base'),
+      commit('base', 'root'),
+      commit('root'),
+    ]);
+
+    expect(rows[0].branch).toBe('topic');
+    expect(rows[1].branch).toBe('main');
+    expect(rows[2].branch).toBe('main');
+    expect(rows[3].branch).toBe('main');
+  });
+
+  it('names a merged branch with no ref left from the merge message', () => {
+    const merge = {
+      ...tipOf('merge', 'main', 'a', 'b'),
+      subject: "Merge branch 'feature/x' into main",
+    };
+    const { rows } = layoutCommitGraph([merge, commit('b', 'a'), commit('a')]);
+
+    expect(ofKind(rows[0], 'bottom').map((segment) => segment.branch)).toEqual([
+      'main',
+      'feature/x',
+    ]);
+    expect(rows[1].branch).toBe('feature/x');
+  });
+
+  it('understands merged pull requests', () => {
+    const merge = {
+      ...tipOf('merge', 'main', 'a', 'b'),
+      subject: 'Merge pull request #12 from someone/fix/thing',
+    };
+    const { rows } = layoutCommitGraph([merge, commit('b', 'a'), commit('a')]);
+
+    expect(rows[1].branch).toBe('fix/thing');
+  });
+
+  it('names a lane from a ref found further down, back up to its top', () => {
+    const { rows } = layoutCommitGraph([
+      tipOf('merge', 'main', 'a', 'c'),
+      commit('c', 'b'),
+      tipOf('b', 'found', 'a'),
+      commit('a'),
+    ]);
+
+    expect(rows[1].branch).toBe('found');
+    expect(ofKind(rows[0], 'bottom')[1].branch).toBe('found');
+  });
+
+  it('leaves a branch it cannot name as null', () => {
+    const { rows } = layoutCommitGraph([commit('a')]);
+    expect(rows[0].branch).toBeNull();
+  });
+});
+
 describe('layoutCommitGraph', () => {
   it('handles an empty history', () => {
     expect(layoutCommitGraph([])).toEqual({ rows: [], columnCount: 0 });

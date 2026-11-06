@@ -137,6 +137,11 @@ function createGitRouter() {
     response.status(204).end();
   });
 
+  router.delete('/remote-branches/:branch', async (request, response) => {
+    await git.deleteRemoteBranch(request.repository.path, { name: request.params.branch });
+    response.status(204).end();
+  });
+
   action(router, '/branches', (path, { name, startPoint, switchTo }) =>
     git.createBranch(path, {
       name: requireString(name, 'name'),

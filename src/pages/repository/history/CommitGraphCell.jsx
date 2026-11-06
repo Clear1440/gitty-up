@@ -6,6 +6,9 @@ const ROW_MIDDLE = ROW_HEIGHT / 2;
 const MAX_VISIBLE_COLUMNS = 14;
 const NODE_RADIUS = 4.5;
 const LINE_WIDTH = 2;
+const LINE_HIT_WIDTH = 10;
+const NODE_HIT_RADIUS = NODE_RADIUS + 4;
+const UNCOMMITTED_DASHES = '3 3';
 
 const graphColor = (color) => `var(--color-graph-${color + 1})`;
 const columnX = (column) => COLUMN_WIDTH * column + COLUMN_WIDTH / 2;
@@ -21,8 +24,11 @@ function segmentPath({ kind, from, to }) {
   return `M${startX} ${startY}C${startX} ${bendY} ${endX} ${bendY} ${endX} ${endY}`;
 }
 
-/** The slice of the git tree beside one commit. Rows line up to form the whole tree. */
-export function CommitGraphCell({ row, columnCount, isHead, isMerge }) {
+/**
+ * The slice of the git tree beside one commit. Rows line up to form the whole tree.
+ * `isUncommitted` draws the work in progress, which is not a commit yet, as dashed.
+ */
+export function CommitGraphCell({ row, columnCount, isHead, isMerge, isUncommitted }) {
   const width = Math.min(columnCount, MAX_VISIBLE_COLUMNS) * COLUMN_WIDTH;
   const nodeColor = graphColor(row.color);
 
@@ -35,6 +41,9 @@ export function CommitGraphCell({ row, columnCount, isHead, isMerge }) {
           fill="none"
           stroke={graphColor(segment.color)}
           strokeWidth={LINE_WIDTH}
+          strokeDasharray={
+            isUncommitted && segment.kind === 'bottom' ? UNCOMMITTED_DASHES : undefined
+          }
         />
       ))}
       {isHead && (
@@ -52,9 +61,28 @@ export function CommitGraphCell({ row, columnCount, isHead, isMerge }) {
         cy={ROW_MIDDLE}
         r={NODE_RADIUS}
         // Merges are hollow, so they stand out from ordinary commits.
-        fill={isMerge ? 'var(--color-bg)' : nodeColor}
+        fill={isMerge || isUncommitted ? 'var(--color-bg)' : nodeColor}
         stroke={nodeColor}
         strokeWidth={LINE_WIDTH}
+        strokeDasharray={isUncommitted ? UNCOMMITTED_DASHES : undefined}
+      />
+      {/* Invisible and wider than what they cover, as a 2px line is hard to land on. */}
+      {row.segments.map((segment, index) => (
+        <path
+          key={index}
+          d={segmentPath(segment)}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={LINE_HIT_WIDTH}
+          data-branch={segment.branch ?? ''}
+        />
+      ))}
+      <circle
+        cx={columnX(row.column)}
+        cy={ROW_MIDDLE}
+        r={NODE_HIT_RADIUS}
+        fill="transparent"
+        data-branch={row.branch ?? ''}
       />
     </svg>
   );

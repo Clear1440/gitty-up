@@ -4,9 +4,11 @@ import path from 'node:path';
 import { ApiError, badRequest, gitFailure } from '../errors.js';
 import {
   BRANCH_FORMAT,
-  COMMIT_FORMAT,
+  CHECKOUT_FORMAT,
+  COMMIT_LOG_FLAGS,
   STASH_FORMAT,
   parseBranches,
+  parseCheckouts,
   parseCommits,
   parseNameStatus,
   parseStashes,
@@ -22,6 +24,9 @@ const OPERATION_MARKERS = [
 ];
 
 const PULL_MODE_FLAGS = { merge: '--no-rebase', rebase: '--rebase', 'ff-only': '--ff-only' };
+
+// Far enough back to cover the branches anyone would call recent.
+const MAX_CHECKOUT_ENTRIES = 2_000;
 
 const HUNK_CONTEXT_LINES = 3;
 // More lines than any file has, which makes a diff show the whole file.
@@ -116,12 +121,40 @@ async function getRemoteUrl(repoPath) {
   return (await runGit(repoPath, ['remote', 'get-url', remote])).trim();
 }
 
+/** When each branch was last checked out or left. A repository with no commits has no reflog. */
+async function getCheckouts(repoPath) {
+  const output = await runGit(
+    repoPath,
+    [
+      'reflog',
+      'show',
+      '--date=unix',
+      `--format=${CHECKOUT_FORMAT}`,
+      `--max-count=${MAX_CHECKOUT_ENTRIES}`,
+    ],
+    { allowedExitCodes: [0, 128] },
+  );
+  return parseCheckouts(output);
+}
+
 export async function getBranches(repoPath) {
-  const [output, remotes] = await Promise.all([
+  const [output, remotes, checkouts] = await Promise.all([
     runGit(repoPath, ['for-each-ref', `--format=${BRANCH_FORMAT}`, 'refs/heads', 'refs/remotes']),
     getRemotes(repoPath),
+    getCheckouts(repoPath),
   ]);
-  return parseBranches(output, remotes);
+  const { local, remote } = parseBranches(output, remotes);
+  return {
+    local: local.map((branch) => ({
+      ...branch,
+      lastCheckout: checkouts.get(branch.name) ?? null,
+    })),
+    // A remote branch is worked on through its local copy.
+    remote: remote.map((branch) => ({
+      ...branch,
+      lastCheckout: checkouts.get(branch.localName) ?? null,
+    })),
+  };
 }
 
 async function hasCommits(repoPath) {
@@ -141,16 +174,19 @@ export async function getCommits(
 ) {
   assertRef(ref);
   if (!(await hasCommits(repoPath))) return [];
-  const output = await runGit(repoPath, [
-    'log',
-    '--date-order',
-    `--format=${COMMIT_FORMAT}`,
-    `--max-count=${limit}`,
-    `--skip=${skip}`,
-    ...(allBranches ? ['--branches', '--remotes', '--tags', 'HEAD'] : [ref]),
-    '--',
+  const [output, remotes] = await Promise.all([
+    runGit(repoPath, [
+      'log',
+      '--date-order',
+      ...COMMIT_LOG_FLAGS,
+      `--max-count=${limit}`,
+      `--skip=${skip}`,
+      ...(allBranches ? ['--branches', '--remotes', '--tags', 'HEAD'] : [ref]),
+      '--',
+    ]),
+    getRemotes(repoPath),
   ]);
-  return parseCommits(output);
+  return parseCommits(output, remotes);
 }
 
 export async function getSummary(repoPath) {
@@ -206,7 +242,7 @@ const commitRange = ({ hash, parents }) => (parents.length > 0 ? [parents[0], ha
 
 async function readCommit(repoPath, hash) {
   assertCommitHash(hash);
-  const output = await runGit(repoPath, ['log', '-1', `--format=${COMMIT_FORMAT}`, hash, '--']);
+  const output = await runGit(repoPath, ['log', '-1', ...COMMIT_LOG_FLAGS, hash, '--']);
   return parseCommits(output)[0];
 }
 
@@ -347,6 +383,19 @@ export async function deleteBranch(repoPath, { name, force = false }) {
   await runGit(repoPath, ['branch', force ? '-D' : '-d', name]);
 }
 
+/** Deletes a branch from its remote, which also removes the local tracking ref. */
+export async function deleteRemoteBranch(repoPath, { name }) {
+  assertRef(name);
+  const { remote: remoteBranches } = await getBranches(repoPath);
+  const target = remoteBranches.find((candidate) => candidate.name === name);
+  if (!target?.remote) throw badRequest(`Unknown remote branch: ${name}`);
+
+  // The full ref can't be mistaken for a tag of the same name, or for an option.
+  await runGit(repoPath, ['push', target.remote, '--delete', `refs/heads/${target.localName}`], {
+    timeout: NETWORK_TIMEOUT_MS,
+  });
+}
+
 export async function merge(repoPath, { branch, noFastForward = false }) {
   assertRef(branch);
   await reportingConflicts(repoPath, () =>
@@ -448,7 +497,7 @@ export async function stashSave(repoPath, { message }) {
   ]);
 }
 
-const STASH_CONFLICT_STEP = 'Resolve them under Changes. The stash has been kept.';
+const STASH_CONFLICT_STEP = 'Resolve them under Uncommitted changes. The stash has been kept.';
 
 function assertStashRef(ref) {
   if (typeof ref !== 'string' || !/^stash@\{\d+\}$/.test(ref)) {

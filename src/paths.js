@@ -1,3 +1,6 @@
+/** The history page's `commit` value that opens the working tree instead of a commit. */
+export const UNCOMMITTED = 'uncommitted';
+
 /** Builds the app's URLs, so route shapes live in one place. */
 export const paths = {
   home: () => '/',
@@ -6,5 +9,6 @@ export const paths = {
     const base = `/repositories/${repositoryId}/history`;
     return ref ? `${base}?${new URLSearchParams({ ref })}` : base;
   },
-  changes: (repositoryId) => `/repositories/${repositoryId}/changes`,
+  uncommitted: (repositoryId) =>
+    `/repositories/${repositoryId}/history?${new URLSearchParams({ commit: UNCOMMITTED })}`,
 };
