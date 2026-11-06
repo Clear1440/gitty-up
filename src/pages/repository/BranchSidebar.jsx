@@ -31,7 +31,7 @@ function BranchList({ branches, kind, selectedRef }) {
   );
 }
 
-export function BranchSidebar() {
+export function BranchSidebar({ resizeHandle }) {
   const { repository } = useRepositoryContext();
   const { data: branches, isPending } = useBranches(repository.id);
   const { data: stashes = [] } = useStashes(repository.id);
@@ -85,6 +85,7 @@ export function BranchSidebar() {
           />
         )}
       </div>
+      {resizeHandle}
     </aside>
   );
 }

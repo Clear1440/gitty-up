@@ -2,6 +2,8 @@ import { DiffOutlined, HistoryOutlined } from '@ant-design/icons';
 import { Button, Result, Segmented, Spin } from 'antd';
 import { useMemo, useRef, useState } from 'react';
 import { Link, Outlet, useMatch, useNavigate, useParams } from 'react-router';
+import { ResizeHandle } from '../../components/ResizeHandle.jsx';
+import { useResizableSizes } from '../../components/useResizableSizes.js';
 import { paths } from '../../paths.js';
 import { useStatus } from '../../queries/git.js';
 import { useRepository } from '../../queries/repositories.js';
@@ -13,6 +15,8 @@ import { RepositoryDialogs } from './dialogs/RepositoryDialogs.jsx';
 import { OperationBanner } from './OperationBanner.jsx';
 import { RepositoryContext } from './RepositoryContext.js';
 import styles from './RepositoryLayout.module.css';
+
+const WORKSPACE_LIMITS = { sidebar: { min: 200, max: 640 } };
 
 function BackHome() {
   return (
@@ -50,6 +54,8 @@ function RepositoryWorkspace({ repository }) {
   const actions = useGitActions(repository.id);
   const [dialog, setDialog] = useState(null);
   const commitInputRef = useRef(null);
+  const bodyRef = useRef(null);
+  const { style: bodyStyle, handleFor } = useResizableSizes(bodyRef, 'workspace', WORKSPACE_LIMITS);
 
   const context = useMemo(
     () => ({
@@ -74,8 +80,10 @@ function RepositoryWorkspace({ repository }) {
       <div className={styles.workspace}>
         <ActionBar />
         <OperationBanner />
-        <div className={styles.body}>
-          <BranchSidebar />
+        <div ref={bodyRef} className={styles.body} style={bodyStyle}>
+          <BranchSidebar
+            resizeHandle={<ResizeHandle label="Resize branches" {...handleFor('sidebar')} />}
+          />
           <section className={styles.main}>
             <ViewSwitcher repositoryId={repository.id} changeCount={changeCount} />
             <Outlet />

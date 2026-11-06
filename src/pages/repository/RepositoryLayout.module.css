@@ -8,7 +8,7 @@
 .body {
   display: grid;
   flex: 1;
-  grid-template-columns: var(--size-sidebar) minmax(0, 1fr);
+  grid-template-columns: min(var(--workspace-sidebar, var(--size-sidebar)), 60%) minmax(0, 1fr);
   min-height: 0;
 }
 

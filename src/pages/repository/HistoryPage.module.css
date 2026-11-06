@@ -20,6 +20,74 @@
   overflow-wrap: anywhere;
 }
 
+/*
+ * One grid holds every column, and the headings and rows inherit it as subgrids,
+ * so they all line up. The tree column sizes itself to the widest row's tree until
+ * it is resized. The commit message is the one column that takes up the slack, so
+ * a dragged edge stays under the cursor. See useResizableSizes for the variables.
+ */
+.table {
+  display: grid;
+  grid-template-columns:
+    var(--history-tree, auto)
+    var(--history-branch, 150px)
+    var(--history-author, 104px)
+    minmax(160px, 1fr)
+    var(--history-time, 108px)
+    var(--history-sha, 72px);
+  column-gap: var(--space-3);
+  min-width: min-content;
+}
+
+.columnHeadings,
+.list,
+.commit {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+}
+
+/* On the cell, not the row, so that a measured cell is the same width as its column. */
+.columnHeadings > :last-child,
+.commit > :last-child {
+  padding-right: var(--space-2);
+}
+
+.columnHeadings {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-block: var(--space-1);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.columnHeading {
+  position: relative;
+  align-self: stretch;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.columnTitle {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Puts the edge in the middle of the gap between two columns. */
+.columnHandle {
+  --resize-handle-offset: calc(var(--space-3) / -2 - 1px);
+}
+
+.columnHandle::after {
+  background: var(--color-border);
+}
+
 .list {
   margin: 0;
   padding: 0;
@@ -28,11 +96,7 @@
 
 /* A fixed height with no gaps, so the tree's lines run unbroken from row to row. */
 .commit {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
   height: var(--size-commit-row);
-  padding-right: var(--space-2);
   border-radius: var(--radius-sm);
 }
 
@@ -40,37 +104,42 @@
   background: var(--color-surface);
 }
 
-.main {
-  flex: 1;
+/* Fits the tree until the column is resized, then crops it to the column. */
+.tree {
+  width: var(--history-tree, max-content);
+  overflow: hidden;
+}
+
+.tree svg {
+  display: block;
+}
+
+.subject,
+.author,
+.time {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .subject {
   margin: 0;
-  overflow: hidden;
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-medium);
-  line-height: var(--line-height-tight);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.meta {
-  margin: 0;
-  overflow: hidden;
+.author,
+.time {
   color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-  line-height: var(--line-height-tight);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: var(--font-size-sm);
 }
 
 .refs {
   display: flex;
-  flex: 0 1 auto;
   gap: var(--space-1);
   min-width: 0;
-  max-width: 45%;
+  overflow: hidden;
 }
 
 .refs :global(.ant-tag) {
@@ -101,10 +170,12 @@
 }
 
 .hash {
-  flex: none;
+  min-width: 0;
+  overflow: hidden;
   color: var(--color-accent);
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
 }
 
 .loadMore {

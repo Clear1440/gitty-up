@@ -1,0 +1,42 @@
+.handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 9px;
+  outline: none;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.right {
+  right: var(--resize-handle-offset, 0);
+}
+
+.left {
+  left: var(--resize-handle-offset, 0);
+}
+
+.handle::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transition: background 0.1s;
+  content: '';
+}
+
+.right::after {
+  right: 0;
+}
+
+.left::after {
+  left: 0;
+}
+
+.handle:hover::after,
+.handle:active::after,
+.handle:focus-visible::after {
+  background: var(--color-primary);
+}

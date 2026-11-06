@@ -1,16 +1,21 @@
 .changes {
   display: grid;
   flex: 1;
-  grid-template-columns: minmax(240px, 34%) minmax(0, 1fr);
+  grid-template-columns: min(var(--changes-files, max(240px, 34%)), 70%) minmax(0, 1fr);
   min-height: 0;
   border-top: 1px solid var(--color-border);
 }
 
 .fileColumn {
+  position: relative;
   min-height: 0;
+  border-right: 1px solid var(--color-border);
+}
+
+.fileList {
+  height: 100%;
   padding: var(--space-2);
   overflow: auto;
-  border-right: 1px solid var(--color-border);
 }
 
 @media (max-width: 820px) {
@@ -22,5 +27,9 @@
   .fileColumn {
     border-right: 0;
     border-bottom: 1px solid var(--color-border);
+  }
+
+  .fileColumn [role='separator'] {
+    display: none;
   }
 }
