@@ -4,6 +4,7 @@ import { DeleteRemoteBranchDialog } from './DeleteRemoteBranchDialog.jsx';
 import { MergeDialog } from './MergeDialog.jsx';
 import { MergeIntoDialog } from './MergeIntoDialog.jsx';
 import { PruneBranchesDialog } from './PruneBranchesDialog.jsx';
+import { PublishBranchDialog } from './PublishBranchDialog.jsx';
 import { StashDialog } from './StashDialog.jsx';
 
 const DIALOGS = {
@@ -13,6 +14,7 @@ const DIALOGS = {
   merge: MergeDialog,
   mergeInto: MergeIntoDialog,
   pruneBranches: PruneBranchesDialog,
+  publishBranch: PublishBranchDialog,
   stash: StashDialog,
 };
 

@@ -23,9 +23,9 @@ export function useFolderChoices(repositoryId) {
 }
 
 /** A folder starts closed unless closing it would hide where the user is. */
-function opensByDefault(folder, { kind, depth, selectedRef }) {
-  // With one remote, a closed "origin" would hide every remote branch for no gain.
-  if (kind === 'remote' && depth === 0) return true;
+function opensByDefault(folder, selectedRef) {
+  // A closed remote would hide all of its branches for no gain.
+  if (folder.isRemote) return true;
   return folder.branches.some((branch) => branch.isCurrent || branch.name === selectedRef);
 }
 
@@ -74,7 +74,7 @@ export function BranchTree({ nodes, depth = 0, ...tree }) {
         }
 
         const key = `${kind}:${node.path}`;
-        const chosen = folderChoices[key] ?? opensByDefault(node, { kind, depth, selectedRef });
+        const chosen = folderChoices[key] ?? opensByDefault(node, selectedRef);
         const open = showAll || chosen;
         return (
           <FolderRow

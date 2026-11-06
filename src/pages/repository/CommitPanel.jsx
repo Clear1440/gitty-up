@@ -7,6 +7,7 @@ import { queryKeys } from '../../queries/queryKeys.js';
 import styles from './CommitPanel.module.css';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { useCommitDraft } from './useCommitDraft.js';
+import { usePush } from './usePush.js';
 
 const describeFiles = (count) => (count === 1 ? '1 file' : `${count} files`);
 
@@ -29,6 +30,7 @@ function placeholderFor({ status, amend }) {
 /** `onClean` fires after a commit that left nothing else to commit. */
 export function CommitPanel({ onClean }) {
   const { repository, status, run, isBusy, pendingAction } = useRepositoryContext();
+  const push = usePush();
   const queryClient = useQueryClient();
   const { state: navigationState } = useLocation();
   const inputRef = useRef(null);
@@ -70,7 +72,7 @@ export function CommitPanel({ onClean }) {
 
       if (pushAfterCommit) {
         // The commit stands even if this fails, and run() reports the failure.
-        await run('push');
+        await push();
         // It applies to one commit, so the next one never pushes by surprise.
         setPushAfterCommit(false);
       }

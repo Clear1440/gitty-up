@@ -109,6 +109,10 @@ function createGitRouter() {
     response.json(await git.getBranches(request.repository.path));
   });
 
+  router.get('/remotes', async (request, response) => {
+    response.json(await git.getRemoteOptions(request.repository.path));
+  });
+
   router.get('/last-commit', async (request, response) => {
     response.json(await git.getLastCommit(request.repository.path));
   });
@@ -187,7 +191,9 @@ function createGitRouter() {
   );
   action(router, '/fetch', (path) => git.fetchAll(path));
   action(router, '/pull', (path, { mode }) => git.pull(path, { mode }));
-  action(router, '/push', (path, { force }) => git.push(path, { force: force === true }));
+  action(router, '/push', (path, { force, remote, upstreamName }) =>
+    git.push(path, { force: force === true, remote, upstreamName }),
+  );
   action(router, '/checkout', (path, { branch, remote }) =>
     git.checkout(path, { branch: requireString(branch, 'branch'), remote: remote === true }),
   );

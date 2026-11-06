@@ -10,6 +10,7 @@ export const gitApi = {
   getCommitDetails: (id, hash) => http.get(route(id, `/commits/${hash}`)),
   getCommitDiff: (id, hash, { path, originalPath, fullFile }) =>
     http.get(route(id, `/commits/${hash}/diff`), { path, originalPath, fullFile }),
+  getRemotes: (id) => http.get(route(id, '/remotes')),
   getLastCommit: (id) => http.get(route(id, '/last-commit')),
   getPullRequests: (id) => http.get(route(id, '/pull-requests')),
   getStashes: (id) => http.get(route(id, '/stashes')),
@@ -19,7 +20,8 @@ export const gitApi = {
   // Syncing
   fetch: (id) => http.post(route(id, '/fetch')),
   pull: (id, { mode }) => http.post(route(id, '/pull'), { mode }),
-  push: (id, { force = false } = {}) => http.post(route(id, '/push'), { force }),
+  push: (id, { force = false, remote, upstreamName } = {}) =>
+    http.post(route(id, '/push'), { force, remote, upstreamName }),
 
   // Branches
   checkout: (id, { branch, remote }) => http.post(route(id, '/checkout'), { branch, remote }),

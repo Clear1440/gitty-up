@@ -629,6 +629,64 @@ describe('syncing with the remote', () => {
     expect(pulled.behind).toBe(0);
   });
 
+  it('publishes a branch under another name, and keeps pushing to it', async () => {
+    await request('POST', `${repo.api}/branches`, { name: 'topic' });
+    await writeAndCommit(repo.work, 'a.txt', 'a\n', 'Topic work');
+
+    const published = await request('POST', `${repo.api}/push`, {
+      remote: 'origin',
+      upstreamName: 'shared/topic',
+    });
+    expect(published.status).toBe(204);
+
+    const { body } = await request('GET', `${repo.api}/status`);
+    expect(body).toMatchObject({ upstream: 'origin/shared/topic', ahead: 0 });
+
+    await writeAndCommit(repo.work, 'b.txt', 'b\n', 'More work');
+    expect((await request('POST', `${repo.api}/push`, {})).status).toBe(204);
+
+    const { body: after } = await request('GET', `${repo.api}/status`);
+    expect(after.ahead).toBe(0);
+    expect(git(repo.remote, 'branch', '--list', 'topic')).toBe('');
+  });
+
+  it('publishes again once the upstream is gone', async () => {
+    await request('POST', `${repo.api}/branches`, { name: 'topic' });
+    await request('POST', `${repo.api}/push`, {});
+    git(repo.remote, 'branch', '-D', 'topic');
+    await request('POST', `${repo.api}/fetch`, {});
+
+    const { body: gone } = await request('GET', `${repo.api}/status`);
+    expect(gone).toMatchObject({ upstream: 'origin/topic', upstreamGone: true });
+
+    await request('POST', `${repo.api}/push`, { upstreamName: 'topic' });
+
+    const { body } = await request('GET', `${repo.api}/status`);
+    expect(body.upstreamGone).toBe(false);
+  });
+
+  it('refuses a bad upstream name or an unknown remote', async () => {
+    await request('POST', `${repo.api}/branches`, { name: 'topic' });
+
+    const badName = await request('POST', `${repo.api}/push`, { upstreamName: 'a..b' });
+    const badRemote = await request('POST', `${repo.api}/push`, {
+      remote: 'nowhere',
+      upstreamName: 'topic',
+    });
+
+    expect(badName.status).toBe(400);
+    expect(badRemote.status).toBe(400);
+    expect(git(repo.remote, 'branch', '--list', 'topic')).toBe('');
+  });
+
+  it('lists the remotes to publish to', async () => {
+    git(repo.work, 'remote', 'add', 'backup', repo.remote);
+
+    const { body } = await request('GET', `${repo.api}/remotes`);
+
+    expect(body).toEqual({ remotes: ['backup', 'origin'], defaultRemote: 'origin' });
+  });
+
   it('explains a push to a repository with no remote', async () => {
     git(repo.work, 'remote', 'remove', 'origin');
     const { status, body } = await request('POST', `${repo.api}/push`, {});

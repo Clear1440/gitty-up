@@ -32,8 +32,10 @@ export function sortBranches(branches, sort) {
 }
 
 /** A remote's name can itself contain a slash, so it is one level however it is spelled. */
-function pathOf(branch) {
-  return branch.remote ? [branch.remote, ...branch.localName.split('/')] : branch.name.split('/');
+function pathOf(branch, showRemotes) {
+  if (!branch.remote) return branch.name.split('/');
+  const path = branch.localName.split('/');
+  return showRemotes ? [branch.remote, ...path] : path;
 }
 
 /** A folder holding one item adds a level for nothing, so that item takes its place. */
@@ -57,14 +59,18 @@ function foldSingleItemFolders(nodes) {
  * `branches`, and a folder sits where its first branch would, so a tree sorted by date
  * still reads newest first.
  *
- * A folder is `{ type: 'folder', name, path, branches, children }`, where `branches`
- * is everything inside it at any depth, and a branch is `{ type: 'branch', label, branch }`.
+ * `showRemotes` files remote branches under a folder per remote, which only helps when
+ * there is more than one to tell apart.
+ *
+ * A folder is `{ type: 'folder', name, path, isRemote, branches, children }`, where
+ * `branches` is everything inside it at any depth, and a branch is
+ * `{ type: 'branch', label, branch }`.
  */
-export function buildBranchTree(branches) {
+export function buildBranchTree(branches, { showRemotes = false } = {}) {
   const root = { path: '', children: [] };
 
   for (const branch of branches) {
-    const segments = pathOf(branch);
+    const segments = pathOf(branch, showRemotes);
     const label = segments.pop();
 
     let parent = root;
@@ -72,7 +78,8 @@ export function buildBranchTree(branches) {
       let folder = parent.children.find((node) => node.type === 'folder' && node.name === name);
       if (!folder) {
         const path = `${parent.path}${name}/`;
-        folder = { type: 'folder', name, path, branches: [], children: [] };
+        const isRemote = showRemotes && parent === root && Boolean(branch.remote);
+        folder = { type: 'folder', name, path, isRemote, branches: [], children: [] };
         parent.children.push(folder);
       }
       folder.branches.push(branch);

@@ -129,13 +129,14 @@
 /*
  * Fits the tree and labels until the column is resized, then crops them to it. They
  * share one grid cell, so the labels float over the tree beside their node while
- * still counting towards the column's width.
+ * still counting towards the column's width. Only the right is cropped, as the pulse on
+ * the checked out commit spreads past the left edge of the first lane.
  */
 .tree {
   display: grid;
   align-items: center;
   width: var(--history-graph, max-content);
-  overflow: hidden;
+  clip-path: inset(0 0 0 -8px);
 }
 
 .tree > * {

@@ -1,0 +1,27 @@
+/* Spreads out from the ring around the checked out commit, and fades as it goes. */
+.headPulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: head-pulse 2s ease-out infinite;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+@keyframes head-pulse {
+  from {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+
+  to {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
+
+/* The ring it spreads from is always there, so nothing is lost without it. */
+@media (prefers-reduced-motion: reduce) {
+  .headPulse {
+    display: none;
+  }
+}

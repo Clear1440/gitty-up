@@ -116,6 +116,15 @@ async function getDefaultRemote(repoPath) {
   return remotes.includes('origin') ? 'origin' : (remotes[0] ?? null);
 }
 
+/** The remotes a branch can be published to, and the one to offer first. */
+export async function getRemoteOptions(repoPath) {
+  const [remotes, defaultRemote] = await Promise.all([
+    getRemotes(repoPath),
+    getDefaultRemote(repoPath),
+  ]);
+  return { remotes, defaultRemote };
+}
+
 async function getRemoteUrl(repoPath) {
   const remote = await getDefaultRemote(repoPath);
   if (!remote) return null;
@@ -343,15 +352,33 @@ export async function pull(repoPath, { mode = 'merge' } = {}) {
   );
 }
 
-export async function push(repoPath, { force = false } = {}) {
+async function resolvePushRemote(repoPath, requested) {
+  const { remotes, defaultRemote } = await getRemoteOptions(repoPath);
+  if (requested !== undefined && !remotes.includes(requested)) {
+    throw badRequest(`Unknown remote: ${requested}`);
+  }
+  const remote = requested ?? defaultRemote;
+  if (!remote) throw gitFailure('This repository has no remote to push to.');
+  return remote;
+}
+
+/**
+ * Pushes the current branch. Naming `upstreamName` publishes it under that name, as does
+ * having no upstream at all, which uses the branch's own name.
+ */
+export async function push(repoPath, { force = false, remote, upstreamName } = {}) {
   const { branch, upstream } = await getStatus(repoPath);
   if (!branch) throw gitFailure('Check out a branch before pushing.');
+  if (upstreamName !== undefined) await assertValidBranchName(repoPath, upstreamName);
 
   const args = ['push', ...(force ? ['--force-with-lease'] : [])];
-  if (!upstream) {
-    const remote = await getDefaultRemote(repoPath);
-    if (!remote) throw gitFailure('This repository has no remote to push to.');
-    args.push('--set-upstream', remote, 'HEAD');
+  if (!upstream || upstreamName !== undefined) {
+    const target = await resolvePushRemote(repoPath, remote);
+    args.push('--set-upstream', target, `HEAD:refs/heads/${upstreamName ?? branch}`);
+  } else {
+    // By default git refuses to push to an upstream named differently from the branch.
+    const merge = await runGit(repoPath, ['config', `branch.${branch}.merge`]);
+    if (merge.trim() !== `refs/heads/${branch}`) args.unshift('-c', 'push.default=upstream');
   }
   await runGit(repoPath, args, { timeout: NETWORK_TIMEOUT_MS });
 }

@@ -31,7 +31,10 @@ function applyBranchHeader(status, record) {
     status.branch = status.detached ? null : value;
   } else if (key === 'branch.upstream') {
     status.upstream = value;
+    // Git only compares with an upstream it can still find, so branch.ab clears this.
+    status.upstreamGone = true;
   } else if (key === 'branch.ab') {
+    status.upstreamGone = false;
     status.ahead = Number(value);
     status.behind = Math.abs(Number(behind));
   }
@@ -53,6 +56,7 @@ export function parseStatus(output) {
     detached: false,
     headHash: null,
     upstream: null,
+    upstreamGone: false,
     ahead: 0,
     behind: 0,
     staged: [],

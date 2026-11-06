@@ -7,6 +7,7 @@ export const queryKeys = {
   repository: (id) => [ROOT, 'detail', id],
   status: (id) => [ROOT, 'detail', id, 'status'],
   branches: (id) => [ROOT, 'detail', id, 'branches'],
+  remotes: (id) => [ROOT, 'detail', id, 'remotes'],
   commits: (id, ref) => [ROOT, 'detail', id, 'commits', ref ?? 'all-branches'],
   commit: (id, hash) => [ROOT, 'detail', id, 'commit', hash],
   commitDiff: (id, hash, file) => [ROOT, 'detail', id, 'commit', hash, 'diff', file],
