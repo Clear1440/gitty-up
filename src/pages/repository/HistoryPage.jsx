@@ -1,8 +1,8 @@
 import { CloudOutlined, LaptopOutlined } from '@ant-design/icons';
 import { Avatar, Button, Empty, Result, Spin, Tag } from 'antd';
 import clsx from 'clsx';
-import { useMemo, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { useEffect, useMemo, useRef } from 'react';
+import { Link, useLocation, useSearchParams } from 'react-router';
 import { RelativeTime } from '../../components/RelativeTime.jsx';
 import { ResizeHandle } from '../../components/ResizeHandle.jsx';
 import { useResizableSizes } from '../../components/useResizableSizes.js';
@@ -13,7 +13,7 @@ import { CommitGraphCell } from './history/CommitGraphCell.jsx';
 import { countChangedFiles } from './countChangedFiles.js';
 import { CommitPane } from './history/CommitPane.jsx';
 import { GraphTooltipArea } from './history/GraphTooltipArea.jsx';
-import { groupRefs } from './history/groupRefs.js';
+import { findBranchTip, groupRefs } from './history/groupRefs.js';
 import { WorkingTreePane } from './history/WorkingTreePane.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
 import styles from './HistoryPage.module.css';
@@ -29,6 +29,9 @@ const COLUMN_LIMITS = {
 };
 
 const PANE_LIMITS = { width: { min: 280, max: 1400 } };
+
+// How far back to page through history for a branch, before leaving it to the user.
+const MAX_COMMITS_SEARCHED = 2_000;
 
 function ColumnHeading({ title, label = title, handle }) {
   return (
@@ -113,10 +116,15 @@ function UncommittedRow({ graphRow, columnCount, fileCount, selected, onSelect }
   );
 }
 
-function CommitRow({ commit, graphRow, columnCount, selected, onSelect }) {
+function CommitRow({ commit, graphRow, columnCount, selected, focused, onSelect }) {
   return (
     <li
-      className={clsx(styles.commit, selected && styles.selectedCommit)}
+      className={clsx(
+        styles.commit,
+        selected && styles.selectedCommit,
+        focused && styles.focusedCommit,
+      )}
+      data-hash={commit.hash}
       onClick={() => onSelect(commit.hash)}
     >
       <div className={styles.tree}>
@@ -163,6 +171,16 @@ export function HistoryPage() {
   const selectedHash = searchParams.get('commit');
   const { data: commits, error, isPending, hasNextPage, isFetchingNextPage, fetchNextPage } =
     useCommits(repository.id, ref);
+  const { state: navigationState } = useLocation();
+  const focusedBranch = ref ? null : searchParams.get('focus');
+  const focusRequest = navigationState?.focusBranch;
+  const focusedHash = focusedBranch ? findBranchTip(commits ?? [], focusedBranch)?.hash : undefined;
+  // Pages load newest first, so a quiet branch can be further back than what is showing.
+  const isSearching =
+    Boolean(focusedBranch) &&
+    !focusedHash &&
+    hasNextPage &&
+    (commits?.length ?? 0) < MAX_COMMITS_SEARCHED;
   const fileCount = countChangedFiles(status);
   // Work in progress sits on the checked out branch, so other branches' histories omit it.
   // A paused merge counts even with no files left, as it still has to be committed.
@@ -182,6 +200,16 @@ export function HistoryPage() {
   const { style, handleFor } = useResizableSizes(tableRef, 'history', COLUMN_LIMITS);
   const layoutRef = useRef(null);
   const pane = useResizableSizes(layoutRef, 'commit-pane', PANE_LIMITS);
+
+  useEffect(() => {
+    if (isSearching && !isFetchingNextPage) fetchNextPage();
+  }, [isSearching, isFetchingNextPage, fetchNextPage]);
+
+  useEffect(() => {
+    if (!focusedHash) return;
+    const row = tableRef.current?.querySelector(`[data-hash="${focusedHash}"]`);
+    row?.scrollIntoView({ block: 'center' });
+  }, [focusedHash, focusRequest]);
 
   /** Opens a commit or the uncommitted changes, or closes it if it was already open. */
   const toggleCommit = (hash) => {
@@ -230,6 +258,16 @@ export function HistoryPage() {
         <header className={styles.header}>
           <h2 className={styles.heading}>{ref ?? 'All branches'}</h2>
           {ref && showAllBranches}
+          {focusedBranch && !focusedHash && !isSearching && !isFetchingNextPage && (
+            <>
+              <span className={styles.focusNote}>
+                {focusedBranch} is not in the commits loaded here.
+              </span>
+              <Link to={paths.history(repository.id, focusedBranch)}>
+                <Button size="small">Show only this branch</Button>
+              </Link>
+            </>
+          )}
         </header>
         <div ref={tableRef} className={styles.table} style={style}>
           <ColumnHeadings handleFor={handleFor} />
@@ -251,6 +289,7 @@ export function HistoryPage() {
                   graphRow={graph.rows[index + graphRowOffset]}
                   columnCount={graph.columnCount}
                   selected={commit.hash === selectedHash}
+                  focused={commit.hash === focusedHash}
                   onSelect={toggleCommit}
                 />
               ))}

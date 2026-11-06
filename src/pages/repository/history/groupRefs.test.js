@@ -1,11 +1,34 @@
 import { describe, expect, it } from 'vitest';
-import { groupRefs } from './groupRefs.js';
+import { findBranchTip, groupRefs } from './groupRefs.js';
 
 const remote = (name, remoteName = 'origin') => ({
   type: 'remote',
   name: `${remoteName}/${name}`,
   remote: remoteName,
   localName: name,
+});
+
+describe('findBranchTip', () => {
+  const commits = [
+    { hash: 'a', refs: [{ type: 'head', name: 'main' }] },
+    { hash: 'b', refs: [{ type: 'tag', name: 'v1' }, remote('main')] },
+    { hash: 'c', refs: [{ type: 'branch', name: 'features/x' }] },
+    { hash: 'd', refs: [] },
+  ];
+
+  it('finds a local branch, checked out or not', () => {
+    expect(findBranchTip(commits, 'main').hash).toBe('a');
+    expect(findBranchTip(commits, 'features/x').hash).toBe('c');
+  });
+
+  it('tells a remote branch from a local one of the same name', () => {
+    expect(findBranchTip(commits, 'origin/main').hash).toBe('b');
+  });
+
+  it('ignores tags, and branches it has not been given', () => {
+    expect(findBranchTip(commits, 'v1')).toBeUndefined();
+    expect(findBranchTip(commits, 'gone')).toBeUndefined();
+  });
 });
 
 describe('groupRefs', () => {

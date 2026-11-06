@@ -1,3 +1,10 @@
+/** Finds the commit a branch points at, by its full name, such as main or origin/main. */
+export function findBranchTip(commits, branch) {
+  return commits.find(({ refs }) =>
+    refs.some(({ type, name }) => type !== 'tag' && name === branch),
+  );
+}
+
 /**
  * Folds a commit's refs into what to label it with: a branch that is both local and
  * on a remote is one entry saying so, rather than "main" beside "origin/main".

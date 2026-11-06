@@ -99,14 +99,6 @@ export function CommitPanel({ onClean }) {
         onKeyDown={handleKeyDown}
       />
       <div className={styles.options}>
-        {unstagedCount > 0 && (
-          <Checkbox
-            checked={stageAll}
-            onChange={(event) => setStageAllChoice(event.target.checked)}
-          >
-            Stage {describeFiles(unstagedCount)} too
-          </Checkbox>
-        )}
         <Checkbox checked={amend} onChange={(event) => setAmend(event.target.checked)}>
           Amend previous
         </Checkbox>

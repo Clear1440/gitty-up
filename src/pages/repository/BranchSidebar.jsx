@@ -50,7 +50,7 @@ export function BranchSidebar({ resizeHandle }) {
   const [sort, setSort] = useBranchSort();
   const [folderChoices, setFolderOpen] = useFolderChoices(repository.id);
   const [searchParams] = useSearchParams();
-  const selectedRef = searchParams.get('ref');
+  const selectedRef = searchParams.get('focus') ?? searchParams.get('ref');
 
   const local = sortBranches(filterBranches(branches?.local ?? [], filter), sort);
   const remote = sortBranches(filterBranches(branches?.remote ?? [], filter), sort);

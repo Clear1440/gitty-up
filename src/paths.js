@@ -9,6 +9,9 @@ export const paths = {
     const base = `/repositories/${repositoryId}/history`;
     return ref ? `${base}?${new URLSearchParams({ ref })}` : base;
   },
+  /** Every branch's history, with this branch's latest commit scrolled to and marked. */
+  focusBranch: (repositoryId, branch) =>
+    `/repositories/${repositoryId}/history?${new URLSearchParams({ focus: branch })}`,
   uncommitted: (repositoryId) =>
     `/repositories/${repositoryId}/history?${new URLSearchParams({ commit: UNCOMMITTED })}`,
 };

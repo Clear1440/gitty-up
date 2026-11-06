@@ -29,9 +29,19 @@ export function BranchRow({ branch, label, kind, depth, selected }) {
     if (!branch.isCurrent && !blocked) run('checkout', { branch: branch.name, remote: isRemote });
   };
 
-  const open = () => navigate(paths.history(repository.id, branch.name));
+  // The time makes every click a new request, so a branch scrolled away from can be found again.
+  const focus = () => {
+    navigate(paths.focusBranch(repository.id, branch.name), {
+      state: { focusBranch: Date.now() },
+    });
+  };
 
   const menuItems = [
+    {
+      key: 'show-only',
+      label: 'Show only this branch',
+      onClick: () => navigate(paths.history(repository.id, branch.name)),
+    },
     {
       key: 'checkout',
       label: 'Checkout',
@@ -103,7 +113,7 @@ export function BranchRow({ branch, label, kind, depth, selected }) {
           className={styles.button}
           style={{ '--branch-depth': depth }}
           title={branch.isCurrent ? branch.name : `${branch.name}\nDouble-click to check out`}
-          onClick={open}
+          onClick={focus}
           onDoubleClick={checkout}
         >
           <BranchIcon branch={branch} kind={kind} />
