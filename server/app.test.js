@@ -1,0 +1,533 @@
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createApp } from './app.js';
+import { RepositoryStore } from './store/repositoryStore.js';
+
+let sandbox;
+let server;
+let baseUrl;
+
+const git = (cwd, ...args) =>
+  execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+
+async function request(method, route, body, headers = {}) {
+  const response = await fetch(`${baseUrl}${route}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await response.text();
+  return { status: response.status, body: text ? JSON.parse(text) : null };
+}
+
+async function writeAndCommit(cwd, file, content, message) {
+  await fs.writeFile(path.join(cwd, file), content);
+  git(cwd, 'add', '--all');
+  git(cwd, 'commit', '-m', message);
+}
+
+/** Creates a working copy with one commit, pushed to its own bare remote. */
+async function createRepository(name) {
+  const root = path.join(sandbox, name);
+  const remote = path.join(root, 'remote.git');
+  const work = path.join(root, 'work');
+  await fs.mkdir(work, { recursive: true });
+  git(root, 'init', '--bare', '--initial-branch=main', remote);
+  git(work, 'init', '--initial-branch=main');
+  git(work, 'config', 'user.name', 'Test');
+  git(work, 'config', 'user.email', 'test@example.com');
+  git(work, 'config', 'commit.gpgsign', 'false');
+  git(work, 'config', 'core.autocrlf', 'false');
+  git(work, 'remote', 'add', 'origin', remote);
+  await writeAndCommit(work, 'readme.txt', 'one\n', 'Initial commit');
+  git(work, 'push', '-u', 'origin', 'main');
+
+  const { body } = await request('POST', '/api/repositories', { path: work });
+  return { work, remote, api: `/api/repositories/${body.id}`, id: body.id };
+}
+
+beforeAll(async () => {
+  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'gity-up-test-'));
+  const app = createApp({ store: new RepositoryStore(path.join(sandbox, 'data')) });
+  await new Promise((resolve) => {
+    server = app.listen(0, '127.0.0.1', resolve);
+  });
+  baseUrl = `http://127.0.0.1:${server.address().port}`;
+});
+
+afterAll(async () => {
+  await new Promise((resolve) => {
+    server.close(resolve);
+  });
+  await fs.rm(sandbox, { recursive: true, force: true, maxRetries: 5 });
+});
+
+let repositoryCount = 0;
+let repo;
+
+beforeEach(async () => {
+  repositoryCount += 1;
+  repo = await createRepository(`repo-${repositoryCount}`);
+});
+
+describe('request origin protection', () => {
+  it('rejects requests from other websites', async () => {
+    const { status } = await request('POST', `${repo.api}/fetch`, {}, {
+      Origin: 'https://evil.example',
+    });
+    expect(status).toBe(403);
+  });
+
+  it('allows the local client', async () => {
+    const { status } = await request('GET', '/api/repositories', undefined, {
+      Origin: 'http://localhost:5173',
+    });
+    expect(status).toBe(200);
+  });
+});
+
+describe('linked repositories', () => {
+  it('lists a linked repository with a summary', async () => {
+    const { body } = await request('GET', '/api/repositories');
+    const linked = body.find((repository) => repository.id === repo.id);
+    expect(linked).toMatchObject({
+      name: 'work',
+      available: true,
+      summary: { branch: 'main', branchCount: 1, changeCount: 0 },
+    });
+    expect(linked.summary.lastCommit.subject).toBe('Initial commit');
+  });
+
+  it('links the working tree root when given a subfolder, without duplicating', async () => {
+    const subfolder = path.join(repo.work, 'nested');
+    await fs.mkdir(subfolder);
+    const { body } = await request('POST', '/api/repositories', { path: subfolder });
+    expect(body.id).toBe(repo.id);
+  });
+
+  it('rejects folders that are not repositories', async () => {
+    const plain = await fs.mkdtemp(path.join(os.tmpdir(), 'gity-up-plain-'));
+    const { status, body } = await request('POST', '/api/repositories', { path: plain });
+    expect(status).toBe(400);
+    expect(body.error.message).toContain('not inside a git working tree');
+    await fs.rm(plain, { recursive: true, force: true });
+  });
+
+  it('keeps a moved repository listed as unavailable until unlinked', async () => {
+    await fs.rename(repo.work, `${repo.work}-moved`);
+    const { body } = await request('GET', '/api/repositories');
+    expect(body.find((repository) => repository.id === repo.id).available).toBe(false);
+
+    expect((await request('DELETE', repo.api)).status).toBe(204);
+    expect((await request('GET', repo.api)).status).toBe(404);
+  });
+
+  it('answers 404 for unknown repositories', async () => {
+    expect((await request('GET', '/api/repositories/nope/status')).status).toBe(404);
+  });
+});
+
+describe('branches', () => {
+  it('creates, lists, checks out and deletes a branch with a slash in its name', async () => {
+    await request('POST', `${repo.api}/branches`, { name: 'feature/login' });
+    let { body } = await request('GET', `${repo.api}/branches`);
+    expect(body.local.find((branch) => branch.isCurrent).name).toBe('feature/login');
+    expect(body.remote.map((branch) => branch.name)).toEqual(['origin/main']);
+
+    await request('POST', `${repo.api}/checkout`, { branch: 'main' });
+    const encoded = encodeURIComponent('feature/login');
+    expect((await request('DELETE', `${repo.api}/branches/${encoded}`)).status).toBe(204);
+
+    ({ body } = await request('GET', `${repo.api}/branches`));
+    expect(body.local.map((branch) => branch.name)).toEqual(['main']);
+  });
+
+  it('rejects names git would read as options or refuse', async () => {
+    const dash = await request('POST', `${repo.api}/branches`, { name: '--force' });
+    const spaces = await request('POST', `${repo.api}/branches`, { name: 'has spaces' });
+    expect(dash.status).toBe(400);
+    expect(spaces.status).toBe(400);
+  });
+
+  it('checks out a remote branch as a tracking branch, then reuses it', async () => {
+    git(repo.work, 'switch', '-c', 'shared');
+    git(repo.work, 'push', 'origin', 'shared');
+    git(repo.work, 'switch', 'main');
+    git(repo.work, 'branch', '-D', 'shared');
+
+    await request('POST', `${repo.api}/checkout`, { branch: 'origin/shared', remote: true });
+    let { body } = await request('GET', `${repo.api}/status`);
+    expect(body).toMatchObject({ branch: 'shared', upstream: 'origin/shared' });
+
+    git(repo.work, 'switch', 'main');
+    const again = await request('POST', `${repo.api}/checkout`, {
+      branch: 'origin/shared',
+      remote: true,
+    });
+    expect(again.status).toBe(204);
+    ({ body } = await request('GET', `${repo.api}/status`));
+    expect(body.branch).toBe('shared');
+  });
+
+  it('refuses to delete an unmerged branch unless forced', async () => {
+    git(repo.work, 'switch', '-c', 'unmerged');
+    await writeAndCommit(repo.work, 'a.txt', 'a\n', 'Unmerged work');
+    git(repo.work, 'switch', 'main');
+
+    const refused = await request('DELETE', `${repo.api}/branches/unmerged`);
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.message).toContain('not fully merged');
+
+    expect((await request('DELETE', `${repo.api}/branches/unmerged?force=true`)).status).toBe(204);
+  });
+});
+
+describe('committing', () => {
+  it('stages, diffs, commits and lists history', async () => {
+    await fs.writeFile(path.join(repo.work, 'new file.txt'), 'hello\n');
+
+    let { body: status } = await request('GET', `${repo.api}/status`);
+    expect(status.unstaged).toEqual([
+      { path: 'new file.txt', originalPath: null, status: 'untracked' },
+    ]);
+
+    const query = `path=${encodeURIComponent('new file.txt')}`;
+    const { body: diff } = await request('GET', `${repo.api}/diff?${query}&untracked=true`);
+    expect(diff.diff).toContain('+hello');
+
+    await request('POST', `${repo.api}/stage`, { paths: ['new file.txt'] });
+    ({ body: status } = await request('GET', `${repo.api}/status`));
+    expect(status.staged).toHaveLength(1);
+
+    const { body: stagedDiff } = await request('GET', `${repo.api}/diff?${query}&staged=true`);
+    expect(stagedDiff.diff).toContain('+hello');
+
+    await request('POST', `${repo.api}/commit`, { message: 'Add file' });
+    const { body: commits } = await request('GET', `${repo.api}/commits?limit=1`);
+    expect(commits[0].subject).toBe('Add file');
+    expect(commits[0].refs).toContainEqual({ type: 'head', name: 'main' });
+  });
+
+  it('treats file names as literals, not patterns', async () => {
+    await fs.writeFile(path.join(repo.work, 'a.log'), 'x');
+    await fs.writeFile(path.join(repo.work, 'b.log'), 'x');
+
+    const { status } = await request('POST', `${repo.api}/stage`, { paths: ['*.log'] });
+
+    expect(status).toBe(409);
+    const { body } = await request('GET', `${repo.api}/status`);
+    expect(body.staged).toHaveLength(0);
+  });
+
+  it('requires a message unless amending', async () => {
+    await fs.writeFile(path.join(repo.work, 'a.txt'), 'x');
+    const missing = await request('POST', `${repo.api}/commit`, { message: ' ', stageAll: true });
+    expect(missing.status).toBe(400);
+
+    const amended = await request('POST', `${repo.api}/commit`, { amend: true, stageAll: true });
+    expect(amended.status).toBe(204);
+    expect(git(repo.work, 'log', '--format=%s')).toBe('Initial commit');
+  });
+
+  it('unstages and discards tracked and untracked changes', async () => {
+    await fs.writeFile(path.join(repo.work, 'readme.txt'), 'changed\n');
+    await fs.writeFile(path.join(repo.work, 'junk.txt'), 'junk\n');
+    await request('POST', `${repo.api}/stage`, {});
+    await request('POST', `${repo.api}/unstage`, {});
+
+    const { body: status } = await request('GET', `${repo.api}/status`);
+    expect(status.staged).toHaveLength(0);
+    expect(status.unstaged).toHaveLength(2);
+
+    await request('POST', `${repo.api}/discard`, { paths: ['readme.txt', 'junk.txt'] });
+    const { body: clean } = await request('GET', `${repo.api}/status`);
+    expect(clean.unstaged).toHaveLength(0);
+    expect(await fs.readFile(path.join(repo.work, 'readme.txt'), 'utf8')).toBe('one\n');
+  });
+});
+
+describe('syncing with the remote', () => {
+  it('sets the upstream on the first push of a new branch', async () => {
+    await request('POST', `${repo.api}/branches`, { name: 'topic' });
+    await writeAndCommit(repo.work, 'a.txt', 'a\n', 'Topic work');
+
+    expect((await request('POST', `${repo.api}/push`, {})).status).toBe(204);
+
+    const { body } = await request('GET', `${repo.api}/status`);
+    expect(body).toMatchObject({ upstream: 'origin/topic', ahead: 0 });
+    expect(git(repo.remote, 'branch', '--list', 'topic')).toContain('topic');
+  });
+
+  it('fetches and pulls commits made elsewhere', async () => {
+    const other = path.join(repo.work, '..', 'other');
+    git(path.dirname(other), 'clone', repo.remote, other);
+    git(other, 'config', 'user.name', 'Other');
+    git(other, 'config', 'user.email', 'other@example.com');
+    await writeAndCommit(other, 'theirs.txt', 'theirs\n', 'Their work');
+    git(other, 'push');
+
+    await request('POST', `${repo.api}/fetch`, {});
+    const { body } = await request('GET', `${repo.api}/status`);
+    expect(body.behind).toBe(1);
+
+    expect((await request('POST', `${repo.api}/pull`, { mode: 'ff-only' })).status).toBe(204);
+    const { body: pulled } = await request('GET', `${repo.api}/status`);
+    expect(pulled.behind).toBe(0);
+  });
+
+  it('explains a push to a repository with no remote', async () => {
+    git(repo.work, 'remote', 'remove', 'origin');
+    const { status, body } = await request('POST', `${repo.api}/push`, {});
+    expect(status).toBe(409);
+    expect(body.error.message).toContain('no remote');
+  });
+});
+
+describe('merging', () => {
+  async function createConflict() {
+    git(repo.work, 'switch', '-c', 'topic');
+    await writeAndCommit(repo.work, 'readme.txt', 'theirs\n', 'Topic change');
+    git(repo.work, 'switch', 'main');
+    await writeAndCommit(repo.work, 'readme.txt', 'ours\n', 'Main change');
+  }
+
+  it('merges cleanly', async () => {
+    git(repo.work, 'switch', '-c', 'topic');
+    await writeAndCommit(repo.work, 'a.txt', 'a\n', 'Topic work');
+    git(repo.work, 'switch', 'main');
+
+    const { status } = await request('POST', `${repo.api}/merge`, {
+      branch: 'topic',
+      noFastForward: true,
+    });
+
+    expect(status).toBe(204);
+    expect(git(repo.work, 'log', '-1', '--format=%s')).toContain("Merge branch 'topic'");
+  });
+
+  it('reports conflicts and can abort the merge', async () => {
+    await createConflict();
+
+    const { status, body } = await request('POST', `${repo.api}/merge`, { branch: 'topic' });
+    expect(status).toBe(409);
+    expect(body.error.code).toBe('CONFLICTS');
+
+    const { body: merging } = await request('GET', `${repo.api}/status`);
+    expect(merging.operation).toBe('merge');
+    expect(merging.conflicted.map((file) => file.path)).toEqual(['readme.txt']);
+
+    await request('POST', `${repo.api}/operation/abort`, {});
+    const { body: aborted } = await request('GET', `${repo.api}/status`);
+    expect(aborted).toMatchObject({ operation: null, conflicted: [] });
+  });
+
+  it('finishes a merge once conflicts are resolved', async () => {
+    await createConflict();
+    await request('POST', `${repo.api}/merge`, { branch: 'topic' });
+    await fs.writeFile(path.join(repo.work, 'readme.txt'), 'resolved\n');
+    await request('POST', `${repo.api}/stage`, { paths: ['readme.txt'] });
+
+    expect((await request('POST', `${repo.api}/operation/continue`, {})).status).toBe(204);
+
+    const { body } = await request('GET', `${repo.api}/status`);
+    expect(body.operation).toBeNull();
+  });
+
+  it('reports rebase conflicts and can abort the rebase', async () => {
+    await createConflict();
+
+    const { body } = await request('POST', `${repo.api}/rebase`, { branch: 'topic' });
+    expect(body.error.code).toBe('CONFLICTS');
+
+    const { body: rebasing } = await request('GET', `${repo.api}/status`);
+    expect(rebasing.operation).toBe('rebase');
+
+    await request('POST', `${repo.api}/operation/abort`, {});
+    const { body: aborted } = await request('GET', `${repo.api}/status`);
+    expect(aborted.operation).toBeNull();
+  });
+
+  it('refuses to abort when nothing is in progress', async () => {
+    expect((await request('POST', `${repo.api}/operation/abort`, {})).status).toBe(409);
+  });
+});
+
+describe('stashing', () => {
+  it('saves including untracked files, lists and pops', async () => {
+    await fs.writeFile(path.join(repo.work, 'wip.txt'), 'wip\n');
+
+    await request('POST', `${repo.api}/stash`, { message: 'parking this' });
+
+    const { body: stashes } = await request('GET', `${repo.api}/stashes`);
+    expect(stashes).toHaveLength(1);
+    expect(stashes[0].message).toContain('parking this');
+    const { body: clean } = await request('GET', `${repo.api}/status`);
+    expect(clean.unstaged).toHaveLength(0);
+
+    await request('POST', `${repo.api}/stash/pop`, {});
+    const { body: restored } = await request('GET', `${repo.api}/status`);
+    expect(restored.unstaged).toHaveLength(1);
+  });
+});
+
+describe('managing individual stashes', () => {
+  async function stashFile(file, message) {
+    await fs.writeFile(path.join(repo.work, file), `${message}\n`);
+    await request('POST', `${repo.api}/stash`, { message });
+  }
+
+  beforeEach(async () => {
+    await stashFile('older.txt', 'older');
+    await stashFile('newer.txt', 'newer');
+  });
+
+  it('lists stashes with their branch, newest first', async () => {
+    const { body } = await request('GET', `${repo.api}/stashes`);
+    expect(body.map(({ ref, message, branch }) => ({ ref, message, branch }))).toEqual([
+      { ref: 'stash@{0}', message: 'newer', branch: 'main' },
+      { ref: 'stash@{1}', message: 'older', branch: 'main' },
+    ]);
+  });
+
+  it('applies a chosen stash and keeps it', async () => {
+    await request('POST', `${repo.api}/stash/apply`, { ref: 'stash@{1}' });
+
+    const { body: status } = await request('GET', `${repo.api}/status`);
+    expect(status.unstaged.map((file) => file.path)).toEqual(['older.txt']);
+    const { body: stashes } = await request('GET', `${repo.api}/stashes`);
+    expect(stashes).toHaveLength(2);
+  });
+
+  it('pops a chosen stash and removes only that one', async () => {
+    await request('POST', `${repo.api}/stash/pop`, { ref: 'stash@{1}' });
+
+    const { body: stashes } = await request('GET', `${repo.api}/stashes`);
+    expect(stashes.map((stash) => stash.message)).toEqual(['newer']);
+  });
+
+  it('drops a chosen stash without touching the working tree', async () => {
+    await request('POST', `${repo.api}/stash/drop`, { ref: 'stash@{0}' });
+
+    const { body: stashes } = await request('GET', `${repo.api}/stashes`);
+    expect(stashes.map((stash) => stash.message)).toEqual(['older']);
+    const { body: status } = await request('GET', `${repo.api}/status`);
+    expect(status.unstaged).toHaveLength(0);
+  });
+
+  it('refuses anything that is not a stash reference', async () => {
+    for (const ref of ['--all', 'main', 'stash@{0}; rm', undefined]) {
+      const { status } = await request('POST', `${repo.api}/stash/drop`, { ref });
+      expect(status).toBe(400);
+    }
+  });
+
+  it('keeps a stash that conflicts and explains what to do', async () => {
+    await writeAndCommit(repo.work, 'base.txt', 'base\n', 'Add base');
+    await fs.writeFile(path.join(repo.work, 'base.txt'), 'stashed\n');
+    await request('POST', `${repo.api}/stash`, { message: 'clash' });
+    await writeAndCommit(repo.work, 'base.txt', 'committed\n', 'Change base');
+
+    const { status, body } = await request('POST', `${repo.api}/stash/pop`, {});
+
+    expect(status).toBe(409);
+    expect(body.error.code).toBe('CONFLICTS');
+    expect(body.error.message).toContain('The stash has been kept');
+    const { body: stashes } = await request('GET', `${repo.api}/stashes`);
+    expect(stashes).toHaveLength(3);
+  });
+});
+
+describe('history across branches', () => {
+  it('covers every branch without a ref, and one branch with it', async () => {
+    git(repo.work, 'switch', '-c', 'topic');
+    await writeAndCommit(repo.work, 'a.txt', 'a\n', 'Topic work');
+    git(repo.work, 'switch', 'main');
+    await writeAndCommit(repo.work, 'b.txt', 'b\n', 'Main work');
+
+    const { body: all } = await request('GET', `${repo.api}/commits`);
+    const { body: main } = await request('GET', `${repo.api}/commits?ref=main`);
+
+    expect(all.map((commit) => commit.subject).sort()).toEqual([
+      'Initial commit',
+      'Main work',
+      'Topic work',
+    ]);
+    expect(main.map((commit) => commit.subject)).toEqual(['Main work', 'Initial commit']);
+  });
+
+  it('leaves stashes out of the history', async () => {
+    await fs.writeFile(path.join(repo.work, 'wip.txt'), 'wip\n');
+    await request('POST', `${repo.api}/stash`, { message: 'hidden' });
+
+    const { body } = await request('GET', `${repo.api}/commits`);
+
+    expect(body.map((commit) => commit.subject)).toEqual(['Initial commit']);
+  });
+
+  it('keeps the summary on the current branch', async () => {
+    git(repo.work, 'switch', '-c', 'topic');
+    await writeAndCommit(repo.work, 'a.txt', 'a\n', 'Topic work');
+    git(repo.work, 'switch', 'main');
+
+    const { body } = await request('GET', repo.api);
+
+    expect(body.summary.lastCommit.subject).toBe('Initial commit');
+  });
+});
+
+describe('committing during a conflict', () => {
+  it('refuses, even with stage all, so markers cannot be committed', async () => {
+    git(repo.work, 'switch', '-c', 'topic');
+    await writeAndCommit(repo.work, 'readme.txt', 'theirs\n', 'Topic change');
+    git(repo.work, 'switch', 'main');
+    await writeAndCommit(repo.work, 'readme.txt', 'ours\n', 'Main change');
+    await request('POST', `${repo.api}/merge`, { branch: 'topic' });
+
+    const { status, body } = await request('POST', `${repo.api}/commit`, {
+      message: 'oops',
+      stageAll: true,
+    });
+
+    expect(status).toBe(409);
+    expect(body.error.message).toContain('Resolve the conflicts');
+    const { body: state } = await request('GET', `${repo.api}/status`);
+    expect(state.conflicted).toHaveLength(1);
+  });
+});
+
+describe('stashing a clean tree', () => {
+  it('reports that there was nothing to stash', async () => {
+    const { status, body } = await request('POST', `${repo.api}/stash`, {});
+    expect(status).toBe(409);
+    expect(body.error.message).toContain('no changes to stash');
+  });
+});
+
+describe('empty repositories', () => {
+  it('handles a repository with no commits', async () => {
+    const empty = path.join(sandbox, 'empty');
+    await fs.mkdir(empty);
+    git(empty, 'init', '--initial-branch=main');
+
+    const { body: linked } = await request('POST', '/api/repositories', { path: empty });
+    expect(linked).toMatchObject({ available: true, summary: { branch: 'main', lastCommit: null } });
+
+    const { body: commits } = await request('GET', `/api/repositories/${linked.id}/commits`);
+    expect(commits).toEqual([]);
+  });
+});
+
+describe('folder browsing', () => {
+  it('lists folders and marks repositories', async () => {
+    const root = path.dirname(repo.work);
+    const { body } = await request(
+      'GET',
+      `/api/filesystem/directories?path=${encodeURIComponent(root)}`,
+    );
+    expect(body.directories.find((directory) => directory.name === 'work').isRepository).toBe(true);
+    expect(body.parent).toBe(path.dirname(root));
+  });
+});

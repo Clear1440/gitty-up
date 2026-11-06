@@ -1,0 +1,39 @@
+.column {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.diff {
+  width: max-content;
+  min-width: 100%;
+  margin: 0;
+  padding: var(--space-2) 0;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+}
+
+.line {
+  padding: 0 var(--space-3);
+}
+
+.hunk {
+  background: var(--color-diff-hunk-bg);
+  color: var(--color-text-muted);
+}
+
+.added {
+  background: var(--color-diff-added-bg);
+}
+
+.deleted {
+  background: var(--color-diff-deleted-bg);
+}
+
+.truncated {
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}

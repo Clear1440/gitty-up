@@ -1,0 +1,10 @@
+/* Small helpers shared across pages. */
+
+/* Centers a spinner or empty state in the space it was given. */
+.centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6) var(--space-4);
+}

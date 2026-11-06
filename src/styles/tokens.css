@@ -1,0 +1,85 @@
+/*
+ * Design tokens: the one place to change how the app looks.
+ *
+ * Every stylesheet reads these, and src/styles/antdTheme.js feeds them to Ant Design,
+ * so editing a value here restyles both our components and Ant's.
+ * Keep colors in hex: Ant Design derives its hover and active shades from them.
+ */
+:root {
+  color-scheme: dark;
+
+  /* Surfaces, from the back of the app to the front */
+  --color-bg: #0f1218;
+  --color-surface: #161a22;
+  --color-surface-raised: #1e232d;
+  --color-surface-hover: #242a36;
+  --color-surface-selected: #263450;
+
+  /* Lines */
+  --color-border: #2a303c;
+  --color-border-strong: #454e60;
+
+  /* Text */
+  --color-text: #eef1f7;
+  --color-text-muted: #aeb7c9;
+  --color-text-disabled: #8891a4;
+
+  /* Brand */
+  --color-primary: #6ea1ff;
+  --color-primary-strong: #9cc0ff;
+  --color-primary-subtle: #1e3358;
+  --color-on-primary: #0b1020;
+  --color-accent: #c3b1ff;
+  --color-accent-subtle: #2e2854;
+
+  /* Meaning */
+  --color-success: #62d9b5;
+  --color-warning: #f4c56f;
+  --color-warning-subtle: #3a2f17;
+  --color-danger: #ff8197;
+
+  /* File status letters */
+  --color-file-added: var(--color-success);
+  --color-file-modified: var(--color-warning);
+  --color-file-deleted: var(--color-danger);
+  --color-file-renamed: var(--color-primary-strong);
+
+  /* Diff rows */
+  --color-diff-added-bg: #15332b;
+  --color-diff-deleted-bg: #3c1f29;
+  --color-diff-hunk-bg: #1d2233;
+
+  /* Type */
+  --font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, Consolas, monospace;
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-md: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 26px;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --line-height-tight: 1.3;
+  --line-height-body: 1.5;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* Corners */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Depth, used only by layers that float above the page */
+  --shadow-popup: 0 8px 24px #00000099;
+
+  /* Layout */
+  --size-tab-bar: 44px;
+  --size-sidebar: 300px;
+}

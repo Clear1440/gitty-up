@@ -1,0 +1,68 @@
+.hint {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-muted);
+}
+
+.driveSelect {
+  flex: none;
+  width: 84px;
+}
+
+.folderList {
+  height: 300px;
+  margin: var(--space-3) 0;
+  padding: var(--space-1);
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.folderRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 6px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.folderRow:hover {
+  background: var(--color-surface-hover);
+}
+
+.folderRow > :first-child {
+  color: var(--color-text-muted);
+}
+
+.repository > :first-child {
+  color: var(--color-accent);
+}
+
+.folderName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gitTag {
+  margin: 0;
+  border-color: var(--color-accent);
+  background: var(--color-accent-subtle);
+  color: var(--color-accent);
+}
+
+.noFolders {
+  margin: 0;
+  padding: var(--space-5);
+  color: var(--color-text-muted);
+  text-align: center;
+}

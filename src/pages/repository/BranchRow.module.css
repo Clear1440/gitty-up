@@ -1,0 +1,62 @@
+.row {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-md);
+}
+
+.row:hover,
+.row:focus-within {
+  background: var(--color-surface-hover);
+}
+
+.selected,
+.selected:hover {
+  background: var(--color-surface-selected);
+  box-shadow: inset 2px 0 0 var(--color-primary);
+}
+
+.button {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 6px var(--space-1) 6px var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.button > :first-child {
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.button > .iconCurrent {
+  color: var(--color-primary);
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu {
+  flex: none;
+  margin-right: var(--space-1);
+  opacity: 0;
+}
+
+.row:hover .menu,
+.row:focus-within .menu,
+.menu:global(.ant-dropdown-open) {
+  opacity: 1;
+}

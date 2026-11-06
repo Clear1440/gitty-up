@@ -1,0 +1,14 @@
+/*
+ * Changes to Ant Design that its theme tokens cannot express.
+ * Prefer a token in antdTheme.js where one exists.
+ */
+
+/* Floating layers render in portals, so they are targeted by Ant's class names. */
+.ant-dropdown-menu,
+.ant-select-dropdown,
+.ant-modal-container,
+.ant-popover-container,
+.ant-notification-notice,
+.ant-message-notice-content {
+  border: 1px solid var(--color-border-strong);
+}
