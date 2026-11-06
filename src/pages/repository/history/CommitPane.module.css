@@ -1,4 +1,6 @@
 .pane {
+  /* Lets the file list size itself from the pane, from inside the split below. */
+  container-type: size;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -58,15 +60,20 @@
   min-height: 0;
 }
 
-/* Hugs a short list until it is resized. However far it is dragged, the diff stays usable. */
+/*
+ * Hugs a short list until it is resized, up to a third of the pane or ten files and the
+ * headings of two sections, whichever is taller. The diff always stays usable.
+ */
 .filesArea {
+  --ten-files: calc(10 * 31px + 2 * 28px + var(--space-3) + 2 * var(--space-2) + 1px);
+
   position: relative;
   display: flex;
   flex: none;
   flex-direction: column;
   box-sizing: border-box;
   height: var(--diff-pane-files, auto);
-  max-height: min(var(--diff-pane-files, 40%), calc(100% - 120px));
+  max-height: min(var(--diff-pane-files, max(34cqh, var(--ten-files))), calc(100% - 120px));
   border-bottom: 1px solid var(--color-border);
 }
 
