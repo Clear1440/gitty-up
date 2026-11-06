@@ -28,13 +28,24 @@ export function PublishBranchDialog({ onClose }) {
       onClose={onClose}
     >
       {hasNoRemote ? (
-        <Alert type="warning" showIcon title="This repository has no remote to push to." />
+        <Alert
+          type="warning"
+          showIcon
+          title={
+            repository.isMono
+              ? 'These repositories have no remote name in common. Push each one from its own tab.'
+              : 'This repository has no remote to push to.'
+          }
+        />
       ) : (
         <Flex vertical gap={12}>
           <Typography.Text>
-            {upstreamGone
-              ? `The remote copy of this branch no longer exists. Create it again?`
-              : `This branch isn't on a remote yet. Create it there?`}
+            {repository.isMono && 'Not every repository here has this branch on a remote yet. '}
+            {!repository.isMono &&
+              (upstreamGone
+                ? `The remote copy of this branch no longer exists. Create it again?`
+                : `This branch isn't on a remote yet. Create it there?`)}
+            {repository.isMono && 'Publishing pushes all of them.'}
           </Typography.Text>
           {remotes.length > 1 && (
             <Select

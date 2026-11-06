@@ -2,7 +2,11 @@ import { useMutation, useMutationState, useQueryClient } from '@tanstack/react-q
 import { App } from 'antd';
 import { useCallback } from 'react';
 import { gitApi } from '../api';
+import { isMonoRepositoryId } from '../paths.js';
 import { mutationKeys, queryKeys } from './queryKeys.js';
+
+/** A mono repo reports on each of its repositories, a line apiece. */
+const MULTILINE = { whiteSpace: 'pre-line' };
 
 /** Every git action the UI can run, with the message shown when it succeeds. */
 const GIT_ACTIONS = {
@@ -59,7 +63,12 @@ const GIT_ACTIONS = {
   unstage: { run: gitApi.unstage, title: 'Unstage' },
   stageLines: { run: gitApi.stageLines, title: 'Stage lines' },
   discard: { run: gitApi.discard, title: 'Discard', success: () => 'Changes discarded' },
-  commit: { run: gitApi.commit, title: 'Commit', success: () => 'Committed' },
+  commit: {
+    run: gitApi.commit,
+    title: 'Commit',
+    success: ({ repositoryCount = 1 }) =>
+      repositoryCount > 1 ? `Committed to ${repositoryCount} repositories` : 'Committed',
+  },
   undoCommit: {
     run: gitApi.undoCommit,
     title: 'Undo commit',
@@ -69,7 +78,15 @@ const GIT_ACTIONS = {
   stashApply: { run: gitApi.stashApply, title: 'Apply stash', success: () => 'Stash applied' },
   stashPop: { run: gitApi.stashPop, title: 'Pop stash', success: () => 'Stash restored' },
   stashDrop: { run: gitApi.stashDrop, title: 'Drop stash', success: () => 'Stash dropped' },
+  /** Runs on the repository being brought in, not on the mono repo that asked. */
+  joinMono: {
+    run: (_monoId, { repositoryId, branch }) => gitApi.checkout(repositoryId, { branch }),
+    title: 'Switch branch',
+    success: ({ name, branch }) => `${name} is now on ${branch} and part of this tab`,
+  },
 };
+
+const partialKey = (repositoryId, name) => `partial-${repositoryId}-${name}`;
 
 /**
  * Runs git actions for a repository. Results are reported to the user here, so
@@ -86,11 +103,26 @@ export function useGitActions(repositoryId) {
     onSuccess: (result, { name, input }) => {
       const text = GIT_ACTIONS[name].success?.(input, result);
       if (text) message.success(text);
+      // A retry that worked has dealt with whatever this action last left unfinished.
+      notification.destroy(partialKey(repositoryId, name));
     },
     onError: (error, { name }) => {
       const { title } = GIT_ACTIONS[name];
       if (error.code === 'CONFLICTS') {
-        notification.warning({ title: `${title} paused`, description: error.message });
+        notification.warning({
+          title: `${title} paused`,
+          description: error.message,
+          style: MULTILINE,
+        });
+      } else if (error.code === 'PARTIAL') {
+        notification.warning({
+          key: partialKey(repositoryId, name),
+          title: `${title} finished in some repositories`,
+          description: error.message,
+          style: MULTILINE,
+          // There is a step left to take, so this stays until it has been read.
+          duration: 0,
+        });
       } else {
         notification.error({ title: `${title} failed`, description: error.message });
       }
@@ -98,7 +130,12 @@ export function useGitActions(repositoryId) {
     // Failed commands can still change the repository, as a conflicted merge does.
     onSettled: () =>
       Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.repository(repositoryId) }),
+        queryClient.invalidateQueries({
+          // A mono repo's actions land in its members, which have tabs of their own.
+          queryKey: isMonoRepositoryId(repositoryId)
+            ? queryKeys.allRepositories()
+            : queryKeys.repository(repositoryId),
+        }),
         queryClient.invalidateQueries({ queryKey: queryKeys.repositoryList() }),
       ]),
   });

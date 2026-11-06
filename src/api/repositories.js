@@ -16,4 +16,5 @@ export const repositoriesApi = {
   createGroup: (name) => http.post('/repositories/groups', { name }),
   renameGroup: (groupId, name) => http.patch(`/repositories/groups/${groupId}`, { name }),
   deleteGroup: (groupId) => http.delete(`/repositories/groups/${groupId}`),
+  openMono: (groupId, branch) => http.post(`/repositories/groups/${groupId}/mono`, { branch }),
 };

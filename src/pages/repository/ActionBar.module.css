@@ -18,8 +18,16 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  max-width: 280px;
+  min-width: 0;
   margin-left: auto;
+}
+
+.currentBranchDetails {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 280px;
   color: var(--color-primary-strong);
 }
 

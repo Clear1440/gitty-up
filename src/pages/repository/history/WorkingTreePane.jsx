@@ -146,6 +146,7 @@ export function WorkingTreePane({ onClose, resizeHandle }) {
         <h3 className={styles.subject}>Uncommitted changes</h3>
         <p className={styles.meta}>
           {status.branch ? `On ${status.branch}` : `Detached at ${status.headHash?.slice(0, 7)}`}
+          {status.mono && ` across ${status.mono.members.length} repositories`}
         </p>
       </header>
       {selected ? (

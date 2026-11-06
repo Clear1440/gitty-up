@@ -12,14 +12,20 @@ const STATUS_BADGES = {
   conflicted: { letter: '!', className: styles.deleted },
 };
 
-function splitPath(path) {
+/** In a mono repo a path starts with its repository's folder, which `folder` picks out. */
+function splitPath(path, inRepository) {
+  const start = inRepository ? path.indexOf('/') + 1 : 0;
   const index = path.lastIndexOf('/') + 1;
-  return { directory: path.slice(0, index), name: path.slice(index) };
+  return {
+    folder: path.slice(0, start),
+    directory: path.slice(start, index),
+    name: path.slice(index),
+  };
 }
 
 function FileRow({ file, selected, onSelect, actions }) {
   const badge = STATUS_BADGES[file.status];
-  const { directory, name } = splitPath(file.path);
+  const { folder, directory, name } = splitPath(file.path, Boolean(file.repository));
 
   return (
     <li className={clsx(styles.row, selected && styles.selected)}>
@@ -33,6 +39,7 @@ function FileRow({ file, selected, onSelect, actions }) {
           {badge.letter}
         </span>
         <span className={styles.path}>
+          {folder && <span className={styles.folder}>{folder}</span>}
           <span className={styles.directory}>{directory}</span>
           {name}
         </span>

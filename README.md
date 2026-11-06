@@ -35,6 +35,23 @@ Two environment variables change the defaults:
 - `GITY_UP_PORT`: the server port (default `4317`)
 - `GITY_UP_DATA_DIR`: where the list of linked repositories is kept (default `~/.gity-up`)
 
+## Mono repos
+
+A group on the Repositories page can open as a mono repo: one tab that treats its repositories
+as a single repository. Use **Open as mono repo** on the group's heading.
+
+- Only repositories on the same branch join. If they disagree, you pick the branch, and the rest
+  are left out. The chip beside the branch name in the tab lists them and can switch them over.
+- The sidebar lists only the branches every repository in the tab has.
+- Changed files appear under a folder per repository. Stage from any of them, and one commit
+  message goes to every repository with something staged.
+- Checkout and new branches are all or nothing. Other actions run in every repository and say
+  which ones failed.
+- Amend, undoing a commit and pull request labels stay with each repository's own tab.
+
+`server/git/monoService.js` does this. It matches `gitService.js` function for function, so the
+routes and most of the client work with a mono repo without knowing it is one.
+
 ## How it fits together
 
 A browser cannot run git, so a small local server does that and the React app talks to it over

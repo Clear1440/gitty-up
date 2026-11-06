@@ -28,6 +28,11 @@ export function useUndoCommitShortcut() {
 
   useEffect(() => {
     const undo = async () => {
+      if (repository.isMono) {
+        message.info('To undo a commit, open its repository on its own');
+        return;
+      }
+
       const commit = await gitApi.getLastCommit(repository.id);
       if (!commit) {
         message.info('There is no commit to undo');
@@ -73,5 +78,5 @@ export function useUndoCommitShortcut() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [repository.id, run, isBusy, message, modal]);
+  }, [repository.id, repository.isMono, run, isBusy, message, modal]);
 }

@@ -2,8 +2,11 @@ import { DeleteOutlined, EditOutlined, MoreOutlined, RightOutlined } from '@ant-
 import { App, Button, Dropdown } from 'antd';
 import clsx from 'clsx';
 import { useState } from 'react';
+import { monoRepositoryId } from '../../paths.js';
 import { useDeleteGroup, useRenameGroup } from '../../queries/repositories.js';
+import { useTabs } from '../../tabs/TabsContext.jsx';
 import { GroupNameDialog } from './GroupNameDialog.jsx';
+import { OpenMonoButton } from './OpenMonoButton.jsx';
 import { RepositoryRow } from './RepositoryRow.jsx';
 import styles from './RepositorySection.module.css';
 
@@ -12,6 +15,7 @@ function GroupMenu({ group }) {
   const [renaming, setRenaming] = useState(false);
   const rename = useRenameGroup();
   const remove = useDeleteGroup();
+  const { closeTab } = useTabs();
 
   const confirmDelete = () => {
     modal.confirm({
@@ -22,6 +26,7 @@ function GroupMenu({ group }) {
       onOk: async () => {
         try {
           await remove.mutateAsync(group.id);
+          closeTab(monoRepositoryId(group.id));
         } catch (error) {
           notification.error({ title: 'Could not delete the group', description: error.message });
         }
@@ -76,6 +81,7 @@ export function RepositorySection({ section, groups, collapsed, onToggle }) {
             <span className={styles.count}>{repositories.length}</span>
           </button>
         </h2>
+        {group && <OpenMonoButton group={group} />}
         {group && <GroupMenu group={group} />}
       </header>
       {!collapsed &&

@@ -3,6 +3,8 @@ const ROOT = 'repositories';
 export const queryKeys = {
   repositoryList: () => [ROOT, 'list'],
   repositoryGroups: () => [ROOT, 'groups'],
+  /** Prefix of everything cached for every repository. */
+  allRepositories: () => [ROOT, 'detail'],
   /** Prefix of everything cached for one repository. */
   repository: (id) => [ROOT, 'detail', id],
   status: (id) => [ROOT, 'detail', id, 'status'],

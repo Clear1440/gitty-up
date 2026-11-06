@@ -80,6 +80,7 @@ export function CommitPane({ hash, onClose, resizeHandle }) {
           <h3 className={styles.subject}>{commit.subject}</h3>
           {body && <p className={styles.body}>{body}</p>}
           <p className={styles.meta}>
+            {commit.repository && `${commit.repository} · `}
             {commit.author} · <RelativeTime date={commit.date} /> ·{' '}
             <code className={styles.hash} title={commit.hash}>
               {commit.shortHash}
