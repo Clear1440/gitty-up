@@ -41,11 +41,10 @@ export function useStashes(repositoryId) {
 }
 
 /** `file` is `{ path, staged, untracked }`, or null when nothing is selected. */
-export function useDiff(repositoryId, file) {
+export function useDiff(repositoryId, file, { fullFile }) {
   return useQuery({
-    queryKey: queryKeys.diff(repositoryId, file),
-    queryFn: () => gitApi.getDiff(repositoryId, file),
+    queryKey: queryKeys.diff(repositoryId, { ...file, fullFile }),
+    queryFn: () => gitApi.getDiff(repositoryId, { ...file, fullFile }),
     enabled: Boolean(file),
-    select: (data) => data.diff,
   });
 }

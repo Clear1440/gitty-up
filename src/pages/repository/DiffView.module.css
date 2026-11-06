@@ -1,5 +1,30 @@
 .column {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding: var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.selectionActions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.scroller {
+  flex: 1;
   min-height: 0;
   overflow: auto;
 }
@@ -8,20 +33,131 @@
   width: max-content;
   min-width: 100%;
   margin: 0;
-  padding: var(--space-2) 0;
+  padding-bottom: var(--space-2);
   color: var(--color-text);
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   line-height: 1.6;
 }
 
-.line {
+/* Long lines wrap here, as the two sides of a row have to stay level. */
+.splitDiff {
+  width: 100%;
+}
+
+.plainLine {
   padding: 0 var(--space-3);
 }
 
+.row,
+.side {
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.side + .side {
+  border-left: 1px solid var(--color-border);
+}
+
+.emptySide {
+  background: var(--color-surface);
+}
+
+.splitDiff .code {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.select {
+  flex: none;
+  align-self: stretch;
+  width: 20px;
+}
+
+.selectButton {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.selectButton::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 2px;
+  transform: translate(-50%, -50%);
+  content: '';
+}
+
+.selectButton:hover::after,
+.selectButton:focus-visible::after {
+  border-color: var(--color-primary);
+}
+
+.selectButton[aria-pressed='true']::after {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+}
+
+.number {
+  flex: none;
+  width: 5ch;
+  padding-right: 1ch;
+  color: var(--color-text-muted);
+  text-align: right;
+  user-select: none;
+}
+
+.sign {
+  flex: none;
+  width: 2ch;
+  color: var(--color-text-muted);
+  user-select: none;
+}
+
+.code {
+  white-space: pre;
+}
+
+.noNewline {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  user-select: none;
+}
+
 .hunk {
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 2px var(--space-3);
   background: var(--color-diff-hunk-bg);
   color: var(--color-text-muted);
+}
+
+/* A row is as wide as the file's longest line, so both ends stick to what is in view. */
+.hunkText {
+  position: sticky;
+  left: var(--space-3);
+  white-space: nowrap;
+}
+
+.hunk button {
+  position: sticky;
+  right: var(--space-3);
+  flex: none;
 }
 
 .added {
@@ -30,6 +166,11 @@
 
 .deleted {
   background: var(--color-diff-deleted-bg);
+}
+
+.selected {
+  box-shadow: inset 3px 0 var(--color-primary);
+  filter: brightness(1.35);
 }
 
 .truncated {

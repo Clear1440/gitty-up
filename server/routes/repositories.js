@@ -23,6 +23,12 @@ function requirePaths(paths) {
 
 const optionalPaths = (paths) => (paths === undefined ? undefined : requirePaths(paths));
 
+function requireLines(lines) {
+  const isValid = Array.isArray(lines) && lines.length > 0 && lines.every(Number.isInteger);
+  if (!isValid) throw badRequest('"lines" must be a non-empty list of line numbers.');
+  return lines;
+}
+
 function toCount(value, fallback, max = Number.MAX_SAFE_INTEGER) {
   const count = Number.parseInt(value, 10);
   return Number.isNaN(count) || count < 0 ? fallback : Math.min(count, max);
@@ -98,13 +104,14 @@ function createGitRouter() {
   });
 
   router.get('/diff', async (request, response) => {
-    const { path: filePath, staged, untracked } = request.query;
+    const { path: filePath, staged, untracked, fullFile } = request.query;
     const diff = await git.getDiff(request.repository.path, {
       filePath: requireString(filePath, 'path'),
       staged: staged === 'true',
       untracked: untracked === 'true',
+      fullFile: fullFile === 'true',
     });
-    response.json({ diff });
+    response.json({ diff, hash: git.hashDiff(diff) });
   });
 
   router.delete('/branches/:branch', async (request, response) => {
@@ -142,6 +149,16 @@ function createGitRouter() {
   action(router, '/stage', (path, { paths }) => git.stage(path, { paths: optionalPaths(paths) }));
   action(router, '/unstage', (path, { paths }) =>
     git.unstage(path, { paths: optionalPaths(paths) }),
+  );
+  action(router, '/stage-lines', (repoPath, { path, staged, untracked, fullFile, hash, lines }) =>
+    git.stageLines(repoPath, {
+      filePath: requireString(path, 'path'),
+      staged: staged === true,
+      untracked: untracked === true,
+      fullFile: fullFile === true,
+      hash: requireString(hash, 'hash'),
+      lines: requireLines(lines),
+    }),
   );
   action(router, '/discard', (path, { paths }) =>
     git.discard(path, { paths: requirePaths(paths) }),

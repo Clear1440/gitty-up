@@ -19,8 +19,13 @@ const GIT_ENV = {
 /**
  * Runs git without a shell and resolves with stdout.
  * Exit codes outside `allowedExitCodes` reject with an ApiError.
+ * `input` is written to the command's stdin.
  */
-export function runGit(cwd, args, { timeout = LOCAL_TIMEOUT_MS, allowedExitCodes = [0] } = {}) {
+export function runGit(
+  cwd,
+  args,
+  { timeout = LOCAL_TIMEOUT_MS, allowedExitCodes = [0], input } = {},
+) {
   return new Promise((resolve, reject) => {
     const child = execFile(
       'git',
@@ -41,7 +46,9 @@ export function runGit(cwd, args, { timeout = LOCAL_TIMEOUT_MS, allowedExitCodes
         reject(toGitFailure(error, args, stdout, stderr));
       },
     );
-    child.stdin.end();
+    // Git can exit before reading everything, and the exit code explains why.
+    child.stdin.on('error', () => {});
+    child.stdin.end(input);
   });
 }
 

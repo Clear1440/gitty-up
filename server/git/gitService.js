@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ApiError, badRequest, gitFailure } from '../errors.js';
@@ -10,6 +11,7 @@ import {
   parseStashes,
   parseStatus,
 } from './parsers.js';
+import { buildPatch } from './patch.js';
 import { NETWORK_TIMEOUT_MS, runGit, runGitOnPaths } from './runGit.js';
 
 const OPERATION_MARKERS = [
@@ -19,6 +21,20 @@ const OPERATION_MARKERS = [
 ];
 
 const PULL_MODE_FLAGS = { merge: '--no-rebase', rebase: '--rebase', 'ff-only': '--ff-only' };
+
+const HUNK_CONTEXT_LINES = 3;
+// More lines than any file has, which makes a diff show the whole file.
+const FULL_FILE_CONTEXT_LINES = 100_000_000;
+
+/** Pins down everything a user's config could change, so the output can be parsed and applied. */
+const diffFlags = (fullFile) => [
+  `--unified=${fullFile ? FULL_FILE_CONTEXT_LINES : HUNK_CONTEXT_LINES}`,
+  '--inter-hunk-context=0',
+  '--no-color',
+  '--no-ext-diff',
+  '--src-prefix=a/',
+  '--dst-prefix=b/',
+];
 
 /** A ref that begins with "-" would be read by git as an option. */
 function assertRef(ref) {
@@ -161,15 +177,45 @@ export async function getStashes(repoPath) {
   return parseStashes(await runGit(repoPath, ['stash', 'list', `--format=${STASH_FORMAT}`]));
 }
 
-export async function getDiff(repoPath, { filePath, staged = false, untracked = false }) {
+export async function getDiff(
+  repoPath,
+  { filePath, staged = false, untracked = false, fullFile = false },
+) {
+  const flags = diffFlags(fullFile);
   if (untracked) {
     // Comparing against the null device is how git shows a brand-new file.
     // It exits 1 because the two sides differ.
-    return runGit(repoPath, ['diff', '--no-index', '--', '/dev/null', filePath], {
+    return runGit(repoPath, ['diff', ...flags, '--no-index', '--', '/dev/null', filePath], {
       allowedExitCodes: [0, 1],
     });
   }
-  return runGitOnPaths(repoPath, ['diff', ...(staged ? ['--cached'] : []), '--', filePath]);
+  return runGitOnPaths(repoPath, ['diff', ...flags, ...(staged ? ['--cached'] : []), '--', filePath]);
+}
+
+/** Identifies one exact diff, so a selection can't land on lines that have since moved. */
+export function hashDiff(diff) {
+  return createHash('sha256').update(diff).digest('hex');
+}
+
+/**
+ * Stages or, when `staged`, unstages some lines of a file's diff. `lines` are line
+ * indexes into the diff that `hash` identifies. Only the index changes.
+ */
+export async function stageLines(repoPath, { lines, hash, ...diffOptions }) {
+  const diff = await getDiff(repoPath, diffOptions);
+  if (hashDiff(diff) !== hash) {
+    throw gitFailure('This file has changed. Check the updated diff, then try again.');
+  }
+
+  const reverse = diffOptions.staged === true;
+  const patch = buildPatch(diff, lines, { reverse });
+  if (!patch) throw badRequest('Select at least one changed line.');
+
+  await runGit(
+    repoPath,
+    ['apply', '--cached', '--whitespace=nowarn', ...(reverse ? ['--reverse'] : []), '-'],
+    { input: patch },
+  );
 }
 
 /** Turns a failed command into a clearer error when it stopped on conflicts. */

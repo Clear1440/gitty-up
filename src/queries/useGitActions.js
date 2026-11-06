@@ -31,6 +31,7 @@ const GIT_ACTIONS = {
   continueOperation: { run: gitApi.continueOperation, title: 'Continue', success: () => 'Done' },
   stage: { run: gitApi.stage, title: 'Stage' },
   unstage: { run: gitApi.unstage, title: 'Unstage' },
+  stageLines: { run: gitApi.stageLines, title: 'Stage lines' },
   discard: { run: gitApi.discard, title: 'Discard', success: () => 'Changes discarded' },
   commit: { run: gitApi.commit, title: 'Commit', success: () => 'Committed' },
   stash: { run: gitApi.stash, title: 'Stash', success: () => 'Changes stashed' },

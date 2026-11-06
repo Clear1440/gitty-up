@@ -8,8 +8,8 @@ export const gitApi = {
   getBranches: (id) => http.get(route(id, '/branches')),
   getCommits: (id, { ref, limit, skip }) => http.get(route(id, '/commits'), { ref, limit, skip }),
   getStashes: (id) => http.get(route(id, '/stashes')),
-  getDiff: (id, { path, staged, untracked }) =>
-    http.get(route(id, '/diff'), { path, staged, untracked }),
+  getDiff: (id, { path, staged, untracked, fullFile }) =>
+    http.get(route(id, '/diff'), { path, staged, untracked, fullFile }),
 
   // Syncing
   fetch: (id) => http.post(route(id, '/fetch')),
@@ -31,6 +31,7 @@ export const gitApi = {
   // Working tree
   stage: (id, { paths } = {}) => http.post(route(id, '/stage'), { paths }),
   unstage: (id, { paths } = {}) => http.post(route(id, '/unstage'), { paths }),
+  stageLines: (id, selection) => http.post(route(id, '/stage-lines'), selection),
   discard: (id, { paths }) => http.post(route(id, '/discard'), { paths }),
   commit: (id, { message, amend, stageAll }) =>
     http.post(route(id, '/commit'), { message, amend, stageAll }),

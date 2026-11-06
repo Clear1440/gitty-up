@@ -398,6 +398,217 @@ describe('syncing with the remote', () => {
   });
 });
 
+describe('staging parts of a file', () => {
+  const NUMBERS = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`);
+  const asFile = (lines) => `${lines.join('\n')}\n`;
+
+  const write = (file, lines) => fs.writeFile(path.join(repo.work, file), asFile(lines));
+  const stagedDiff = () => git(repo.work, 'diff', '--cached', '--unified=0');
+  const indexContent = (file) => git(repo.work, 'show', `:${file}`);
+
+  const readDiff = async (file, options = {}) => {
+    const query = new URLSearchParams({ path: file, ...options });
+    return (await request('GET', `${repo.api}/diff?${query}`)).body;
+  };
+
+  /** Stages the diff lines that `matches` picks, by their text. */
+  const stageMatching = async (file, matches, options = {}) => {
+    const { diff, hash } = await readDiff(file, options);
+    const lines = diff.split('\n').flatMap((text, index) => (matches(text) ? [index] : []));
+    return request('POST', `${repo.api}/stage-lines`, { path: file, hash, lines, ...options });
+  };
+
+  beforeEach(async () => {
+    await write('numbers.txt', NUMBERS);
+    git(repo.work, 'add', '--all');
+    git(repo.work, 'commit', '-m', 'Add numbers');
+  });
+
+  it('stages one hunk and leaves the others unstaged', async () => {
+    const edited = NUMBERS.with(1, 'second').with(24, 'twenty-fifth');
+    await write('numbers.txt', edited);
+
+    const { status } = await stageMatching('numbers.txt', (text) =>
+      ['-line 2', '+second'].includes(text),
+    );
+
+    expect(status).toBe(204);
+    expect(indexContent('numbers.txt')).toBe(asFile(NUMBERS.with(1, 'second')).trim());
+    expect(git(repo.work, 'diff', '--unified=0')).toContain('+twenty-fifth');
+    expect(await fs.readFile(path.join(repo.work, 'numbers.txt'), 'utf8')).toBe(asFile(edited));
+  });
+
+  it('stages a later hunk on its own, after lines were added above it', async () => {
+    const edited = ['new top', ...NUMBERS.with(24, 'twenty-fifth')];
+    await write('numbers.txt', edited);
+
+    await stageMatching('numbers.txt', (text) => ['-line 25', '+twenty-fifth'].includes(text));
+
+    expect(indexContent('numbers.txt')).toBe(asFile(NUMBERS.with(24, 'twenty-fifth')).trim());
+  });
+
+  it('stages one added line out of several in the same hunk', async () => {
+    await write('numbers.txt', [...NUMBERS.slice(0, 5), 'keep', 'skip', ...NUMBERS.slice(5)]);
+
+    await stageMatching('numbers.txt', (text) => text === '+keep');
+
+    expect(indexContent('numbers.txt')).toBe(
+      asFile([...NUMBERS.slice(0, 5), 'keep', ...NUMBERS.slice(5)]).trim(),
+    );
+  });
+
+  it('stages a deleted line without staging the deletion next to it', async () => {
+    await write('numbers.txt', NUMBERS.toSpliced(4, 2));
+
+    await stageMatching('numbers.txt', (text) => text === '-line 5');
+
+    expect(indexContent('numbers.txt')).toBe(asFile(NUMBERS.toSpliced(4, 1)).trim());
+  });
+
+  it('works from the whole-file diff that the other views show', async () => {
+    await write('numbers.txt', NUMBERS.with(1, 'second').with(24, 'twenty-fifth'));
+
+    await stageMatching('numbers.txt', (text) => ['-line 2', '+second'].includes(text), {
+      fullFile: true,
+    });
+
+    expect(indexContent('numbers.txt')).toBe(asFile(NUMBERS.with(1, 'second')).trim());
+  });
+
+  it('unstages one line and leaves the rest staged', async () => {
+    await write('numbers.txt', NUMBERS.with(1, 'second').with(24, 'twenty-fifth'));
+    git(repo.work, 'add', '--all');
+
+    const { status } = await stageMatching(
+      'numbers.txt',
+      (text) => ['-line 2', '+second'].includes(text),
+      { staged: true },
+    );
+
+    expect(status).toBe(204);
+    expect(indexContent('numbers.txt')).toBe(asFile(NUMBERS.with(24, 'twenty-fifth')).trim());
+  });
+
+  it('unstages one added line and keeps its neighbour', async () => {
+    await write('numbers.txt', [...NUMBERS.slice(0, 5), 'keep', 'drop', ...NUMBERS.slice(5)]);
+    git(repo.work, 'add', '--all');
+
+    await stageMatching('numbers.txt', (text) => text === '+drop', { staged: true });
+
+    expect(indexContent('numbers.txt')).toBe(
+      asFile([...NUMBERS.slice(0, 5), 'keep', ...NUMBERS.slice(5)]).trim(),
+    );
+  });
+
+  it('stages part of a new file', async () => {
+    await write('new.txt', ['one', 'two', 'three']);
+
+    const { status } = await stageMatching('new.txt', (text) => text === '+two', {
+      untracked: true,
+    });
+
+    expect(status).toBe(204);
+    expect(indexContent('new.txt')).toBe('two');
+  });
+
+  it('stages all of a new file', async () => {
+    await write('new.txt', ['one', 'two']);
+
+    await stageMatching('new.txt', (text) => /^\+[a-z]/.test(text), { untracked: true });
+
+    expect(indexContent('new.txt')).toBe('one\ntwo');
+  });
+
+  it('stages part of a deleted file, without deleting it', async () => {
+    await fs.rm(path.join(repo.work, 'numbers.txt'));
+
+    const { status } = await stageMatching('numbers.txt', (text) => text === '-line 3');
+
+    expect(status).toBe(204);
+    expect(indexContent('numbers.txt')).toBe(asFile(NUMBERS.toSpliced(2, 1)).trim());
+  });
+
+  it('stages all of a deleted file as a deletion', async () => {
+    await fs.rm(path.join(repo.work, 'numbers.txt'));
+
+    await stageMatching('numbers.txt', (text) => /^-line/.test(text));
+
+    expect(git(repo.work, 'status', '--porcelain', '--', 'numbers.txt')).toBe('D  numbers.txt');
+  });
+
+  it('unstages part of a staged new file, without removing it', async () => {
+    await write('new.txt', ['one', 'two', 'three']);
+    git(repo.work, 'add', '--all');
+
+    const { status } = await stageMatching('new.txt', (text) => text === '+two', { staged: true });
+
+    expect(status).toBe(204);
+    expect(indexContent('new.txt')).toBe('one\nthree');
+  });
+
+  it('stages lines when git converts line endings', async () => {
+    git(repo.work, 'config', 'core.autocrlf', 'true');
+    await fs.writeFile(path.join(repo.work, 'numbers.txt'), asFile(NUMBERS).replaceAll('\n', '\r\n'));
+    await fs.appendFile(path.join(repo.work, 'numbers.txt'), 'keep\r\nskip\r\n');
+
+    const { status } = await stageMatching('numbers.txt', (text) => text.startsWith('+keep'));
+
+    expect(status).toBe(204);
+    expect(indexContent('numbers.txt')).toBe(asFile([...NUMBERS, 'keep']).trim());
+  });
+
+  it('stages lines of a file committed with Windows line endings', async () => {
+    await fs.writeFile(path.join(repo.work, 'windows.txt'), 'one\r\ntwo\r\nthree\r\n');
+    git(repo.work, 'add', '--all');
+    git(repo.work, 'commit', '-m', 'Add windows file');
+    await fs.writeFile(path.join(repo.work, 'windows.txt'), 'one\r\nkeep\r\nskip\r\ntwo\r\nthree\r\n');
+
+    const { status } = await stageMatching('windows.txt', (text) => text.startsWith('+keep'));
+
+    expect(status).toBe(204);
+    expect(indexContent('windows.txt')).toBe('one\r\nkeep\r\ntwo\r\nthree');
+  });
+
+  it('refuses a selection made on a diff that has since changed', async () => {
+    await write('numbers.txt', NUMBERS.with(1, 'second'));
+    const { diff, hash } = await readDiff('numbers.txt');
+    const lines = diff.split('\n').flatMap((text, index) => (text === '+second' ? [index] : []));
+    await write('numbers.txt', ['edited meanwhile', ...NUMBERS.with(1, 'second')]);
+
+    const { status, body } = await request('POST', `${repo.api}/stage-lines`, {
+      path: 'numbers.txt',
+      hash,
+      lines,
+    });
+
+    expect(status).toBe(409);
+    expect(body.error.message).toMatch(/has changed/);
+    expect(stagedDiff()).toBe('');
+  });
+
+  it('refuses a selection with no changed lines in it', async () => {
+    await write('numbers.txt', NUMBERS.with(1, 'second'));
+
+    const { status } = await stageMatching('numbers.txt', (text) => text === ' line 1');
+
+    expect(status).toBe(400);
+    expect(stagedDiff()).toBe('');
+  });
+
+  it('rejects malformed line lists', async () => {
+    await write('numbers.txt', NUMBERS.with(1, 'second'));
+    const { hash } = await readDiff('numbers.txt');
+
+    const { status } = await request('POST', `${repo.api}/stage-lines`, {
+      path: 'numbers.txt',
+      hash,
+      lines: ['1'],
+    });
+
+    expect(status).toBe(400);
+  });
+});
+
 describe('merging', () => {
   async function createConflict() {
     git(repo.work, 'switch', '-c', 'topic');
