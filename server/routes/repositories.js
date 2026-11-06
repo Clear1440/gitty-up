@@ -99,6 +99,21 @@ function createGitRouter() {
     );
   });
 
+  router.get('/commits/:hash', async (request, response) => {
+    response.json(await git.getCommitDetails(request.repository.path, request.params.hash));
+  });
+
+  router.get('/commits/:hash/diff', async (request, response) => {
+    const { path: filePath, originalPath, fullFile } = request.query;
+    const diff = await git.getCommitDiff(request.repository.path, {
+      hash: request.params.hash,
+      filePath: requireString(filePath, 'path'),
+      originalPath: originalPath || undefined,
+      fullFile: fullFile === 'true',
+    });
+    response.json({ diff });
+  });
+
   router.get('/stashes', async (request, response) => {
     response.json(await git.getStashes(request.repository.path));
   });

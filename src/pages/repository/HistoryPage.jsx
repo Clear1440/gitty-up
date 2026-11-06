@@ -1,4 +1,5 @@
 import { Button, Empty, Result, Spin, Tag } from 'antd';
+import clsx from 'clsx';
 import { useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { RelativeTime } from '../../components/RelativeTime.jsx';
@@ -8,6 +9,7 @@ import { paths } from '../../paths.js';
 import { useCommits } from '../../queries/git.js';
 import { layoutCommitGraph } from './history/commitGraph.js';
 import { CommitGraphCell } from './history/CommitGraphCell.jsx';
+import { CommitPane } from './history/CommitPane.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
 import styles from './HistoryPage.module.css';
 
@@ -20,6 +22,8 @@ const COLUMN_LIMITS = {
   time: { min: 60, max: 240 },
   sha: { min: 48, max: 320 },
 };
+
+const PANE_LIMITS = { width: { min: 280, max: 1400 } };
 
 function ColumnHeading({ title, label = title, handle }) {
   return (
@@ -50,9 +54,12 @@ function ColumnHeadings({ handleFor }) {
   );
 }
 
-function CommitRow({ commit, graphRow, columnCount }) {
+function CommitRow({ commit, graphRow, columnCount, selected, onSelect }) {
   return (
-    <li className={styles.commit}>
+    <li
+      className={clsx(styles.commit, selected && styles.selectedCommit)}
+      onClick={() => onSelect(commit.hash)}
+    >
       <div className={styles.tree}>
         <CommitGraphCell
           row={graphRow}
@@ -71,9 +78,15 @@ function CommitRow({ commit, graphRow, columnCount }) {
       <span className={styles.author} title={commit.author}>
         {commit.author}
       </span>
-      <p className={styles.subject} title={commit.subject}>
+      {/* The whole row is clickable. This is what keyboards and screen readers use. */}
+      <button
+        type="button"
+        className={styles.subject}
+        title={commit.subject}
+        aria-pressed={selected}
+      >
         {commit.subject}
-      </p>
+      </button>
       <RelativeTime className={styles.time} date={commit.date} />
       <code className={styles.hash} title={commit.hash}>
         {commit.shortHash}
@@ -84,13 +97,29 @@ function CommitRow({ commit, graphRow, columnCount }) {
 
 export function HistoryPage() {
   const { repository } = useRepositoryContext();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const ref = searchParams.get('ref') ?? undefined;
+  const selectedHash = searchParams.get('commit');
   const { data: commits, error, isPending, hasNextPage, isFetchingNextPage, fetchNextPage } =
     useCommits(repository.id, ref);
   const graph = useMemo(() => layoutCommitGraph(commits ?? []), [commits]);
   const tableRef = useRef(null);
   const { style, handleFor } = useResizableSizes(tableRef, 'history', COLUMN_LIMITS);
+  const layoutRef = useRef(null);
+  const pane = useResizableSizes(layoutRef, 'commit-pane', PANE_LIMITS);
+
+  /** Opens a commit, or closes it if it was already open. */
+  const toggleCommit = (hash) => {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (next.get('commit') === hash) next.delete('commit');
+        else next.set('commit', hash);
+        return next;
+      },
+      { replace: true },
+    );
+  };
 
   const showAllBranches = (
     <Link to={paths.history(repository.id)}>
@@ -114,30 +143,48 @@ export function HistoryPage() {
   }
 
   return (
-    <div className={styles.scrollArea}>
-      <header className={styles.header}>
-        <h2 className={styles.heading}>{ref ?? 'All branches'}</h2>
-        {ref && showAllBranches}
-      </header>
-      <div ref={tableRef} className={styles.table} style={style}>
-        <ColumnHeadings handleFor={handleFor} />
-        <ol className={styles.list}>
-          {commits.map((commit, index) => (
-            <CommitRow
-              key={commit.hash}
-              commit={commit}
-              graphRow={graph.rows[index]}
-              columnCount={graph.columnCount}
-            />
-          ))}
-        </ol>
-      </div>
-      {hasNextPage && (
-        <div className={styles.loadMore}>
-          <Button loading={isFetchingNextPage} onClick={() => fetchNextPage()}>
-            Load more
-          </Button>
+    <div
+      ref={layoutRef}
+      className={clsx(styles.layout, selectedHash && styles.withPane)}
+      style={pane.style}
+    >
+      <div className={styles.scrollArea}>
+        <header className={styles.header}>
+          <h2 className={styles.heading}>{ref ?? 'All branches'}</h2>
+          {ref && showAllBranches}
+        </header>
+        <div ref={tableRef} className={styles.table} style={style}>
+          <ColumnHeadings handleFor={handleFor} />
+          <ol className={styles.list}>
+            {commits.map((commit, index) => (
+              <CommitRow
+                key={commit.hash}
+                commit={commit}
+                graphRow={graph.rows[index]}
+                columnCount={graph.columnCount}
+                selected={commit.hash === selectedHash}
+                onSelect={toggleCommit}
+              />
+            ))}
+          </ol>
         </div>
+        {hasNextPage && (
+          <div className={styles.loadMore}>
+            <Button loading={isFetchingNextPage} onClick={() => fetchNextPage()}>
+              Load more
+            </Button>
+          </div>
+        )}
+      </div>
+      {selectedHash && (
+        <CommitPane
+          key={selectedHash}
+          hash={selectedHash}
+          onClose={() => toggleCommit(selectedHash)}
+          resizeHandle={
+            <ResizeHandle label="Resize commit details" {...pane.handleFor('width', 'left')} />
+          }
+        />
       )}
     </div>
   );

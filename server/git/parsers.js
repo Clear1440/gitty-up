@@ -179,6 +179,33 @@ export function parseCommits(output) {
     });
 }
 
+const CHANGE_STATUSES = {
+  A: 'added',
+  C: 'copied',
+  D: 'deleted',
+  M: 'modified',
+  R: 'renamed',
+  T: 'typechange',
+};
+
+/** Parses `git diff-tree --name-status -z` output. */
+export function parseNameStatus(output) {
+  const fields = output.split('\0');
+  const files = [];
+
+  for (let index = 0; index < fields.length - 1; ) {
+    // A rename or copy is followed by a similarity score, as in R100, and two paths.
+    const code = fields[index][0];
+    const hasOriginal = code === 'R' || code === 'C';
+    const originalPath = hasOriginal ? fields[index + 1] : undefined;
+    const path = fields[index + (hasOriginal ? 2 : 1)];
+    files.push({ path, status: CHANGE_STATUSES[code] ?? 'modified', originalPath });
+    index += hasOriginal ? 3 : 2;
+  }
+
+  return files;
+}
+
 export const STASH_FORMAT = ['%gs', '%cI'].join('%x00');
 
 const NAMED_STASH = /^On ([^:]+): (.*)$/;

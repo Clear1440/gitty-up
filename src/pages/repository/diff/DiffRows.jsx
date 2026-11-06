@@ -14,8 +14,12 @@ function LineText({ line }) {
   );
 }
 
-/** The box that selects a changed line. Context lines keep the space, so columns align. */
+/**
+ * The box that selects a changed line. Context lines keep the space, so columns align.
+ * A read-only diff has no `onToggle`, and no space for the boxes.
+ */
 function SelectCell({ line, selected, onToggle }) {
+  if (!onToggle) return null;
   if (line.kind === 'context') return <span className={styles.select} />;
   const number = line.newNumber ?? line.oldNumber;
   return (
@@ -34,9 +38,11 @@ export const HunkRow = memo(function HunkRow({ text, ids, label, disabled, onApp
   return (
     <div className={clsx(styles.row, styles.hunk)}>
       <span className={styles.hunkText}>{text}</span>
-      <Button size="small" disabled={disabled} onClick={() => onApply(ids)}>
-        {label}
-      </Button>
+      {onApply && (
+        <Button size="small" disabled={disabled} onClick={() => onApply(ids)}>
+          {label}
+        </Button>
+      )}
     </div>
   );
 });

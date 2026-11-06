@@ -33,6 +33,21 @@ export function useCommits(repositoryId, ref) {
   });
 }
 
+export function useCommitDetails(repositoryId, hash) {
+  return useQuery({
+    queryKey: queryKeys.commit(repositoryId, hash),
+    queryFn: () => gitApi.getCommitDetails(repositoryId, hash),
+  });
+}
+
+export function useCommitDiff(repositoryId, hash, file, { fullFile }) {
+  return useQuery({
+    queryKey: queryKeys.commitDiff(repositoryId, hash, { ...file, fullFile }),
+    queryFn: () => gitApi.getCommitDiff(repositoryId, hash, { ...file, fullFile }),
+    enabled: Boolean(file),
+  });
+}
+
 export function useStashes(repositoryId) {
   return useQuery({
     queryKey: queryKeys.stashes(repositoryId),

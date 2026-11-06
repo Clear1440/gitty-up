@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { parseBranches, parseCommits, parseStashes, parseStatus } from './parsers.js';
+import {
+  parseBranches,
+  parseCommits,
+  parseNameStatus,
+  parseStashes,
+  parseStatus,
+} from './parsers.js';
 
 const nul = (...records) => `${records.join('\0')}\0`;
 
@@ -86,6 +92,27 @@ describe('parseBranches', () => {
       remote: 'origin',
       localName: 'feature/x',
     });
+  });
+});
+
+describe('parseNameStatus', () => {
+  it('reads each kind of change', () => {
+    expect(parseNameStatus('M\0a.txt\0A\0b.txt\0D\0c.txt\0')).toEqual([
+      { path: 'a.txt', status: 'modified' },
+      { path: 'b.txt', status: 'added' },
+      { path: 'c.txt', status: 'deleted' },
+    ]);
+  });
+
+  it('reads the two paths of a rename, without counting the second as a change', () => {
+    expect(parseNameStatus('R097\0old name.txt\0new name.txt\0M\0after.txt\0')).toEqual([
+      { path: 'new name.txt', status: 'renamed', originalPath: 'old name.txt' },
+      { path: 'after.txt', status: 'modified' },
+    ]);
+  });
+
+  it('finds nothing in empty output', () => {
+    expect(parseNameStatus('')).toEqual([]);
   });
 });
 

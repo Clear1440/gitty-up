@@ -8,6 +8,7 @@ import {
   STASH_FORMAT,
   parseBranches,
   parseCommits,
+  parseNameStatus,
   parseStashes,
   parseStatus,
 } from './parsers.js';
@@ -190,6 +191,56 @@ export async function getDiff(
     });
   }
   return runGitOnPaths(repoPath, ['diff', ...flags, ...(staged ? ['--cached'] : []), '--', filePath]);
+}
+
+/** A hash from a request. It goes to git as an argument, so it must be nothing else. */
+function assertCommitHash(hash) {
+  if (!/^[0-9a-f]{7,64}$/i.test(hash)) throw badRequest(`Invalid commit: ${hash}`);
+}
+
+/**
+ * The arguments that make `git diff-tree` show one commit's own changes. A merge is
+ * compared with its first parent, which shows what it brought into that branch.
+ */
+const commitRange = ({ hash, parents }) => (parents.length > 0 ? [parents[0], hash] : ['--root', hash]);
+
+async function readCommit(repoPath, hash) {
+  assertCommitHash(hash);
+  const output = await runGit(repoPath, ['log', '-1', `--format=${COMMIT_FORMAT}`, hash, '--']);
+  return parseCommits(output)[0];
+}
+
+export async function getCommitDetails(repoPath, hash) {
+  const commit = await readCommit(repoPath, hash);
+  const [message, files] = await Promise.all([
+    runGit(repoPath, ['log', '-1', '--format=%B', hash, '--']),
+    runGit(repoPath, [
+      'diff-tree',
+      '-r',
+      '-M',
+      '--no-commit-id',
+      '--name-status',
+      '-z',
+      ...commitRange(commit),
+    ]),
+  ]);
+  return { ...commit, message: message.trim(), files: parseNameStatus(files) };
+}
+
+export async function getCommitDiff(repoPath, { hash, filePath, originalPath, fullFile = false }) {
+  const commit = await readCommit(repoPath, hash);
+  return runGitOnPaths(repoPath, [
+    'diff-tree',
+    '-p',
+    '-M',
+    '--no-commit-id',
+    ...diffFlags(fullFile),
+    ...commitRange(commit),
+    '--',
+    // A rename only shows as one when git can see both of its paths.
+    ...(originalPath ? [originalPath] : []),
+    filePath,
+  ]);
 }
 
 /** Identifies one exact diff, so a selection can't land on lines that have since moved. */

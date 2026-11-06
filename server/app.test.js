@@ -398,6 +398,108 @@ describe('syncing with the remote', () => {
   });
 });
 
+describe('looking inside a commit', () => {
+  const head = () => git(repo.work, 'rev-parse', 'HEAD');
+
+  const details = async (hash = head()) =>
+    (await request('GET', `${repo.api}/commits/${hash}`)).body;
+
+  const diffOf = async (file, options = {}, hash = head()) => {
+    const query = new URLSearchParams({ path: file, ...options });
+    return (await request('GET', `${repo.api}/commits/${hash}/diff?${query}`)).body.diff;
+  };
+
+  it('lists what a commit changed, with its whole message', async () => {
+    await fs.writeFile(path.join(repo.work, 'readme.txt'), 'two\n');
+    await fs.writeFile(path.join(repo.work, 'new.txt'), 'new\n');
+    git(repo.work, 'add', '--all');
+    git(repo.work, 'commit', '-m', 'Subject line', '-m', 'Body text');
+
+    const commit = await details();
+
+    expect(commit).toMatchObject({ subject: 'Subject line', author: 'Test' });
+    expect(commit.message).toBe('Subject line\n\nBody text');
+    expect(commit.files).toEqual([
+      { path: 'new.txt', status: 'added' },
+      { path: 'readme.txt', status: 'modified' },
+    ]);
+  });
+
+  it('shows the diff of one file in a commit', async () => {
+    await writeAndCommit(repo.work, 'readme.txt', 'two\n', 'Change readme');
+
+    const diff = await diffOf('readme.txt');
+
+    expect(diff).toContain('-one');
+    expect(diff).toContain('+two');
+  });
+
+  it('can show the whole file', async () => {
+    const lines = Array.from({ length: 30 }, (_, index) => `line ${index}`);
+    await writeAndCommit(repo.work, 'long.txt', `${lines.join('\n')}\n`, 'Add long');
+    await writeAndCommit(
+      repo.work,
+      'long.txt',
+      `${lines.with(15, 'changed').join('\n')}\n`,
+      'Change long',
+    );
+
+    expect(await diffOf('long.txt')).not.toContain(' line 0');
+    expect(await diffOf('long.txt', { fullFile: true })).toContain(' line 0');
+  });
+
+  it('shows the very first commit, which has no parent', async () => {
+    const root = git(repo.work, 'rev-list', '--max-parents=0', 'HEAD');
+
+    const commit = await details(root);
+
+    expect(commit.files).toEqual([{ path: 'readme.txt', status: 'added' }]);
+    expect(await diffOf('readme.txt', {}, root)).toContain('+one');
+  });
+
+  it('shows a rename as a rename', async () => {
+    git(repo.work, 'mv', 'readme.txt', 'renamed.txt');
+    git(repo.work, 'commit', '-m', 'Rename');
+
+    const { files } = await details();
+
+    expect(files).toEqual([
+      { path: 'renamed.txt', status: 'renamed', originalPath: 'readme.txt' },
+    ]);
+    const diff = await diffOf('renamed.txt', { originalPath: 'readme.txt' });
+    expect(diff).toContain('rename from readme.txt');
+  });
+
+  it('shows what a merge brought in from its other branch', async () => {
+    git(repo.work, 'switch', '-c', 'topic');
+    await writeAndCommit(repo.work, 'topic.txt', 'topic\n', 'Topic work');
+    git(repo.work, 'switch', 'main');
+    await writeAndCommit(repo.work, 'main.txt', 'main\n', 'Main work');
+    git(repo.work, 'merge', '--no-edit', 'topic');
+
+    const commit = await details();
+
+    expect(commit.parents).toHaveLength(2);
+    expect(commit.files).toEqual([{ path: 'topic.txt', status: 'added' }]);
+    expect(await diffOf('topic.txt')).toContain('+topic');
+  });
+
+  it('copes with a commit that changed nothing', async () => {
+    git(repo.work, 'commit', '--allow-empty', '-m', 'Empty');
+    expect((await details()).files).toEqual([]);
+  });
+
+  it('rejects anything that is not a commit hash', async () => {
+    const { status } = await request('GET', `${repo.api}/commits/--all`);
+    expect(status).toBe(400);
+  });
+
+  it('reports a hash that is not in the repository', async () => {
+    const { status } = await request('GET', `${repo.api}/commits/${'0'.repeat(40)}`);
+    expect(status).toBe(409);
+  });
+});
+
 describe('staging parts of a file', () => {
   const NUMBERS = Array.from({ length: 30 }, (_, index) => `line ${index + 1}`);
   const asFile = (lines) => `${lines.join('\n')}\n`;

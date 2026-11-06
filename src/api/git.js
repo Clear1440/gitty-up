@@ -7,6 +7,9 @@ export const gitApi = {
   getStatus: (id) => http.get(route(id, '/status')),
   getBranches: (id) => http.get(route(id, '/branches')),
   getCommits: (id, { ref, limit, skip }) => http.get(route(id, '/commits'), { ref, limit, skip }),
+  getCommitDetails: (id, hash) => http.get(route(id, `/commits/${hash}`)),
+  getCommitDiff: (id, hash, { path, originalPath, fullFile }) =>
+    http.get(route(id, `/commits/${hash}/diff`), { path, originalPath, fullFile }),
   getStashes: (id) => http.get(route(id, '/stashes')),
   getDiff: (id, { path, staged, untracked, fullFile }) =>
     http.get(route(id, '/diff'), { path, staged, untracked, fullFile }),
