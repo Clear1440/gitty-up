@@ -10,8 +10,15 @@ const LINE_HIT_WIDTH = 10;
 const NODE_HIT_RADIUS = NODE_RADIUS + 4;
 const UNCOMMITTED_DASHES = '3 3';
 
+// Clears the ring drawn around HEAD, with a little room to spare.
+const LABEL_GAP = NODE_RADIUS + 3 + 6;
+
 const graphColor = (color) => `var(--color-graph-${color + 1})`;
 const columnX = (column) => COLUMN_WIDTH * column + COLUMN_WIDTH / 2;
+
+/** How far along the tree a row's labels start, so that they sit beside its node. */
+export const labelOffset = ({ column }) =>
+  columnX(Math.min(column, MAX_VISIBLE_COLUMNS - 1)) + LABEL_GAP;
 
 function segmentPath({ kind, from, to }) {
   const startX = columnX(from);

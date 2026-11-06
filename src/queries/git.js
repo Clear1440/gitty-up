@@ -4,6 +4,7 @@ import { queryKeys } from './queryKeys.js';
 
 const COMMIT_PAGE_SIZE = 100;
 const STATUS_POLL_MS = 5_000;
+const PULL_REQUESTS_STALE_MS = 5 * 60_000;
 
 export function useStatus(repositoryId) {
   return useQuery({
@@ -45,6 +46,15 @@ export function useCommitDiff(repositoryId, hash, file, { fullFile }) {
     queryKey: queryKeys.commitDiff(repositoryId, hash, { ...file, fullFile }),
     queryFn: () => gitApi.getCommitDiff(repositoryId, hash, { ...file, fullFile }),
     enabled: Boolean(file),
+  });
+}
+
+/** Open pull requests, which change on GitHub rather than here, so these are read rarely. */
+export function usePullRequests(repositoryId) {
+  return useQuery({
+    queryKey: queryKeys.pullRequests(repositoryId),
+    queryFn: () => gitApi.getPullRequests(repositoryId),
+    staleTime: PULL_REQUESTS_STALE_MS,
   });
 }
 

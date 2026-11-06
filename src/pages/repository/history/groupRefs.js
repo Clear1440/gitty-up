@@ -5,6 +5,11 @@ export function findBranchTip(commits, branch) {
   );
 }
 
+/** Whether a group from groupRefs stands for this branch, by its full name. */
+export function groupHasBranch({ name, local, remotes }, branch) {
+  return (local && name === branch) || remotes.includes(branch);
+}
+
 /**
  * Folds a commit's refs into what to label it with: a branch that is both local and
  * on a remote is one entry saying so, rather than "main" beside "origin/main".

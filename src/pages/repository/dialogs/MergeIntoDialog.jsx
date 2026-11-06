@@ -1,18 +1,24 @@
 import { Checkbox, Flex } from 'antd';
 import { useState } from 'react';
 import { ActionDialog } from '../../../components/ActionDialog.jsx';
+import { useBranches } from '../../../queries/git.js';
 import { useRepositoryContext } from '../RepositoryContext.js';
+import { findBehindBranches } from './findBehindBranches.js';
+import { MergeBlockedAlert } from './MergeBlockedAlert.jsx';
 
 /** Merges the checked out branch into another, which has to be checked out first. */
 export function MergeIntoDialog({ target, onClose }) {
-  const { status, run } = useRepositoryContext();
+  const { repository, status, run } = useRepositoryContext();
+  const { data: branches } = useBranches(repository.id);
   const [noFastForward, setNoFastForward] = useState(false);
   const source = status.branch;
+  const behind = findBehindBranches(branches?.local ?? [], [source, target]);
 
   return (
     <ActionDialog
       title={`Merge ${source} into ${target}`}
       okText="Merge"
+      canSubmit={behind.length === 0}
       onSubmit={() => run('mergeInto', { source, target, noFastForward })}
       onClose={onClose}
     >
@@ -26,6 +32,7 @@ export function MergeIntoDialog({ target, onClose }) {
         >
           Always create a merge commit
         </Checkbox>
+        <MergeBlockedAlert reasons={behind} />
       </Flex>
     </ActionDialog>
   );

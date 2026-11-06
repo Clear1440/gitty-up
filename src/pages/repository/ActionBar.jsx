@@ -10,11 +10,13 @@ import {
   PlusOutlined,
   SyncOutlined,
 } from '@ant-design/icons';
+import { useQueryClient } from '@tanstack/react-query';
 import { App, Button, Divider, Dropdown, Space, Tooltip } from 'antd';
 import { useNavigate } from 'react-router';
 import { AheadBehind } from '../../components/AheadBehind.jsx';
 import { paths } from '../../paths.js';
 import { useStashes } from '../../queries/git.js';
+import { queryKeys } from '../../queries/queryKeys.js';
 import { countChangedFiles } from './countChangedFiles.js';
 import { useRepositoryContext } from './RepositoryContext.js';
 import styles from './ActionBar.module.css';
@@ -65,7 +67,8 @@ export function ActionBar() {
   const { repository, status, run, openDialog, isBusy, pendingAction } = useRepositoryContext();
   const { data: stashes = [] } = useStashes(repository.id);
   const navigate = useNavigate();
-  const { modal } = App.useApp();
+  const queryClient = useQueryClient();
+  const { message, modal } = App.useApp();
 
   const changedFileCount = countChangedFiles(status);
   const midOperation = Boolean(status.operation);
@@ -73,6 +76,19 @@ export function ActionBar() {
   // The time makes every press a new request, even with the commit box already open.
   const openCommitMessage = () => {
     navigate(paths.uncommitted(repository.id), { state: { focusCommitMessage: Date.now() } });
+  };
+
+  const fetchAndPrune = async () => {
+    if (!(await run('fetch'))) return;
+
+    // run() waits for the refetch, so this is what the fetch left.
+    const { local } = queryClient.getQueryData(queryKeys.branches(repository.id));
+    const names = local
+      .filter(({ upstreamGone, isCurrent }) => upstreamGone && !isCurrent)
+      .map(({ name }) => name);
+
+    if (names.length > 0) openDialog('pruneBranches', { names });
+    else message.info('No local branches to prune');
   };
 
   const confirmForcePush = () => {
@@ -85,6 +101,8 @@ export function ActionBar() {
       onOk: () => run('push', { force: true }),
     });
   };
+
+  const fetchMenu = [{ key: 'prune', label: 'Fetch & Prune', onClick: fetchAndPrune }];
 
   const pullMenu = [
     { key: 'rebase', label: 'Pull with rebase', onClick: () => run('pull', { mode: 'rebase' }) },
@@ -102,12 +120,13 @@ export function ActionBar() {
 
   return (
     <nav className={styles.actionBar} aria-label="Git actions">
-      <ActionButton
+      <SplitActionButton
         label="Fetch"
         hint="Download updates from all remotes"
         icon={<SyncOutlined />}
         loading={pendingAction === 'fetch'}
         disabled={isBusy}
+        menuItems={fetchMenu}
         onClick={() => run('fetch')}
       />
       <SplitActionButton

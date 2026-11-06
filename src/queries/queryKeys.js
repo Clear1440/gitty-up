@@ -11,6 +11,8 @@ export const queryKeys = {
   commitDiff: (id, hash, file) => [ROOT, 'detail', id, 'commit', hash, 'diff', file],
   stashes: (id) => [ROOT, 'detail', id, 'stashes'],
   diff: (id, file) => [ROOT, 'detail', id, 'diff', file],
+  /** Outside `repository` on purpose: git actions must not spend GitHub's rate limit. */
+  pullRequests: (id) => [ROOT, 'pull-requests', id],
   directories: (path) => ['directories', path ?? null],
 };
 

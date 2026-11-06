@@ -10,6 +10,7 @@ export const gitApi = {
   getCommitDetails: (id, hash) => http.get(route(id, `/commits/${hash}`)),
   getCommitDiff: (id, hash, { path, originalPath, fullFile }) =>
     http.get(route(id, `/commits/${hash}/diff`), { path, originalPath, fullFile }),
+  getPullRequests: (id) => http.get(route(id, '/pull-requests')),
   getStashes: (id) => http.get(route(id, '/stashes')),
   getDiff: (id, { path, staged, untracked, fullFile }) =>
     http.get(route(id, '/diff'), { path, staged, untracked, fullFile }),
@@ -27,6 +28,7 @@ export const gitApi = {
     http.delete(route(id, `/branches/${encodeURIComponent(name)}`), { force }),
   deleteRemoteBranch: (id, { name }) =>
     http.delete(route(id, `/remote-branches/${encodeURIComponent(name)}`)),
+  pruneBranches: (id, { force }) => http.post(route(id, '/prune-branches'), { force }),
   merge: (id, { branch, noFastForward }) =>
     http.post(route(id, '/merge'), { branch, noFastForward }),
   mergeInto: (id, { target, noFastForward }) =>

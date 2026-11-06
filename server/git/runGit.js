@@ -19,12 +19,12 @@ const GIT_ENV = {
 /**
  * Runs git without a shell and resolves with stdout.
  * Exit codes outside `allowedExitCodes` reject with an ApiError.
- * `input` is written to the command's stdin.
+ * `input` is written to the command's stdin, and `env` adds to its environment.
  */
 export function runGit(
   cwd,
   args,
-  { timeout = LOCAL_TIMEOUT_MS, allowedExitCodes = [0], input } = {},
+  { timeout = LOCAL_TIMEOUT_MS, allowedExitCodes = [0], input, env } = {},
 ) {
   return new Promise((resolve, reject) => {
     const child = execFile(
@@ -33,7 +33,7 @@ export function runGit(
       {
         cwd,
         timeout,
-        env: { ...process.env, ...GIT_ENV },
+        env: { ...process.env, ...GIT_ENV, ...env },
         maxBuffer: MAX_OUTPUT_BYTES,
         windowsHide: true,
       },

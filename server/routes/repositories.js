@@ -86,6 +86,10 @@ function createGitRouter() {
     response.json(await git.getBranches(request.repository.path));
   });
 
+  router.get('/pull-requests', async (request, response) => {
+    response.json(await git.getPullRequests(request.repository.path));
+  });
+
   router.get('/commits', async (request, response) => {
     const { ref, limit, skip } = request.query;
     response.json(
@@ -140,6 +144,11 @@ function createGitRouter() {
   router.delete('/remote-branches/:branch', async (request, response) => {
     await git.deleteRemoteBranch(request.repository.path, { name: request.params.branch });
     response.status(204).end();
+  });
+
+  router.post('/prune-branches', async (request, response) => {
+    const force = request.body?.force === true;
+    response.json(await git.pruneGoneBranches(request.repository.path, { force }));
   });
 
   action(router, '/branches', (path, { name, startPoint, switchTo }) =>

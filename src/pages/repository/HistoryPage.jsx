@@ -1,4 +1,4 @@
-import { CloudOutlined, LaptopOutlined } from '@ant-design/icons';
+import { CloudOutlined, LaptopOutlined, PullRequestOutlined } from '@ant-design/icons';
 import { Avatar, Button, Empty, Result, Spin, Tag } from 'antd';
 import clsx from 'clsx';
 import { useEffect, useMemo, useRef } from 'react';
@@ -7,13 +7,13 @@ import { RelativeTime } from '../../components/RelativeTime.jsx';
 import { ResizeHandle } from '../../components/ResizeHandle.jsx';
 import { useResizableSizes } from '../../components/useResizableSizes.js';
 import { UNCOMMITTED, paths } from '../../paths.js';
-import { useCommits } from '../../queries/git.js';
+import { useCommits, usePullRequests } from '../../queries/git.js';
 import { layoutCommitGraph } from './history/commitGraph.js';
-import { CommitGraphCell } from './history/CommitGraphCell.jsx';
+import { CommitGraphCell, labelOffset } from './history/CommitGraphCell.jsx';
 import { countChangedFiles } from './countChangedFiles.js';
 import { CommitPane } from './history/CommitPane.jsx';
 import { GraphTooltipArea } from './history/GraphTooltipArea.jsx';
-import { findBranchTip, groupRefs } from './history/groupRefs.js';
+import { findBranchTip, groupHasBranch, groupRefs } from './history/groupRefs.js';
 import { WorkingTreePane } from './history/WorkingTreePane.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
 import styles from './HistoryPage.module.css';
@@ -21,8 +21,7 @@ import styles from './HistoryPage.module.css';
 const REF_TAG_STYLES = { head: styles.refHead, branch: styles.refBranch, tag: styles.refTag };
 
 const COLUMN_LIMITS = {
-  tree: { min: 24, max: 480 },
-  branch: { min: 70, max: 640 },
+  graph: { min: 24, max: 800 },
   author: { min: 60, max: 400 },
   time: { min: 60, max: 240 },
   sha: { min: 48, max: 320 },
@@ -52,8 +51,7 @@ function ColumnHeading({ title, label = title, handle }) {
 function ColumnHeadings({ handleFor }) {
   return (
     <div className={styles.columnHeadings}>
-      <ColumnHeading label="tree" handle={handleFor('tree')} />
-      <ColumnHeading title="Branch" handle={handleFor('branch')} />
+      <ColumnHeading title="Branch" handle={handleFor('graph')} />
       <ColumnHeading title="Author" handle={handleFor('author')} />
       <ColumnHeading title="Commit message" />
       <ColumnHeading title="Time" handle={handleFor('time', 'left')} />
@@ -68,7 +66,26 @@ function describeRefGroup({ name, local, remotes }) {
     .join('\n');
 }
 
-function RefTag({ group }) {
+function PullRequestLink({ pullRequest }) {
+  const { number, title, url, draft } = pullRequest;
+  return (
+    <a
+      className={styles.refPullRequest}
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      title={`${draft ? 'Draft pull request' : 'Pull request'} #${number}: ${title}`}
+      aria-label={`Open pull request #${number}`}
+      // A click here opens the pull request, not the commit it sits on.
+      onClick={(event) => event.stopPropagation()}
+    >
+      <PullRequestOutlined />
+    </a>
+  );
+}
+
+/** `focusRequest` plays the ring around it, and a new value plays it again. */
+function RefTag({ group, pullRequest, focusRequest }) {
   return (
     <Tag
       className={REF_TAG_STYLES[group.type]}
@@ -79,6 +96,8 @@ function RefTag({ group }) {
       {group.remotes.length > 0 && (
         <CloudOutlined className={styles.refIcon} aria-label="On a remote" />
       )}
+      {pullRequest && <PullRequestLink pullRequest={pullRequest} />}
+      {focusRequest && <span key={focusRequest} className={styles.focusRing} aria-hidden />}
     </Tag>
   );
 }
@@ -102,7 +121,6 @@ function UncommittedRow({ graphRow, columnCount, fileCount, selected, onSelect }
         <CommitGraphCell row={graphRow} columnCount={columnCount} isUncommitted />
       </div>
       <div />
-      <div />
       <button
         type="button"
         className={clsx(styles.subject, styles.uncommitted)}
@@ -116,14 +134,12 @@ function UncommittedRow({ graphRow, columnCount, fileCount, selected, onSelect }
   );
 }
 
-function CommitRow({ commit, graphRow, columnCount, selected, focused, onSelect }) {
+function CommitRow({ commit, graphRow, columnCount, selected, focus, pullRequests, onSelect }) {
+  const groups = groupRefs(commit.refs);
+
   return (
     <li
-      className={clsx(
-        styles.commit,
-        selected && styles.selectedCommit,
-        focused && styles.focusedCommit,
-      )}
+      className={clsx(styles.commit, selected && styles.selectedCommit)}
       data-hash={commit.hash}
       onClick={() => onSelect(commit.hash)}
     >
@@ -134,11 +150,20 @@ function CommitRow({ commit, graphRow, columnCount, selected, focused, onSelect 
           isHead={commit.refs.some((ref) => ref.type === 'head')}
           isMerge={commit.parents.length > 1}
         />
-      </div>
-      <div className={styles.refs}>
-        {groupRefs(commit.refs).map((group) => (
-          <RefTag key={group.key} group={group} />
-        ))}
+        {groups.length > 0 && (
+          <div className={styles.refs} style={{ marginLeft: labelOffset(graphRow) }}>
+            {groups.map((group) => (
+              <RefTag
+                key={group.key}
+                group={group}
+                pullRequest={group.type === 'tag' ? undefined : pullRequests.get(group.name)}
+                focusRequest={
+                  focus && groupHasBranch(group, focus.branch) ? focus.request : undefined
+                }
+              />
+            ))}
+          </div>
+        )}
       </div>
       <span className={styles.author} title={`${commit.author} <${commit.email}>`}>
         {/* Shows the initial until the picture loads, and for good if there is none. */}
@@ -171,6 +196,11 @@ export function HistoryPage() {
   const selectedHash = searchParams.get('commit');
   const { data: commits, error, isPending, hasNextPage, isFetchingNextPage, fetchNextPage } =
     useCommits(repository.id, ref);
+  const { data: pullRequestList } = usePullRequests(repository.id);
+  const pullRequests = useMemo(
+    () => new Map((pullRequestList ?? []).map((pull) => [pull.branch, pull])),
+    [pullRequestList],
+  );
   const { state: navigationState } = useLocation();
   const focusedBranch = ref ? null : searchParams.get('focus');
   const focusRequest = navigationState?.focusBranch;
@@ -206,7 +236,8 @@ export function HistoryPage() {
   }, [isSearching, isFetchingNextPage, fetchNextPage]);
 
   useEffect(() => {
-    if (!focusedHash) return;
+    // Only on request, so opening a commit never jumps the list back to the branch.
+    if (!focusedHash || !focusRequest) return;
     const row = tableRef.current?.querySelector(`[data-hash="${focusedHash}"]`);
     row?.scrollIntoView({ block: 'center' });
   }, [focusedHash, focusRequest]);
@@ -289,7 +320,12 @@ export function HistoryPage() {
                   graphRow={graph.rows[index + graphRowOffset]}
                   columnCount={graph.columnCount}
                   selected={commit.hash === selectedHash}
-                  focused={commit.hash === focusedHash}
+                  focus={
+                    commit.hash === focusedHash && focusRequest
+                      ? { branch: focusedBranch, request: focusRequest }
+                      : undefined
+                  }
+                  pullRequests={pullRequests}
                   onSelect={toggleCommit}
                 />
               ))}

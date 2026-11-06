@@ -1,8 +1,11 @@
 import { Checkbox, Flex, Segmented } from 'antd';
 import { useState } from 'react';
 import { ActionDialog } from '../../../components/ActionDialog.jsx';
+import { useBranches } from '../../../queries/git.js';
 import { useRepositoryContext } from '../RepositoryContext.js';
 import { BranchSelect } from './BranchSelect.jsx';
+import { findBehindBranches } from './findBehindBranches.js';
+import { MergeBlockedAlert } from './MergeBlockedAlert.jsx';
 
 const MODES = [
   { label: 'Merge', value: 'merge' },
@@ -10,19 +13,21 @@ const MODES = [
 ];
 
 export function MergeDialog({ branch: initialBranch, mode: initialMode = 'merge', onClose }) {
-  const { status, run } = useRepositoryContext();
+  const { repository, status, run } = useRepositoryContext();
+  const { data: branches } = useBranches(repository.id);
   const [mode, setMode] = useState(initialMode);
   const [branch, setBranch] = useState(initialBranch);
   const [noFastForward, setNoFastForward] = useState(false);
 
   const current = status.branch ?? 'HEAD';
   const isMerge = mode === 'merge';
+  const behind = isMerge ? findBehindBranches(branches?.local ?? [], [status.branch, branch]) : [];
 
   return (
     <ActionDialog
       title={isMerge ? `Merge into ${current}` : `Rebase ${current}`}
       okText={isMerge ? 'Merge' : 'Rebase'}
-      canSubmit={Boolean(branch)}
+      canSubmit={Boolean(branch) && behind.length === 0}
       onSubmit={() => (isMerge ? run('merge', { branch, noFastForward }) : run('rebase', { branch }))}
       onClose={onClose}
     >
@@ -43,6 +48,7 @@ export function MergeDialog({ branch: initialBranch, mode: initialMode = 'merge'
             Always create a merge commit
           </Checkbox>
         )}
+        <MergeBlockedAlert reasons={behind} />
       </Flex>
     </ActionDialog>
   );

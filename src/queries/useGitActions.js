@@ -30,6 +30,17 @@ const GIT_ACTIONS = {
     title: 'Delete remote branch',
     success: ({ name }) => `Deleted ${name}`,
   },
+  pruneBranches: {
+    run: gitApi.pruneBranches,
+    title: 'Prune branches',
+    success: (_input, { deleted, kept }) =>
+      [
+        `Deleted ${deleted.length} ${deleted.length === 1 ? 'branch' : 'branches'}.`,
+        kept.length > 0 && `Kept ${kept.join(', ')}.`,
+      ]
+        .filter(Boolean)
+        .join(' '),
+  },
   merge: { run: gitApi.merge, title: 'Merge', success: ({ branch }) => `Merged ${branch}` },
   mergeInto: {
     run: gitApi.mergeInto,
@@ -62,8 +73,8 @@ export function useGitActions(repositoryId) {
   const { mutateAsync } = useMutation({
     mutationKey,
     mutationFn: ({ name, input }) => GIT_ACTIONS[name].run(repositoryId, input),
-    onSuccess: (_result, { name, input }) => {
-      const text = GIT_ACTIONS[name].success?.(input);
+    onSuccess: (result, { name, input }) => {
+      const text = GIT_ACTIONS[name].success?.(input, result);
       if (text) message.success(text);
     },
     onError: (error, { name }) => {

@@ -15,6 +15,7 @@ import {
   parseStatus,
 } from './parsers.js';
 import { buildPatch } from './patch.js';
+import { listPullRequests } from './pullRequests.js';
 import { NETWORK_TIMEOUT_MS, runGit, runGitOnPaths } from './runGit.js';
 
 const OPERATION_MARKERS = [
@@ -119,6 +120,10 @@ async function getRemoteUrl(repoPath) {
   const remote = await getDefaultRemote(repoPath);
   if (!remote) return null;
   return (await runGit(repoPath, ['remote', 'get-url', remote])).trim();
+}
+
+export async function getPullRequests(repoPath) {
+  return listPullRequests(repoPath, await getRemoteUrl(repoPath));
 }
 
 /** When each branch was last checked out or left. A repository with no commits has no reflog. */
@@ -396,11 +401,52 @@ export async function deleteRemoteBranch(repoPath, { name }) {
   });
 }
 
-export async function merge(repoPath, { branch, noFastForward = false }) {
-  assertRef(branch);
-  await reportingConflicts(repoPath, () =>
+/**
+ * Deletes the local branches whose remote branch is gone, as left behind once a pull
+ * request is merged. Branches that never had an upstream are not touched. Without
+ * `force`, git keeps any with unmerged commits, and those are reported as kept.
+ */
+export async function pruneGoneBranches(repoPath, { force = false } = {}) {
+  const { local } = await getBranches(repoPath);
+  const result = { deleted: [], kept: [] };
+
+  for (const { name, upstreamGone, isCurrent } of local) {
+    if (!upstreamGone || isCurrent) continue;
+    try {
+      await deleteBranch(repoPath, { name, force });
+      result.deleted.push(name);
+    } catch {
+      result.kept.push(name);
+    }
+  }
+  return result;
+}
+
+/** A merge from or into a stale branch would leave out what is already on the remote. */
+async function assertNotBehind(repoPath, names) {
+  const { local } = await getBranches(repoPath);
+  const stale = local.filter(({ name, behind }) => names.includes(name) && behind > 0);
+  if (stale.length === 0) return;
+
+  const summary = stale
+    .map(({ name, behind, upstream }) => {
+      return `${name} is ${behind} ${behind === 1 ? 'commit' : 'commits'} behind ${upstream}`;
+    })
+    .join(' and ');
+  throw new ApiError(409, 'BRANCH_BEHIND', `Merge cancelled: ${summary}. Pull first.`);
+}
+
+function runMerge(repoPath, { branch, noFastForward }) {
+  return reportingConflicts(repoPath, () =>
     runGit(repoPath, ['merge', '--no-edit', ...(noFastForward ? ['--no-ff'] : []), branch]),
   );
+}
+
+export async function merge(repoPath, { branch, noFastForward = false }) {
+  assertRef(branch);
+  const { branch: current } = await getStatus(repoPath);
+  await assertNotBehind(repoPath, [current, branch]);
+  await runMerge(repoPath, { branch, noFastForward });
 }
 
 /**
@@ -412,10 +458,11 @@ export async function mergeInto(repoPath, { target, noFastForward = false }) {
   assertRef(target);
   const { branch: source } = await getStatus(repoPath);
   if (!source) throw gitFailure('Check out a branch before merging it into another.');
+  await assertNotBehind(repoPath, [source, target]);
 
   await runGit(repoPath, ['switch', target]);
   try {
-    await merge(repoPath, { branch: source, noFastForward });
+    await runMerge(repoPath, { branch: source, noFastForward });
   } catch (error) {
     if (error.code !== 'CONFLICTS') await runGit(repoPath, ['switch', source]);
     throw error;

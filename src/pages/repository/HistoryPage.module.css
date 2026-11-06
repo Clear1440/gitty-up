@@ -33,15 +33,14 @@
 
 /*
  * One grid holds every column, and the headings and rows inherit it as subgrids,
- * so they all line up. The tree column sizes itself to the widest row's tree until
- * it is resized. The commit message is the one column that takes up the slack, so
+ * so they all line up. The graph column sizes itself to the widest row's tree and
+ * labels until it is resized. The commit message is the one column that takes up the slack, so
  * a dragged edge stays under the cursor. See useResizableSizes for the variables.
  */
 .table {
   display: grid;
   grid-template-columns:
-    var(--history-tree, auto)
-    var(--history-branch, 150px)
+    var(--history-graph, auto)
     var(--history-author, 132px)
     minmax(160px, 1fr)
     var(--history-time, 108px)
@@ -121,19 +120,26 @@
   background: var(--color-primary-subtle);
 }
 
-.focusedCommit {
-  box-shadow: inset 0 0 0 1px var(--color-primary);
-}
 
 .focusNote {
   color: var(--color-text-muted);
   font-size: var(--font-size-sm);
 }
 
-/* Fits the tree until the column is resized, then crops it to the column. */
+/*
+ * Fits the tree and labels until the column is resized, then crops them to it. They
+ * share one grid cell, so the labels float over the tree beside their node while
+ * still counting towards the column's width.
+ */
 .tree {
-  width: var(--history-tree, max-content);
+  display: grid;
+  align-items: center;
+  width: var(--history-graph, max-content);
   overflow: hidden;
+}
+
+.tree > * {
+  grid-area: 1 / 1;
 }
 
 .tree svg {
@@ -187,12 +193,14 @@
 
 .refs {
   display: flex;
+  justify-self: start;
   gap: var(--space-1);
   min-width: 0;
-  overflow: hidden;
+  max-width: 280px;
 }
 
 .refs :global(.ant-tag) {
+  position: relative;
   display: inline-flex;
   flex: 0 1 auto;
   align-items: center;
@@ -211,6 +219,66 @@
 /* The name gives way first, so a long one never pushes these out of the tag. */
 .refIcon {
   flex: none;
+}
+
+.refPullRequest {
+  display: inline-flex;
+  flex: none;
+  color: var(--color-success);
+}
+
+.refPullRequest:hover {
+  color: var(--color-text);
+}
+
+/* Lets the gradient behind the focus ring turn: only a registered property animates. */
+@property --focus-ring-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+/* A gradient masked down to the border, so a highlight travels around the label. */
+.focusRing {
+  position: absolute;
+  inset: -3px;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  background: conic-gradient(
+    from var(--focus-ring-angle),
+    var(--color-primary) 0 50%,
+    var(--color-text) 80%,
+    var(--color-primary) 100%
+  );
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+  pointer-events: none;
+  animation:
+    focus-ring-turn 1s linear 5,
+    focus-ring-fade 5s linear forwards;
+}
+
+@keyframes focus-ring-turn {
+  to {
+    --focus-ring-angle: 360deg;
+  }
+}
+
+@keyframes focus-ring-fade {
+  90% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .focusRing {
+    animation: focus-ring-fade 5s linear forwards;
+  }
 }
 
 .refHead {

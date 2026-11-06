@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findBranchTip, groupRefs } from './groupRefs.js';
+import { findBranchTip, groupHasBranch, groupRefs } from './groupRefs.js';
 
 const remote = (name, remoteName = 'origin') => ({
   type: 'remote',
@@ -28,6 +28,27 @@ describe('findBranchTip', () => {
   it('ignores tags, and branches it has not been given', () => {
     expect(findBranchTip(commits, 'v1')).toBeUndefined();
     expect(findBranchTip(commits, 'gone')).toBeUndefined();
+  });
+});
+
+describe('groupHasBranch', () => {
+  const [group] = groupRefs([{ type: 'branch', name: 'dev' }, remote('dev')]);
+  const [remoteOnly] = groupRefs([remote('topic')]);
+  const [tag] = groupRefs([{ type: 'tag', name: 'v1' }]);
+
+  it('matches a group by its local or remote name', () => {
+    expect(groupHasBranch(group, 'dev')).toBe(true);
+    expect(groupHasBranch(group, 'origin/dev')).toBe(true);
+    expect(groupHasBranch(group, 'other')).toBe(false);
+  });
+
+  it('never takes a remote branch for a local one of the same name', () => {
+    expect(groupHasBranch(remoteOnly, 'topic')).toBe(false);
+    expect(groupHasBranch(remoteOnly, 'origin/topic')).toBe(true);
+  });
+
+  it('never matches a tag', () => {
+    expect(groupHasBranch(tag, 'v1')).toBe(false);
   });
 });
 

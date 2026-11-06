@@ -296,6 +296,58 @@ describe('branches', () => {
     ]);
   });
 
+  describe('pruning branches gone from the remote', () => {
+    /** A branch pushed and then deleted on the remote, as merging a pull request does. */
+    async function pushThenDeleteRemotely(name, { unmerged = false } = {}) {
+      git(repo.work, 'switch', '--create', name);
+      if (unmerged) await writeAndCommit(repo.work, `${name}.txt`, 'work\n', `Work on ${name}`);
+      git(repo.work, 'push', '--set-upstream', 'origin', name);
+      git(repo.work, 'switch', 'main');
+      git(repo.remote, 'branch', '-D', name);
+      git(repo.work, 'fetch', '--prune');
+    }
+
+    const localNames = async () =>
+      (await request('GET', `${repo.api}/branches`)).body.local.map((branch) => branch.name);
+
+    it('deletes merged branches, keeps unmerged ones, and leaves others alone', async () => {
+      await pushThenDeleteRemotely('merged');
+      await pushThenDeleteRemotely('unmerged', { unmerged: true });
+      git(repo.work, 'branch', 'never-pushed');
+
+      const { status, body } = await request('POST', `${repo.api}/prune-branches`, {});
+
+      expect(status).toBe(200);
+      expect(body).toEqual({ deleted: ['merged'], kept: ['unmerged'] });
+      expect(await localNames()).toEqual(['main', 'never-pushed', 'unmerged']);
+    });
+
+    it('deletes unmerged branches too when forced', async () => {
+      await pushThenDeleteRemotely('unmerged', { unmerged: true });
+
+      const { body } = await request('POST', `${repo.api}/prune-branches`, { force: true });
+
+      expect(body).toEqual({ deleted: ['unmerged'], kept: [] });
+    });
+
+    it('never deletes the checked out branch', async () => {
+      await pushThenDeleteRemotely('current');
+      git(repo.work, 'switch', 'current');
+
+      const { body } = await request('POST', `${repo.api}/prune-branches`, {});
+
+      expect(body).toEqual({ deleted: [], kept: [] });
+      expect(await localNames()).toContain('current');
+    });
+  });
+
+  it('has no pull requests to show for a remote that is not on GitHub', async () => {
+    const { status, body } = await request('GET', `${repo.api}/pull-requests`);
+
+    expect(status).toBe(200);
+    expect(body).toEqual([]);
+  });
+
   it('rejects names git would read as options or refuse', async () => {
     const dash = await request('POST', `${repo.api}/branches`, { name: '--force' });
     const spaces = await request('POST', `${repo.api}/branches`, { name: 'has spaces' });
@@ -747,6 +799,64 @@ describe('staging parts of a file', () => {
     });
 
     expect(status).toBe(400);
+  });
+});
+
+describe('merging a branch that is behind its remote', () => {
+  /** Leaves `branch` one commit behind origin, as if someone else had pushed. */
+  async function fallBehind(branch) {
+    git(repo.work, 'switch', branch);
+    await writeAndCommit(repo.work, `${branch}.txt`, 'remote\n', `Pushed to ${branch}`);
+    git(repo.work, 'push', '--set-upstream', 'origin', branch);
+    git(repo.work, 'reset', '--hard', 'HEAD~1');
+  }
+
+  const head = (name) => git(repo.work, 'rev-parse', name);
+
+  beforeEach(() => {
+    git(repo.work, 'branch', 'topic');
+  });
+
+  it('cancels when the checked out branch is behind', async () => {
+    await fallBehind('main');
+    const before = head('main');
+
+    const { status, body } = await request('POST', `${repo.api}/merge`, { branch: 'topic' });
+
+    expect(status).toBe(409);
+    expect(body.error.code).toBe('BRANCH_BEHIND');
+    expect(body.error.message).toContain('main is 1 commit behind origin/main');
+    expect(head('main')).toBe(before);
+  });
+
+  it('cancels when the branch being merged in is behind', async () => {
+    await fallBehind('topic');
+    git(repo.work, 'switch', 'main');
+
+    const { status, body } = await request('POST', `${repo.api}/merge`, { branch: 'topic' });
+
+    expect(status).toBe(409);
+    expect(body.error.code).toBe('BRANCH_BEHIND');
+  });
+
+  it('cancels before switching when merging into a branch that is behind', async () => {
+    await fallBehind('main');
+    git(repo.work, 'switch', 'topic');
+
+    const { status, body } = await request('POST', `${repo.api}/merge-into`, { target: 'main' });
+
+    expect(status).toBe(409);
+    expect(body.error.code).toBe('BRANCH_BEHIND');
+    expect(git(repo.work, 'branch', '--show-current')).toBe('topic');
+  });
+
+  it('still merges a branch that is only behind the branch it merges into', async () => {
+    git(repo.work, 'switch', 'main');
+    await writeAndCommit(repo.work, 'main.txt', 'more\n', 'Move main on');
+
+    const { status } = await request('POST', `${repo.api}/merge`, { branch: 'topic' });
+
+    expect(status).toBe(204);
   });
 });
 
