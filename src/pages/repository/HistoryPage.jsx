@@ -85,12 +85,13 @@ function PullRequestLink({ pullRequest }) {
   );
 }
 
-/** `focusRequest` plays the ring around it, and a new value plays it again. */
+/** `focusRequest` plays the pulse around it, and a new value plays it again. */
 function RefTag({ group, pullRequest, focusRequest }) {
   return (
     <RefContextMenu group={group}>
       <Tag
-        className={REF_TAG_STYLES[group.type]}
+        key={focusRequest}
+        className={clsx(REF_TAG_STYLES[group.type], focusRequest && styles.focusPulse)}
         title={group.type === 'tag' ? group.name : describeRefGroup(group)}
       >
         <span className={styles.refName}>{group.name}</span>
@@ -99,7 +100,6 @@ function RefTag({ group, pullRequest, focusRequest }) {
           <CloudOutlined className={styles.refIcon} aria-label="On a remote" />
         )}
         {pullRequest && <PullRequestLink pullRequest={pullRequest} />}
-        {focusRequest && <span key={focusRequest} className={styles.focusRing} aria-hidden />}
       </Tag>
     </RefContextMenu>
   );

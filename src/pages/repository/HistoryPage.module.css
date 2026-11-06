@@ -197,6 +197,8 @@
   gap: var(--space-1);
   min-width: 0;
   max-width: 280px;
+  /* Room for a pulse, which the column would otherwise crop on its widest row. */
+  padding-right: var(--space-2);
 }
 
 .refs :global(.ant-tag) {
@@ -231,53 +233,40 @@
   color: var(--color-text);
 }
 
-/* Lets the gradient behind the focus ring turn: only a registered property animates. */
-@property --focus-ring-angle {
-  syntax: '<angle>';
-  inherits: false;
-  initial-value: 0deg;
+/*
+ * Three pulses of one second, each fading out as it spreads, so nothing is left behind.
+ * Above its neighbours, which would otherwise paint over it. The extra selector outranks
+ * Ant Design's own transition on box-shadow.
+ */
+.refs :global(.ant-tag).focusPulse {
+  z-index: 1;
+  animation: focus-pulse 1s ease-out 3;
 }
 
-/* A gradient masked down to the border, so a highlight travels around the label. */
-.focusRing {
-  position: absolute;
-  inset: -3px;
-  padding: 2px;
-  border-radius: var(--radius-md);
-  background: conic-gradient(
-    from var(--focus-ring-angle),
-    var(--color-primary) 0 50%,
-    var(--color-text) 80%,
-    var(--color-primary) 100%
-  );
-  mask:
-    linear-gradient(#000 0 0) content-box exclude,
-    linear-gradient(#000 0 0);
-  pointer-events: none;
-  animation:
-    focus-ring-turn 1s linear 5,
-    focus-ring-fade 5s linear forwards;
-}
-
-@keyframes focus-ring-turn {
-  to {
-    --focus-ring-angle: 360deg;
-  }
-}
-
-@keyframes focus-ring-fade {
-  90% {
-    opacity: 1;
+@keyframes focus-pulse {
+  from {
+    box-shadow: 0 0 0 0 var(--color-primary-strong);
   }
 
   to {
-    opacity: 0;
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+
+/* The same three seconds, as one glow that fades in place rather than moving. */
+@keyframes focus-glow {
+  from {
+    box-shadow: 0 0 0 3px var(--color-primary-strong);
+  }
+
+  to {
+    box-shadow: 0 0 0 3px transparent;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .focusRing {
-    animation: focus-ring-fade 5s linear forwards;
+  .refs :global(.ant-tag).focusPulse {
+    animation: focus-glow 3s linear;
   }
 }
 
