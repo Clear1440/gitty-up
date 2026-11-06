@@ -12,12 +12,14 @@ function firstFreeLane(lanes) {
  * Walking from newest to oldest, `lanes` holds which commit each vertical line is
  * waiting to reach. A commit sits on the lane waiting for it, and its parents then
  * take over: the first continues that lane and any others branch off to their own.
+ * A parent that a lane is already waiting for joins that lane, so no two lanes ever
+ * wait for the same commit.
  *
  * Commits must list children before their parents.
  *
  * Each row has a `column`, a `color`, and `segments` to draw:
  * - `through`: a lane passing straight down the whole row
- * - `top`: a lane arriving at this row's commit, from `from` to `to`
+ * - `top`: the lane arriving at this row's commit
  * - `bottom`: a line leaving this row's commit toward a parent
  */
 export function layoutCommitGraph(commits) {
@@ -41,16 +43,12 @@ export function layoutCommitGraph(commits) {
     const segments = [];
 
     lanes.forEach((lane, index) => {
-      if (!lane) return;
-      if (lane.hash !== commit.hash) {
+      if (lane && index !== column) {
         segments.push({ kind: 'through', from: index, to: index, color: lane.color });
-        return;
       }
-      if (!(isBranchTip && index === column)) {
-        segments.push({ kind: 'top', from: index, to: column, color: lane.color });
-      }
-      lanes[index] = null;
     });
+    if (!isBranchTip) segments.push({ kind: 'top', from: column, to: column, color });
+    lanes[column] = null;
 
     commit.parents.forEach((parent, parentIndex) => {
       const isFirstParent = parentIndex === 0;

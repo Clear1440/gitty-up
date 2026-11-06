@@ -59,7 +59,8 @@ function CurrentBranch({ status }) {
 }
 
 export function ActionBar() {
-  const { repository, status, run, openDialog, isBusy, pendingAction } = useRepositoryContext();
+  const { repository, status, run, openDialog, focusCommitMessage, isBusy, pendingAction } =
+    useRepositoryContext();
   const { data: stashes = [] } = useStashes(repository.id);
   const { modal } = App.useApp();
 
@@ -139,12 +140,11 @@ export function ActionBar() {
       <Divider orientation="vertical" />
 
       <ActionButton
-        type="primary"
         label="Commit"
+        hint="Jump to the commit message"
         icon={<CheckOutlined />}
         count={status.staged.length}
-        disabled={isBusy}
-        onClick={() => openDialog('commit')}
+        onClick={focusCommitMessage}
       />
       <ActionButton
         label="Branch"

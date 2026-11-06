@@ -181,8 +181,19 @@ export function parseCommits(output) {
 
 export const STASH_FORMAT = ['%gs', '%cI'].join('%x00');
 
-/** Git records stashes as "On main: my note" or "WIP on main: abc123 subject". */
-const STASH_SUBJECT = /^(?:WIP on|On) ([^:]+): (.*)$/;
+const NAMED_STASH = /^On ([^:]+): (.*)$/;
+const UNNAMED_STASH = /^WIP on ([^:]+): \S+ (.*)$/;
+
+/** Git records stashes as "On main: my note" or "WIP on main: abc123 last commit". */
+function parseStashSubject(subject) {
+  const named = NAMED_STASH.exec(subject);
+  if (named) return { branch: named[1], message: named[2] };
+
+  const unnamed = UNNAMED_STASH.exec(subject);
+  if (unnamed) return { branch: unnamed[1], message: `WIP: ${unnamed[2]}` };
+
+  return { branch: null, message: subject };
+}
 
 /** Parses `git stash list` output produced with STASH_FORMAT. Newest comes first. */
 export function parseStashes(output) {
@@ -191,7 +202,6 @@ export function parseStashes(output) {
     .filter(Boolean)
     .map((line, index) => {
       const [subject, date] = line.split('\0');
-      const [, branch = null, message = subject] = STASH_SUBJECT.exec(subject) ?? [];
-      return { ref: `stash@{${index}}`, branch, message, date };
+      return { ref: `stash@{${index}}`, ...parseStashSubject(subject), date };
     });
 }

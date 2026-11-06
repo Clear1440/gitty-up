@@ -1,10 +1,5 @@
 import { theme } from 'antd';
-
-function readToken(name) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-}
-
-const readPixels = (name) => Number.parseInt(readToken(name), 10);
+import { readPixels, readToken } from './readToken.js';
 
 /**
  * Builds the Ant Design theme from tokens.css, so that file stays the single source

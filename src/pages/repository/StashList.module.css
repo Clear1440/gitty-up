@@ -1,0 +1,64 @@
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+}
+
+.row:hover,
+.row:focus-within {
+  background: var(--color-surface-hover);
+}
+
+.icon {
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+}
+
+.message,
+.meta {
+  margin: 0;
+  overflow: hidden;
+  line-height: var(--line-height-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message {
+  font-size: var(--font-size-sm);
+}
+
+.meta {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.menu {
+  flex: none;
+  opacity: 0;
+}
+
+.row:hover .menu,
+.row:focus-within .menu,
+.menu:global(.ant-dropdown-open) {
+  opacity: 1;
+}
+
+.empty {
+  margin: 0;
+  padding: var(--space-1) var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}

@@ -6,8 +6,15 @@
   border-top: 1px solid var(--color-border);
 }
 
-.heading {
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   margin: var(--space-3) 0 var(--space-2);
+}
+
+.heading {
+  margin: 0;
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
   overflow-wrap: anywhere;
@@ -19,12 +26,14 @@
   list-style: none;
 }
 
+/* A fixed height with no gaps, so the tree's lines run unbroken from row to row. */
 .commit {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2);
-  border-bottom: 1px solid var(--color-border);
+  height: var(--size-commit-row);
+  padding-right: var(--space-2);
+  border-radius: var(--radius-sm);
 }
 
 .commit:hover {
@@ -41,27 +50,36 @@
   overflow: hidden;
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-tight);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .meta {
   margin: 0;
+  overflow: hidden;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
+  line-height: var(--line-height-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .refs {
   display: flex;
-  flex: none;
-  flex-wrap: wrap;
+  flex: 0 1 auto;
   gap: var(--space-1);
-  justify-content: flex-end;
+  min-width: 0;
   max-width: 45%;
 }
 
 .refs :global(.ant-tag) {
+  flex: 0 1 auto;
+  min-width: 0;
   margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .refHead {

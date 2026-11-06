@@ -2,9 +2,10 @@ import { SearchOutlined } from '@ant-design/icons';
 import { Collapse, Input, Spin } from 'antd';
 import { useState } from 'react';
 import { useMatch, useSearchParams } from 'react-router';
-import { useBranches } from '../../queries/git.js';
+import { useBranches, useStashes } from '../../queries/git.js';
 import { BranchRow } from './BranchRow.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
+import { StashList } from './StashList.jsx';
 import styles from './BranchSidebar.module.css';
 
 const byCurrentFirst = (a, b) => Number(b.isCurrent ?? false) - Number(a.isCurrent ?? false);
@@ -31,12 +32,13 @@ function BranchList({ branches, kind, selectedRef }) {
 }
 
 export function BranchSidebar() {
-  const { repository, status } = useRepositoryContext();
+  const { repository } = useRepositoryContext();
   const { data: branches, isPending } = useBranches(repository.id);
+  const { data: stashes = [] } = useStashes(repository.id);
   const [filter, setFilter] = useState('');
   const [searchParams] = useSearchParams();
   const onHistory = useMatch('/repositories/:repositoryId/history');
-  const selectedRef = onHistory ? (searchParams.get('ref') ?? status.branch) : null;
+  const selectedRef = onHistory ? searchParams.get('ref') : null;
 
   const local = filterBranches(branches?.local ?? [], filter).sort(byCurrentFirst);
   const remote = filterBranches(branches?.remote ?? [], filter);
@@ -52,10 +54,15 @@ export function BranchSidebar() {
       label: `Remote (${remote.length})`,
       children: <BranchList branches={remote} kind="remote" selectedRef={selectedRef} />,
     },
+    {
+      key: 'stashes',
+      label: `Stashes (${stashes.length})`,
+      children: <StashList stashes={stashes} />,
+    },
   ];
 
   return (
-    <aside className={styles.sidebar} aria-label="Branches">
+    <aside className={styles.sidebar} aria-label="Branches and stashes">
       <div className={styles.header}>
         <Input
           allowClear
@@ -70,7 +77,12 @@ export function BranchSidebar() {
         {isPending ? (
           <Spin className="centered" />
         ) : (
-          <Collapse ghost size="small" defaultActiveKey={['local', 'remote']} items={sections} />
+          <Collapse
+            ghost
+            size="small"
+            defaultActiveKey={['local', 'remote', 'stashes']}
+            items={sections}
+          />
         )}
       </div>
     </aside>

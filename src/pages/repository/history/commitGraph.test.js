@@ -39,8 +39,8 @@ describe('layoutCommitGraph', () => {
     ]);
 
     expect(columnCount).toBe(2);
-    expect(rows.map((row) => row.column)).toEqual([0, 0 + 1, 0]);
-    expect(withoutColor(ofKind(rows[1], 'through'))).toEqual([]);
+    expect(rows.map((row) => row.column)).toEqual([0, 1, 0]);
+    expect(withoutColor(ofKind(rows[1], 'through'))).toEqual([{ from: 0, to: 0 }]);
     expect(withoutColor(ofKind(rows[1], 'bottom'))).toEqual([{ from: 1, to: 0 }]);
   });
 
@@ -86,7 +86,7 @@ describe('layoutCommitGraph', () => {
     expect(incoming.color).not.toBe(rows[0].color);
   });
 
-  it('merges lanes when both are waiting for the same commit', () => {
+  it('joins a lane already waiting for the same parent, rather than opening a second', () => {
     const { rows } = layoutCommitGraph([
       commit('a', 'base'),
       commit('b', 'other'),
@@ -94,11 +94,10 @@ describe('layoutCommitGraph', () => {
       commit('base'),
     ]);
 
+    expect(withoutColor(ofKind(rows[2], 'bottom'))).toEqual([{ from: 1, to: 0 }]);
     expect(rows[3].column).toBe(0);
-    expect(withoutColor(ofKind(rows[3], 'top'))).toEqual([
-      { from: 0, to: 0 },
-      { from: 1, to: 0 },
-    ]);
+    expect(withoutColor(ofKind(rows[3], 'top'))).toEqual([{ from: 0, to: 0 }]);
+    expect(ofKind(rows[3], 'through')).toEqual([]);
   });
 
   it('points a second parent at a lane already waiting for it', () => {

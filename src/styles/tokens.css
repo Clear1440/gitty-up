@@ -49,6 +49,14 @@
   --color-diff-deleted-bg: #3c1f29;
   --color-diff-hunk-bg: #1d2233;
 
+  /* Git tree branches, cycled in order. Add more by raising GRAPH_COLOR_COUNT too. */
+  --color-graph-1: #6ea1ff;
+  --color-graph-2: #c3b1ff;
+  --color-graph-3: #62d9b5;
+  --color-graph-4: #f4c56f;
+  --color-graph-5: #ff8197;
+  --color-graph-6: #5fd0e8;
+
   /* Type */
   --font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, Consolas, monospace;
@@ -82,4 +90,6 @@
   /* Layout */
   --size-tab-bar: 44px;
   --size-sidebar: 300px;
+  --size-commit-row: 48px;
+  --size-graph-column: 16px;
 }

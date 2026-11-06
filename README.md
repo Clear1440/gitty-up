@@ -51,7 +51,8 @@ React pages -> src/queries (cache, hooks) -> src/api (HTTP) -> server/routes -> 
 | `api/`                  | All network traffic. `client.js` is the only file that calls `fetch` |
 | `queries/`              | TanStack Query hooks. `useGitActions.js` runs and reports git actions |
 | `pages/home/`           | The repository list in the permanent first tab                     |
-| `pages/repository/`     | The workspace: action bar, branches, history, changes, dialogs     |
+| `pages/repository/`     | The workspace: action bar, sidebar, history, changes, commit panel |
+| `pages/repository/history/` | The git tree. `commitGraph.js` lays it out, with no UI code    |
 | `layouts/`              | The app shell and tab bar                                          |
 | `tabs/`                 | Open tab state, saved to `localStorage`                            |
 | `styles/`               | Design tokens, global styles and the Ant Design theme              |

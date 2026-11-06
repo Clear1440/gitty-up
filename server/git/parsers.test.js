@@ -108,7 +108,7 @@ describe('parseStashes', () => {
       {
         ref: 'stash@{1}',
         branch: 'main',
-        message: 'abc123 Fix thing',
+        message: 'WIP: Fix thing',
         date: '2026-01-01T00:00:00+00:00',
       },
     ]);
