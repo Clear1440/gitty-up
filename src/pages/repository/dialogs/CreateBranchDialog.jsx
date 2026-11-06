@@ -1,30 +1,48 @@
 import { Checkbox, Flex, Input } from 'antd';
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { ActionDialog } from '../../../components/ActionDialog.jsx';
 import { useRepositoryContext } from '../RepositoryContext.js';
 import { BranchSelect } from './BranchSelect.jsx';
+import { formatBranchName } from './formatBranchName.js';
 
 export function CreateBranchDialog({ startPoint: initialStartPoint, onClose }) {
   const { status, run } = useRepositoryContext();
-  const [name, setName] = useState('');
+  const [field, setField] = useState({ name: '', caret: 0 });
+  const { name } = field;
   const [startPoint, setStartPoint] = useState(initialStartPoint ?? status.branch ?? undefined);
   const [switchTo, setSwitchTo] = useState(true);
+  const inputRef = useRef(null);
+
+  const handleNameChange = ({ target }) => {
+    setField({
+      name: formatBranchName(target.value),
+      caret: formatBranchName(target.value.slice(0, target.selectionStart)).length,
+    });
+  };
+
+  // Rewriting a field's value sends the caret to the end, even mid-word. Each change
+  // makes a new object, so this also runs for a keystroke that was refused, but not
+  // for other renders, which would pull the caret back from wherever it has moved to.
+  useLayoutEffect(() => {
+    inputRef.current?.input.setSelectionRange(field.caret, field.caret);
+  }, [field]);
 
   return (
     <ActionDialog
       title="Create a branch"
       okText="Create branch"
-      canSubmit={Boolean(name.trim())}
-      onSubmit={() => run('createBranch', { name: name.trim(), startPoint, switchTo })}
+      canSubmit={Boolean(name)}
+      onSubmit={() => run('createBranch', { name, startPoint, switchTo })}
       onClose={onClose}
     >
       <Flex vertical gap={12}>
         <Input
+          ref={inputRef}
           autoFocus
           aria-label="Branch name"
           placeholder="Branch name"
           value={name}
-          onChange={(event) => setName(event.target.value)}
+          onChange={handleNameChange}
         />
         <BranchSelect
           aria-label="Start from"
