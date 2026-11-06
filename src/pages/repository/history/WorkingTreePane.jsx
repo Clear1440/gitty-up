@@ -12,6 +12,7 @@ import { DiffView } from '../DiffView.jsx';
 import { FileSection } from '../FileSection.jsx';
 import { useRepositoryContext } from '../RepositoryContext.js';
 import styles from './CommitPane.module.css';
+import { FilesAndDiff } from './FilesAndDiff.jsx';
 
 function IconAction({ label, icon, ...buttonProps }) {
   return (
@@ -57,7 +58,7 @@ function WorkingTreeFiles({ selected, onSelect }) {
     selected.path === file.path && selected.staged === isStaged;
 
   return (
-    <div className={styles.files}>
+    <>
       <FileSection
         title="Conflicted"
         files={conflicted}
@@ -121,7 +122,7 @@ function WorkingTreeFiles({ selected, onSelect }) {
           />
         )}
       />
-    </div>
+    </>
   );
 }
 
@@ -148,10 +149,9 @@ export function WorkingTreePane({ onClose, resizeHandle }) {
         </p>
       </header>
       {selected ? (
-        <>
-          <WorkingTreeFiles selected={selected} onSelect={setChoice} />
+        <FilesAndDiff files={<WorkingTreeFiles selected={selected} onSelect={setChoice} />}>
           <DiffView file={selected} />
-        </>
+        </FilesAndDiff>
       ) : (
         <div className={styles.diff}>
           <Empty className="centered" description="No changes. The working tree is clean." />

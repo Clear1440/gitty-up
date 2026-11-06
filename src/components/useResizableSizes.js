@@ -3,6 +3,13 @@ import { readStored, writeStored } from '../utils/storage.js';
 
 const KEYBOARD_STEP = 16;
 
+/** How each edge of an element moves. Dragging right or down is positive. */
+const EDGES = {
+  right: { isVertical: false, direction: 1 },
+  left: { isVertical: false, direction: -1 },
+  bottom: { isVertical: true, direction: 1 },
+};
+
 export function clampSize(size, { min, max }) {
   return Math.min(Math.max(size, min), max);
 }
@@ -13,6 +20,15 @@ export function sanitizeSizes(stored, limits) {
     .filter(([name]) => Number.isFinite(stored?.[name]))
     .map(([name, limit]) => [name, clampSize(stored[name], limit)]);
   return Object.fromEntries(entries);
+}
+
+/** How much an arrow key changes the size from this edge, or 0 if it doesn't apply. */
+export function keyboardStep(key, edge) {
+  const { isVertical, direction } = EDGES[edge];
+  const steps = isVertical
+    ? { ArrowUp: -KEYBOARD_STEP, ArrowDown: KEYBOARD_STEP }
+    : { ArrowLeft: -KEYBOARD_STEP, ArrowRight: KEYBOARD_STEP };
+  return (steps[key] ?? 0) * direction;
 }
 
 /**
@@ -43,20 +59,24 @@ export function useResizableSizes(containerRef, group, limits) {
   /** `edge` is the side of the element being dragged. The handle must be its child. */
   const handleFor = (name, edge = 'right') => {
     const limit = limits[name];
-    const direction = edge === 'right' ? 1 : -1;
+    const { isVertical, direction } = EDGES[edge];
+    const pointerPosition = (event) => (isVertical ? event.clientY : event.clientX);
     // Measured, because an unresized element's size only exists in the stylesheet.
-    const measure = (handle) => handle.parentElement.getBoundingClientRect().width;
+    const measure = (handle) => {
+      const { width, height } = handle.parentElement.getBoundingClientRect();
+      return isVertical ? height : width;
+    };
     const commit = (size) => setSizes((current) => ({ ...current, [name]: size }));
 
     const onPointerDown = (event) => {
       if (event.button !== 0) return;
       const handle = event.currentTarget;
-      const startX = event.clientX;
+      const start = pointerPosition(event);
       const startSize = measure(handle);
       let size = startSize;
 
       const onMove = (moveEvent) => {
-        size = clampSize(startSize + (moveEvent.clientX - startX) * direction, limit);
+        size = clampSize(startSize + (pointerPosition(moveEvent) - start) * direction, limit);
         containerRef.current?.style.setProperty(variable(name), `${size}px`);
       };
       const onEnd = () => {
@@ -73,10 +93,10 @@ export function useResizableSizes(containerRef, group, limits) {
     };
 
     const onKeyDown = (event) => {
-      const step = { ArrowLeft: -KEYBOARD_STEP, ArrowRight: KEYBOARD_STEP }[event.key];
+      const step = keyboardStep(event.key, edge);
       if (!step) return;
       event.preventDefault();
-      commit(clampSize(measure(event.currentTarget) + step * direction, limit));
+      commit(clampSize(measure(event.currentTarget) + step, limit));
     };
 
     const onDoubleClick = () => {

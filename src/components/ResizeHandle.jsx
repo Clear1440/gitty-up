@@ -9,7 +9,7 @@ export function ResizeHandle({ label, edge, size, min, max, className, ...handle
   return (
     <div
       role="separator"
-      aria-orientation="vertical"
+      aria-orientation={edge === 'bottom' ? 'horizontal' : 'vertical'}
       aria-label={label}
       aria-valuenow={size}
       aria-valuemin={min}

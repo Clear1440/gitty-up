@@ -1,13 +1,17 @@
 .handle {
   position: absolute;
-  top: 0;
-  bottom: 0;
   z-index: 2;
-  width: 9px;
   outline: none;
-  cursor: col-resize;
   touch-action: none;
   user-select: none;
+}
+
+.right,
+.left {
+  top: 0;
+  bottom: 0;
+  width: 9px;
+  cursor: col-resize;
 }
 
 .right {
@@ -18,13 +22,25 @@
   left: var(--resize-handle-offset, 0);
 }
 
+.bottom {
+  right: 0;
+  bottom: var(--resize-handle-offset, 0);
+  left: 0;
+  height: 9px;
+  cursor: row-resize;
+}
+
 .handle::after {
   position: absolute;
+  transition: background 0.1s;
+  content: '';
+}
+
+.right::after,
+.left::after {
   top: 0;
   bottom: 0;
   width: 2px;
-  transition: background 0.1s;
-  content: '';
 }
 
 .right::after {
@@ -33,6 +49,13 @@
 
 .left::after {
   left: 0;
+}
+
+.bottom::after {
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
 }
 
 .handle:hover::after,

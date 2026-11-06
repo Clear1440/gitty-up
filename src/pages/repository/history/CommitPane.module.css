@@ -50,12 +50,30 @@
   font-family: var(--font-mono);
 }
 
-.files {
+/* Percentages here are of this area alone, so the header and commit box can't eat the diff. */
+.split {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Hugs a short list until it is resized. However far it is dragged, the diff stays usable. */
+.filesArea {
+  position: relative;
+  display: flex;
   flex: none;
-  max-height: 34%;
+  flex-direction: column;
+  box-sizing: border-box;
+  height: var(--diff-pane-files, auto);
+  max-height: min(var(--diff-pane-files, 40%), calc(100% - 120px));
+  border-bottom: 1px solid var(--color-border);
+}
+
+.files {
+  min-height: 0;
   padding: var(--space-2);
   overflow: auto;
-  border-bottom: 1px solid var(--color-border);
 }
 
 .toolbar {
@@ -76,7 +94,8 @@
     border-left: 0;
   }
 
-  .pane [role='separator'] {
+  /* The pane fills the width here. The edge above its diff still applies. */
+  .pane > [role='separator'] {
     display: none;
   }
 }

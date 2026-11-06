@@ -8,6 +8,7 @@ import { parseDiff } from '../diff/diffRows.js';
 import { FileSection } from '../FileSection.jsx';
 import { useRepositoryContext } from '../RepositoryContext.js';
 import styles from './CommitPane.module.css';
+import { FilesAndDiff } from './FilesAndDiff.jsx';
 
 function CommitFileDiff({ hash, file }) {
   const { repository } = useRepositoryContext();
@@ -46,8 +47,8 @@ function CommitBody({ commit }) {
   if (!file) return <Empty className="centered" description="This commit changed no files" />;
 
   return (
-    <>
-      <div className={styles.files}>
+    <FilesAndDiff
+      files={
         <FileSection
           title="Files"
           files={files}
@@ -55,9 +56,10 @@ function CommitBody({ commit }) {
           onSelect={({ path }) => setSelectedPath(path)}
           renderActions={() => null}
         />
-      </div>
+      }
+    >
       <CommitFileDiff hash={commit.hash} file={file} />
-    </>
+    </FilesAndDiff>
   );
 }
 
