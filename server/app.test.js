@@ -617,6 +617,80 @@ describe('merging', () => {
     await writeAndCommit(repo.work, 'readme.txt', 'ours\n', 'Main change');
   }
 
+  describe('into another branch', () => {
+    const currentBranch = () => git(repo.work, 'branch', '--show-current');
+
+    it('merges the current branch into the target and stays there', async () => {
+      git(repo.work, 'switch', '-c', 'topic');
+      await writeAndCommit(repo.work, 'a.txt', 'a\n', 'Topic work');
+
+      const { status } = await request('POST', `${repo.api}/merge-into`, { target: 'main' });
+
+      expect(status).toBe(204);
+      expect(currentBranch()).toBe('main');
+      expect(git(repo.work, 'log', '-1', '--format=%s')).toBe('Topic work');
+    });
+
+    it('creates a merge commit on request', async () => {
+      git(repo.work, 'switch', '-c', 'topic');
+      await writeAndCommit(repo.work, 'a.txt', 'a\n', 'Topic work');
+
+      await request('POST', `${repo.api}/merge-into`, { target: 'main', noFastForward: true });
+
+      expect(git(repo.work, 'log', '-1', '--format=%s')).toBe("Merge branch 'topic'");
+    });
+
+    it('stays on the target to resolve conflicts', async () => {
+      await createConflict();
+      git(repo.work, 'switch', 'topic');
+
+      const { status, body } = await request('POST', `${repo.api}/merge-into`, {
+        target: 'main',
+      });
+
+      expect(status).toBe(409);
+      expect(body.error.code).toBe('CONFLICTS');
+      expect(currentBranch()).toBe('main');
+      expect((await request('GET', `${repo.api}/status`)).body.operation).toBe('merge');
+    });
+
+    it('switches back when the merge fails for any other reason', async () => {
+      git(repo.work, 'switch', '--orphan', 'unrelated');
+      await writeAndCommit(repo.work, 'b.txt', 'b\n', 'Unrelated work');
+      git(repo.work, 'switch', 'main');
+
+      const { status } = await request('POST', `${repo.api}/merge-into`, {
+        target: 'unrelated',
+      });
+
+      expect(status).toBe(409);
+      expect(currentBranch()).toBe('main');
+    });
+
+    it('stays put when the target cannot be checked out', async () => {
+      const { status } = await request('POST', `${repo.api}/merge-into`, { target: 'missing' });
+
+      expect(status).toBe(409);
+      expect(currentBranch()).toBe('main');
+    });
+
+    it('needs a branch to merge', async () => {
+      git(repo.work, 'switch', '--detach');
+
+      const { status, body } = await request('POST', `${repo.api}/merge-into`, {
+        target: 'main',
+      });
+
+      expect(status).toBe(409);
+      expect(body.error.message).toMatch(/Check out a branch/);
+    });
+
+    it('rejects a target git would read as an option', async () => {
+      const { status } = await request('POST', `${repo.api}/merge-into`, { target: '--detach' });
+      expect(status).toBe(400);
+    });
+  });
+
   it('merges cleanly', async () => {
     git(repo.work, 'switch', '-c', 'topic');
     await writeAndCommit(repo.work, 'a.txt', 'a\n', 'Topic work');

@@ -303,6 +303,25 @@ export async function merge(repoPath, { branch, noFastForward = false }) {
   );
 }
 
+/**
+ * Merges the checked out branch into `target`, leaving `target` checked out. Git can
+ * only merge into the current branch, so this has to switch first. A merge that stops
+ * on conflicts stays there to be resolved, and any other failure switches back.
+ */
+export async function mergeInto(repoPath, { target, noFastForward = false }) {
+  assertRef(target);
+  const { branch: source } = await getStatus(repoPath);
+  if (!source) throw gitFailure('Check out a branch before merging it into another.');
+
+  await runGit(repoPath, ['switch', target]);
+  try {
+    await merge(repoPath, { branch: source, noFastForward });
+  } catch (error) {
+    if (error.code !== 'CONFLICTS') await runGit(repoPath, ['switch', source]);
+    throw error;
+  }
+}
+
 export async function rebase(repoPath, { branch }) {
   assertRef(branch);
   await reportingConflicts(repoPath, () => runGit(repoPath, ['rebase', branch]));

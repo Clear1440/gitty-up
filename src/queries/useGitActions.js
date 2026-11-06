@@ -26,6 +26,11 @@ const GIT_ACTIONS = {
     success: ({ name }) => `Deleted ${name}`,
   },
   merge: { run: gitApi.merge, title: 'Merge', success: ({ branch }) => `Merged ${branch}` },
+  mergeInto: {
+    run: gitApi.mergeInto,
+    title: 'Merge',
+    success: ({ source, target }) => `Merged ${source} into ${target}`,
+  },
   rebase: { run: gitApi.rebase, title: 'Rebase', success: ({ branch }) => `Rebased onto ${branch}` },
   abortOperation: { run: gitApi.abortOperation, title: 'Abort', success: () => 'Aborted' },
   continueOperation: { run: gitApi.continueOperation, title: 'Continue', success: () => 'Done' },

@@ -24,6 +24,8 @@ export const gitApi = {
     http.delete(route(id, `/branches/${encodeURIComponent(name)}`), { force }),
   merge: (id, { branch, noFastForward }) =>
     http.post(route(id, '/merge'), { branch, noFastForward }),
+  mergeInto: (id, { target, noFastForward }) =>
+    http.post(route(id, '/merge-into'), { target, noFastForward }),
   rebase: (id, { branch }) => http.post(route(id, '/rebase'), { branch }),
   abortOperation: (id) => http.post(route(id, '/operation/abort')),
   continueOperation: (id) => http.post(route(id, '/operation/continue')),

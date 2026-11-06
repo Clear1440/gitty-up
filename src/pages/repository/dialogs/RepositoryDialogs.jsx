@@ -2,6 +2,7 @@ import { CheckoutDialog } from './CheckoutDialog.jsx';
 import { CreateBranchDialog } from './CreateBranchDialog.jsx';
 import { DeleteBranchDialog } from './DeleteBranchDialog.jsx';
 import { MergeDialog } from './MergeDialog.jsx';
+import { MergeIntoDialog } from './MergeIntoDialog.jsx';
 import { StashDialog } from './StashDialog.jsx';
 
 const DIALOGS = {
@@ -9,6 +10,7 @@ const DIALOGS = {
   createBranch: CreateBranchDialog,
   deleteBranch: DeleteBranchDialog,
   merge: MergeDialog,
+  mergeInto: MergeIntoDialog,
   stash: StashDialog,
 };
 

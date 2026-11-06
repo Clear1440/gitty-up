@@ -43,12 +43,27 @@ export function BranchRow({ branch, kind, selected }) {
       disabled: branch.isCurrent || blocked,
       onClick: checkout,
     },
-    {
-      key: 'merge',
-      label: `Merge into ${currentName}`,
-      disabled: branch.isCurrent || blocked,
-      onClick: () => openDialog('merge', { branch: branch.name }),
-    },
+    ...(branch.isCurrent
+      ? []
+      : [
+          {
+            key: 'merge',
+            label: `Merge ${branch.name} into ${currentName}`,
+            disabled: blocked,
+            onClick: () => openDialog('merge', { branch: branch.name }),
+          },
+        ]),
+    // A remote branch can't be committed to, and a detached HEAD has no branch to merge.
+    ...(branch.isCurrent || isRemote || !status.branch
+      ? []
+      : [
+          {
+            key: 'merge-into',
+            label: `Merge ${status.branch} into ${branch.name}`,
+            disabled: blocked,
+            onClick: () => openDialog('mergeInto', { target: branch.name }),
+          },
+        ]),
     {
       key: 'rebase',
       label: `Rebase ${currentName} onto this`,

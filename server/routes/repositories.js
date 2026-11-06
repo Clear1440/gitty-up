@@ -141,6 +141,12 @@ function createGitRouter() {
       noFastForward: noFastForward === true,
     }),
   );
+  action(router, '/merge-into', (path, { target, noFastForward }) =>
+    git.mergeInto(path, {
+      target: requireString(target, 'target'),
+      noFastForward: noFastForward === true,
+    }),
+  );
   action(router, '/rebase', (path, { branch }) =>
     git.rebase(path, { branch: requireString(branch, 'branch') }),
   );
