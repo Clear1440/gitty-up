@@ -528,6 +528,41 @@ export async function commit(repoPath, { message, amend = false, stageAll = fals
   ]);
 }
 
+/** The commit HEAD is on, and whether any remote branch has it. Null with no commits yet. */
+export async function getLastCommit(repoPath) {
+  const [commit] = await getCommits(repoPath, { limit: 1 });
+  if (!commit) return null;
+
+  const { hash, shortHash, subject, parents } = commit;
+  const remoteBranches = await runGit(repoPath, ['branch', '--remotes', '--contains', hash]);
+  return { hash, shortHash, subject, parents, pushed: Boolean(remoteBranches.trim()) };
+}
+
+/**
+ * Takes back the latest commit, leaving its changes staged. Anything else in the index
+ * or working tree stays as it was. `hash` is the commit the user meant to undo, so a
+ * commit made elsewhere since then is never the one taken back. Undoing a commit a
+ * remote already has means force pushing later, so that takes `allowPushed`.
+ */
+export async function undoCommit(repoPath, { hash, allowPushed = false }) {
+  assertCommitHash(hash);
+  const { operation, conflicted } = await getStatus(repoPath);
+  if (operation) throw gitFailure(`Finish the ${operation} before undoing a commit.`);
+  if (conflicted.length > 0) throw gitFailure('Resolve the conflicts before undoing a commit.');
+
+  const last = await getLastCommit(repoPath);
+  if (last?.hash !== hash) throw gitFailure('The latest commit has changed. Try again.');
+  if (last.pushed && !allowPushed) {
+    throw gitFailure('This commit is already on a remote.');
+  }
+
+  // A first commit has no parent to go back to, so its branch stops existing instead.
+  await runGit(
+    repoPath,
+    last.parents.length > 0 ? ['reset', '--soft', 'HEAD~1'] : ['update-ref', '-d', 'HEAD'],
+  );
+}
+
 export async function stashSave(repoPath, { message }) {
   // Git exits 0 on a clean tree, which would read as a stash that never happened.
   const { staged, unstaged, conflicted } = await getStatus(repoPath);

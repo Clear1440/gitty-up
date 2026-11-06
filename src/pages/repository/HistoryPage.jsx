@@ -14,7 +14,7 @@ import { countChangedFiles } from './countChangedFiles.js';
 import { CommitPane } from './history/CommitPane.jsx';
 import { GraphTooltipArea } from './history/GraphTooltipArea.jsx';
 import { findBranchTip, groupHasBranch, groupRefs } from './history/groupRefs.js';
-import { RefContextMenu } from './history/RefContextMenu.jsx';
+import { RefBranchActions } from './history/RefBranchActions.jsx';
 import { WorkingTreePane } from './history/WorkingTreePane.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
 import styles from './HistoryPage.module.css';
@@ -77,8 +77,9 @@ function PullRequestLink({ pullRequest }) {
       rel="noreferrer"
       title={`${draft ? 'Draft pull request' : 'Pull request'} #${number}: ${title}`}
       aria-label={`Open pull request #${number}`}
-      // A click here opens the pull request, not the commit it sits on.
+      // A click here opens the pull request, not the commit it sits on or a checkout.
       onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
     >
       <PullRequestOutlined />
     </a>
@@ -88,7 +89,7 @@ function PullRequestLink({ pullRequest }) {
 /** `focusRequest` plays the pulse around it, and a new value plays it again. */
 function RefTag({ group, pullRequest, focusRequest }) {
   return (
-    <RefContextMenu group={group}>
+    <RefBranchActions group={group}>
       <Tag
         key={focusRequest}
         className={clsx(REF_TAG_STYLES[group.type], focusRequest && styles.focusPulse)}
@@ -101,7 +102,7 @@ function RefTag({ group, pullRequest, focusRequest }) {
         )}
         {pullRequest && <PullRequestLink pullRequest={pullRequest} />}
       </Tag>
-    </RefContextMenu>
+    </RefBranchActions>
   );
 }
 

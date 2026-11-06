@@ -86,6 +86,10 @@ function createGitRouter() {
     response.json(await git.getBranches(request.repository.path));
   });
 
+  router.get('/last-commit', async (request, response) => {
+    response.json(await git.getLastCommit(request.repository.path));
+  });
+
   router.get('/pull-requests', async (request, response) => {
     response.json(await git.getPullRequests(request.repository.path));
   });
@@ -200,6 +204,9 @@ function createGitRouter() {
   );
   action(router, '/commit', (path, { message, amend, stageAll }) =>
     git.commit(path, { message, amend: amend === true, stageAll: stageAll === true }),
+  );
+  action(router, '/undo-commit', (path, { hash, allowPushed }) =>
+    git.undoCommit(path, { hash: requireString(hash, 'hash'), allowPushed: allowPushed === true }),
   );
   action(router, '/stash', (path, { message }) => git.stashSave(path, { message }));
   action(router, '/stash/apply', (path, { ref }) => git.stashApply(path, { ref }));

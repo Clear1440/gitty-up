@@ -19,6 +19,7 @@ import { useStashes } from '../../queries/git.js';
 import { queryKeys } from '../../queries/queryKeys.js';
 import { countChangedFiles } from './countChangedFiles.js';
 import { useRepositoryContext } from './RepositoryContext.js';
+import { useUndoCommitShortcut } from './useUndoCommitShortcut.js';
 import styles from './ActionBar.module.css';
 
 function ActionButton({ label, hint, count = 0, ...buttonProps }) {
@@ -69,6 +70,7 @@ export function ActionBar() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { message, modal } = App.useApp();
+  useUndoCommitShortcut();
 
   const changedFileCount = countChangedFiles(status);
   const midOperation = Boolean(status.operation);

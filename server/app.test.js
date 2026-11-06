@@ -1126,6 +1126,94 @@ describe('history across branches', () => {
   });
 });
 
+describe('undoing the latest commit', () => {
+  const lastCommit = async () => (await request('GET', `${repo.api}/last-commit`)).body;
+  const undo = (body) => request('POST', `${repo.api}/undo-commit`, body);
+  const subject = () => git(repo.work, 'log', '-1', '--format=%s');
+
+  it('takes the commit back and leaves its changes staged', async () => {
+    await writeAndCommit(repo.work, 'new.txt', 'new\n', 'Add new');
+    const { hash, pushed } = await lastCommit();
+
+    const { status } = await undo({ hash });
+
+    expect(pushed).toBe(false);
+    expect(status).toBe(204);
+    expect(subject()).toBe('Initial commit');
+    expect(git(repo.work, 'status', '--porcelain')).toBe('A  new.txt');
+  });
+
+  it('leaves other work in progress as it was', async () => {
+    await writeAndCommit(repo.work, 'new.txt', 'new\n', 'Add new');
+    await fs.writeFile(path.join(repo.work, 'readme.txt'), 'edited\n');
+    const { hash } = await lastCommit();
+
+    await undo({ hash });
+
+    expect(git(repo.work, 'status', '--porcelain').split('\n').sort()).toEqual([
+      ' M readme.txt',
+      'A  new.txt',
+    ]);
+    expect(await fs.readFile(path.join(repo.work, 'readme.txt'), 'utf8')).toBe('edited\n');
+  });
+
+  it('can undo several commits in turn', async () => {
+    await writeAndCommit(repo.work, 'a.txt', 'a\n', 'Add a');
+    await writeAndCommit(repo.work, 'b.txt', 'b\n', 'Add b');
+
+    await undo({ hash: (await lastCommit()).hash });
+    await undo({ hash: (await lastCommit()).hash });
+
+    expect(subject()).toBe('Initial commit');
+    expect(git(repo.work, 'status', '--porcelain').split('\n').sort()).toEqual([
+      'A  a.txt',
+      'A  b.txt',
+    ]);
+  });
+
+  it('needs permission to undo a commit a remote already has', async () => {
+    const { hash, pushed } = await lastCommit();
+    expect(pushed).toBe(true);
+
+    const refused = await undo({ hash });
+    expect(refused.status).toBe(409);
+    expect(subject()).toBe('Initial commit');
+
+    expect((await undo({ hash, allowPushed: true })).status).toBe(204);
+    expect((await lastCommit())).toBeNull();
+  });
+
+  it('refuses when the latest commit is not the one the user saw', async () => {
+    await writeAndCommit(repo.work, 'a.txt', 'a\n', 'Add a');
+    const { hash } = await lastCommit();
+    await writeAndCommit(repo.work, 'b.txt', 'b\n', 'Add b');
+
+    const { status, body } = await undo({ hash });
+
+    expect(status).toBe(409);
+    expect(body.error.message).toMatch(/has changed/);
+    expect(subject()).toBe('Add b');
+  });
+
+  it('refuses during a merge', async () => {
+    git(repo.work, 'switch', '--create', 'topic');
+    await writeAndCommit(repo.work, 'readme.txt', 'theirs\n', 'Change on topic');
+    git(repo.work, 'switch', 'main');
+    await writeAndCommit(repo.work, 'readme.txt', 'ours\n', 'Change on main');
+    await request('POST', `${repo.api}/merge`, { branch: 'topic' });
+    const { hash } = await lastCommit();
+
+    const { status, body } = await undo({ hash });
+
+    expect(status).toBe(409);
+    expect(body.error.message).toMatch(/Finish the merge/);
+  });
+
+  it('rejects a malformed hash', async () => {
+    expect((await undo({ hash: '--hard' })).status).toBe(400);
+  });
+});
+
 describe('committing during a conflict', () => {
   it('refuses, even with stage all, so markers cannot be committed', async () => {
     git(repo.work, 'switch', '-c', 'topic');
@@ -1165,6 +1253,9 @@ describe('empty repositories', () => {
 
     const { body: commits } = await request('GET', `/api/repositories/${linked.id}/commits`);
     expect(commits).toEqual([]);
+
+    const { body: last } = await request('GET', `/api/repositories/${linked.id}/last-commit`);
+    expect(last).toBeNull();
   });
 });
 

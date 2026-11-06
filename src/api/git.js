@@ -10,6 +10,7 @@ export const gitApi = {
   getCommitDetails: (id, hash) => http.get(route(id, `/commits/${hash}`)),
   getCommitDiff: (id, hash, { path, originalPath, fullFile }) =>
     http.get(route(id, `/commits/${hash}/diff`), { path, originalPath, fullFile }),
+  getLastCommit: (id) => http.get(route(id, '/last-commit')),
   getPullRequests: (id) => http.get(route(id, '/pull-requests')),
   getStashes: (id) => http.get(route(id, '/stashes')),
   getDiff: (id, { path, staged, untracked, fullFile }) =>
@@ -44,6 +45,8 @@ export const gitApi = {
   discard: (id, { paths }) => http.post(route(id, '/discard'), { paths }),
   commit: (id, { message, amend, stageAll }) =>
     http.post(route(id, '/commit'), { message, amend, stageAll }),
+  undoCommit: (id, { hash, allowPushed }) =>
+    http.post(route(id, '/undo-commit'), { hash, allowPushed }),
   stash: (id, { message } = {}) => http.post(route(id, '/stash'), { message }),
   stashApply: (id, { ref }) => http.post(route(id, '/stash/apply'), { ref }),
   stashPop: (id, { ref } = {}) => http.post(route(id, '/stash/pop'), { ref }),
