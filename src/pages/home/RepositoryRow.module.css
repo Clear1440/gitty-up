@@ -1,4 +1,5 @@
-.card {
+/* One line per repository, with columns that line up down the page. */
+.row {
   position: relative;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -6,7 +7,7 @@
   transition: border-color 0.15s;
 }
 
-.card:hover {
+.row:hover {
   border-color: var(--color-primary);
 }
 
@@ -15,8 +16,12 @@
 }
 
 .body {
-  display: block;
-  padding: var(--space-4);
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 2fr);
+  align-items: center;
+  gap: var(--space-4);
+  /* The right side leaves room for the options button. */
+  padding: var(--space-2) calc(var(--space-6) + var(--space-3)) var(--space-2) var(--space-3);
   border-radius: inherit;
 }
 
@@ -30,21 +35,22 @@
 
 .menu {
   position: absolute;
-  top: var(--space-2);
+  top: 50%;
   right: var(--space-2);
+  transform: translateY(-50%);
 }
 
 .title {
-  margin: 0 var(--space-6) var(--space-1) 0;
+  margin: 0;
   overflow: hidden;
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .path {
-  margin: 0 0 var(--space-3);
+  margin: 0;
   overflow: hidden;
   color: var(--color-text-muted);
   font-family: var(--font-mono);
@@ -55,10 +61,9 @@
 
 .meta {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
-  margin-bottom: var(--space-2);
+  min-width: 0;
   font-size: var(--font-size-sm);
 }
 
@@ -68,6 +73,12 @@
   font-weight: var(--font-weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A long branch name gives way first, so the counts beside it always show. */
+.syncState,
+.changes {
+  flex: none;
 }
 
 .changes {
@@ -96,6 +107,7 @@
 }
 
 .missing {
+  grid-column: 2 / -1;
   margin: 0;
   color: var(--color-warning);
   font-size: var(--font-size-sm);
@@ -104,52 +116,18 @@
 .stubActions {
   display: flex;
   flex-wrap: wrap;
+  grid-column: 2 / -1;
   gap: var(--space-2);
 }
 
-/* List view: one line per repository, with columns that line up down the page. */
-.row .body {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 2fr);
-  align-items: center;
-  gap: var(--space-4);
-  /* The right side leaves room for the options button. */
-  padding: var(--space-2) calc(var(--space-6) + var(--space-3)) var(--space-2) var(--space-3);
-}
-
-.row .title {
-  margin: 0;
-  font-size: var(--font-size-md);
-}
-
-.row .path,
-.row .meta {
-  margin: 0;
-}
-
-.row .meta {
-  flex-wrap: nowrap;
-  min-width: 0;
-}
-
-.row .missing,
-.row .stubActions {
-  grid-column: 2 / -1;
-}
-
-.row .menu {
-  top: 50%;
-  transform: translateY(-50%);
-}
-
 @media (max-width: 720px) {
-  .row .body {
+  .body {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-1);
   }
 
-  .row .missing,
-  .row .stubActions {
+  .missing,
+  .stubActions {
     grid-column: auto;
   }
 }

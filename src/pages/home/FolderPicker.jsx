@@ -33,8 +33,11 @@ export function useFolderPicker() {
   };
 }
 
-/** `onChange` fires whenever the selection changes. */
-export function FolderPicker({ picker, onChange }) {
+/**
+ * `onChange` fires whenever the selection changes. `selection` adds checkboxes to
+ * the folder list, and `list` replaces that list with something else.
+ */
+export function FolderPicker({ picker, onChange, selection, list }) {
   const { folder, setFolder, setBrowsing, selected, listing, isLoading } = picker;
 
   const goTo = (path) => {
@@ -73,7 +76,14 @@ export function FolderPicker({ picker, onChange }) {
           }}
         />
       </Space.Compact>
-      <FolderList directories={listing?.directories} isLoading={isLoading} onOpen={goTo} />
+      {list ?? (
+        <FolderList
+          directories={listing?.directories}
+          isLoading={isLoading}
+          onOpen={goTo}
+          selection={selection}
+        />
+      )}
     </>
   );
 }

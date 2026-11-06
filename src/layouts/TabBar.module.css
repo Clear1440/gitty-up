@@ -46,3 +46,16 @@
   color: var(--color-text) !important;
   font-weight: var(--font-weight-medium);
 }
+
+.tabs :global(.ant-tabs-tab).dragging {
+  opacity: 0.5;
+}
+
+/* Marks where a dragged tab would land. */
+.tabs :global(.ant-tabs-tab).dropBefore {
+  box-shadow: inset 2px 0 0 var(--color-primary);
+}
+
+.tabs :global(.ant-tabs-tab).dropAfter {
+  box-shadow: inset -2px 0 0 var(--color-primary);
+}

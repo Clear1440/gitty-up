@@ -2,6 +2,7 @@ import { App } from 'antd';
 import { useEffect, useRef } from 'react';
 import { gitApi } from '../../api';
 import { useRepositoryContext } from './RepositoryContext.js';
+import { restoreCommitMessage } from './useCommitDraft.js';
 
 const EDITABLE = 'input, textarea, select, [contenteditable="true"]';
 
@@ -15,9 +16,10 @@ export function isUndoCommitKey(event) {
 }
 
 /**
- * Ctrl+Z, or Cmd+Z, undoes the latest commit and keeps its changes staged. Git can
- * still reach the commit, so this goes straight ahead. The exception is a commit that
- * is already on a remote, as undoing that one means force pushing later.
+ * Ctrl+Z, or Cmd+Z, undoes the latest commit, keeping its changes staged and putting its
+ * message back in the commit box. Git can still reach the commit, so this goes straight
+ * ahead. The exception is a commit that is already on a remote, as undoing that one
+ * means force pushing later.
  */
 export function useUndoCommitShortcut() {
   const { repository, run, isBusy } = useRepositoryContext();
@@ -32,9 +34,14 @@ export function useUndoCommitShortcut() {
         return;
       }
 
-      const { hash, subject, pushed } = commit;
+      const { hash, subject, message: commitMessage, pushed } = commit;
+      const undoCommit = async (input) => {
+        const undone = await run('undoCommit', { hash, subject, ...input });
+        if (undone) restoreCommitMessage(repository.id, commitMessage);
+      };
+
       if (!pushed) {
-        await run('undoCommit', { hash, subject });
+        await undoCommit();
         return;
       }
       modal.confirm({
@@ -44,7 +51,7 @@ export function useUndoCommitShortcut() {
         okText: 'Undo commit',
         okButtonProps: { danger: true },
         autoFocusButton: 'cancel',
-        onOk: () => run('undoCommit', { hash, subject, allowPushed: true }),
+        onOk: () => undoCommit({ allowPushed: true }),
       });
     };
 

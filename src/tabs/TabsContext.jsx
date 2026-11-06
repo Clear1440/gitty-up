@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { readStored, writeStored } from '../utils/storage.js';
-import { removeTab, rememberTab } from './tabsModel.js';
+import { moveTab, openTab, removeTab, rememberTab } from './tabsModel.js';
 
 const STORAGE_KEY = 'gity-up.tabs';
 
@@ -18,6 +18,9 @@ export function TabsProvider({ children }) {
     () => ({
       rememberTab: (repositoryId, path) =>
         setTabs((current) => rememberTab(current, repositoryId, path)),
+      openTab: (repositoryId, path) => setTabs((current) => openTab(current, repositoryId, path)),
+      moveTab: (repositoryId, targetId, after) =>
+        setTabs((current) => moveTab(current, repositoryId, targetId, after)),
       closeTab: (repositoryId) => setTabs((current) => removeTab(current, repositoryId)),
     }),
     [],

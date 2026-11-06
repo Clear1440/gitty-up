@@ -39,6 +39,18 @@
   background: var(--color-bg);
 }
 
+.folderEntry {
+  display: flex;
+  align-items: center;
+}
+
+.checkSlot {
+  display: flex;
+  flex: none;
+  justify-content: center;
+  width: var(--space-5);
+}
+
 .folderRow {
   display: flex;
   align-items: center;
@@ -79,6 +91,47 @@
   border-color: var(--color-accent);
   background: var(--color-accent-subtle);
   color: var(--color-accent);
+}
+
+.scanRow {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.scanRow:hover {
+  background: var(--color-surface-hover);
+}
+
+.scanRow :global(.ant-checkbox-label) {
+  min-width: 0;
+}
+
+.scanPath {
+  display: block;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.includeNested {
+  margin-bottom: var(--space-3);
+}
+
+.groupName {
+  display: block;
+}
+
+.groupName > span {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
 }
 
 .noFolders {

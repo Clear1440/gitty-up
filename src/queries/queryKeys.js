@@ -2,6 +2,7 @@ const ROOT = 'repositories';
 
 export const queryKeys = {
   repositoryList: () => [ROOT, 'list'],
+  repositoryGroups: () => [ROOT, 'groups'],
   /** Prefix of everything cached for one repository. */
   repository: (id) => [ROOT, 'detail', id],
   status: (id) => [ROOT, 'detail', id, 'status'],
@@ -14,6 +15,7 @@ export const queryKeys = {
   /** Outside `repository` on purpose: git actions must not spend GitHub's rate limit. */
   pullRequests: (id) => [ROOT, 'pull-requests', id],
   directories: (path) => ['directories', path ?? null],
+  repositoryScan: (path) => ['repository-scan', path],
 };
 
 export const mutationKeys = {

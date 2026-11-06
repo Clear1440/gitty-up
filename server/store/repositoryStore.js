@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -19,22 +19,34 @@ function createEntry(repositoryPath) {
   };
 }
 
+const createGroup = (name) => ({ id: randomUUID().slice(0, 12), name });
+
+const findGroupByName = (groups, name) =>
+  groups.find((group) => group.name.toLowerCase() === name.toLowerCase());
+
+function withoutGroup(repository) {
+  const ungrouped = { ...repository };
+  delete ungrouped.groupId;
+  return ungrouped;
+}
+
 /**
- * Persists the linked repositories as a JSON file in the data directory.
+ * Persists the linked repositories and their groups as a JSON file in the data directory.
  * A stub is an entry known only by its remote URL. Its `path` stays null until
  * it is cloned or located, when `resolveStub` swaps it for a real entry.
+ * A repository belongs to at most one group, through its optional `groupId`.
  */
 export class RepositoryStore {
   #filePath;
-  #repositories = null;
+  #data = null;
 
   constructor(dataDir) {
     this.#filePath = path.join(dataDir, FILE_NAME);
   }
 
   async list() {
-    this.#repositories ??= await this.#load();
-    return [...this.#repositories];
+    this.#data ??= await this.#load();
+    return [...this.#data.repositories];
   }
 
   async get(id) {
@@ -47,8 +59,32 @@ export class RepositoryStore {
     const existing = await this.get(repository.id);
     if (existing) return existing;
 
-    await this.#save([...(await this.list()), repository]);
+    await this.#save({ repositories: [...(await this.list()), repository] });
     return repository;
+  }
+
+  /**
+   * Links many repositories in one write. With a `groupName` they join that group,
+   * creating it if needed, except for any already placed in a group of their own.
+   */
+  async addMany(repositoryPaths, { groupName } = {}) {
+    if (repositoryPaths.length === 0) return;
+
+    const byId = new Map((await this.list()).map((repository) => [repository.id, repository]));
+    const groups = await this.listGroups();
+    const group = groupName && (findGroupByName(groups, groupName) ?? createGroup(groupName));
+
+    for (const repositoryPath of repositoryPaths) {
+      const entry = createEntry(repositoryPath);
+      const repository = byId.get(entry.id) ?? entry;
+      const joinsGroup = group && !repository.groupId;
+      byId.set(entry.id, joinsGroup ? { ...repository, groupId: group.id } : repository);
+    }
+
+    await this.#save({
+      repositories: [...byId.values()],
+      groups: group && !groups.includes(group) ? [...groups, group] : groups,
+    });
   }
 
   /** Adds a stub. Adding the same URL twice returns the existing entry. */
@@ -58,11 +94,11 @@ export class RepositoryStore {
     if (existing) return existing;
 
     const stub = { id, name, path: null, remoteUrl: url, linkedAt: new Date().toISOString() };
-    await this.#save([...(await this.list()), stub]);
+    await this.#save({ repositories: [...(await this.list()), stub] });
     return stub;
   }
 
-  /** Turns a stub into a linked repository, keeping its place in the list. */
+  /** Turns a stub into a linked repository, keeping its place in the list and its group. */
   async resolveStub(stubId, repositoryPath) {
     const repository = createEntry(repositoryPath);
     const existing = await this.get(repository.id);
@@ -71,31 +107,86 @@ export class RepositoryStore {
       return existing;
     }
     const repositories = await this.list();
-    await this.#save(repositories.map((entry) => (entry.id === stubId ? repository : entry)));
-    return repository;
+    const { groupId } = repositories.find((entry) => entry.id === stubId);
+    const resolved = groupId ? { ...repository, groupId } : repository;
+    await this.#save({
+      repositories: repositories.map((entry) => (entry.id === stubId ? resolved : entry)),
+    });
+    return resolved;
   }
 
   async remove(id) {
     const repositories = await this.list();
-    await this.#save(repositories.filter((repository) => repository.id !== id));
+    await this.#save({ repositories: repositories.filter((repository) => repository.id !== id) });
+  }
+
+  async listGroups() {
+    await this.list();
+    return [...this.#data.groups];
+  }
+
+  async getGroup(id) {
+    return (await this.listGroups()).find((group) => group.id === id) ?? null;
+  }
+
+  /** Adds a group. A name already in use returns that group. */
+  async addGroup(name) {
+    const groups = await this.listGroups();
+    const existing = findGroupByName(groups, name);
+    if (existing) return existing;
+
+    const group = createGroup(name);
+    await this.#save({ groups: [...groups, group] });
+    return group;
+  }
+
+  async renameGroup(id, name) {
+    const groups = await this.listGroups();
+    const renamed = groups.map((group) => (group.id === id ? { ...group, name } : group));
+    await this.#save({ groups: renamed });
+    return renamed.find((group) => group.id === id);
+  }
+
+  /** Removes a group. Its repositories stay linked and become ungrouped. */
+  async removeGroup(id) {
+    const [repositories, groups] = await Promise.all([this.list(), this.listGroups()]);
+    await this.#save({
+      repositories: repositories.map((repository) =>
+        repository.groupId === id ? withoutGroup(repository) : repository,
+      ),
+      groups: groups.filter((group) => group.id !== id),
+    });
+  }
+
+  /** Moves a repository into a group, or out of any group when `groupId` is null. */
+  async setGroup(id, groupId) {
+    const repositories = await this.list();
+    await this.#save({
+      repositories: repositories.map((repository) => {
+        if (repository.id !== id) return repository;
+        return groupId ? { ...repository, groupId } : withoutGroup(repository);
+      }),
+    });
   }
 
   async #load() {
     try {
-      const { repositories } = JSON.parse(await fs.readFile(this.#filePath, 'utf8'));
-      return repositories;
+      const { repositories, groups = [] } = JSON.parse(await fs.readFile(this.#filePath, 'utf8'));
+      return { repositories, groups };
     } catch (error) {
-      if (error.code === 'ENOENT') return [];
+      if (error.code === 'ENOENT') return { repositories: [], groups: [] };
       throw error;
     }
   }
 
-  async #save(repositories) {
+  /** Writes the given parts of the data, keeping the rest as it is. */
+  async #save(changes) {
+    const data = { ...this.#data, ...changes };
     await fs.mkdir(path.dirname(this.#filePath), { recursive: true });
     // Write then rename, so a crash can never leave a half-written file.
     const temporaryPath = `${this.#filePath}.tmp`;
-    await fs.writeFile(temporaryPath, JSON.stringify({ repositories }, null, 2));
+    await fs.writeFile(temporaryPath, JSON.stringify(data, null, 2));
     await fs.rename(temporaryPath, this.#filePath);
-    this.#repositories = repositories;
+    this.#data = data;
   }
 }

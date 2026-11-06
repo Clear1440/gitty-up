@@ -131,6 +131,154 @@ describe('linked repositories', () => {
   });
 });
 
+describe('repository groups', () => {
+  const list = async () => (await request('GET', '/api/repositories')).body;
+  const groupIdOf = async (id) => (await list()).find((entry) => entry.id === id).groupId;
+
+  it('moves a repository into a group and back out', async () => {
+    const { body: group } = await request('POST', '/api/repositories/groups', { name: 'Work' });
+
+    await request('PUT', `${repo.api}/group`, { groupId: group.id });
+    expect(await groupIdOf(repo.id)).toBe(group.id);
+
+    await request('PUT', `${repo.api}/group`, { groupId: null });
+    expect(await groupIdOf(repo.id)).toBeUndefined();
+  });
+
+  it('reuses a group when its name is added again', async () => {
+    const first = await request('POST', '/api/repositories/groups', { name: 'Same' });
+    const second = await request('POST', '/api/repositories/groups', { name: 'same' });
+    expect(second.body.id).toBe(first.body.id);
+  });
+
+  it('renames a group', async () => {
+    const { body: group } = await request('POST', '/api/repositories/groups', { name: 'Old' });
+    await request('PATCH', `/api/repositories/groups/${group.id}`, { name: 'New' });
+    const { body: groups } = await request('GET', '/api/repositories/groups');
+    expect(groups.find(({ id }) => id === group.id).name).toBe('New');
+  });
+
+  it('keeps repositories linked when their group is deleted', async () => {
+    const { body: group } = await request('POST', '/api/repositories/groups', { name: 'Gone' });
+    await request('PUT', `${repo.api}/group`, { groupId: group.id });
+
+    await request('DELETE', `/api/repositories/groups/${group.id}`);
+
+    expect(await groupIdOf(repo.id)).toBeUndefined();
+    const { body: groups } = await request('GET', '/api/repositories/groups');
+    expect(groups.some(({ id }) => id === group.id)).toBe(false);
+  });
+
+  it('refuses a group that does not exist', async () => {
+    const { status } = await request('PUT', `${repo.api}/group`, { groupId: 'nope' });
+    expect(status).toBe(404);
+  });
+
+  it('keeps a stub in its group once it is located', async () => {
+    const { body: stub } = await request('POST', '/api/repositories/stubs', {
+      url: `https://example.com/owner/grouped-${repositoryCount}.git`,
+    });
+    const { body: group } = await request('POST', '/api/repositories/groups', { name: 'Stubs' });
+    await request('PUT', `/api/repositories/${stub.id}/group`, { groupId: group.id });
+
+    const other = path.join(path.dirname(repo.work), 'other');
+    await fs.mkdir(other);
+    git(other, 'init');
+    const { body } = await request('POST', `/api/repositories/${stub.id}/locate`, { path: other });
+
+    expect(body.groupId).toBe(group.id);
+  });
+});
+
+describe('bulk linking', () => {
+  let parent;
+
+  beforeEach(async () => {
+    parent = await fs.mkdtemp(path.join(sandbox, 'bulk-'));
+    for (const folder of ['alpha', path.join('nested', 'beta')]) {
+      await fs.mkdir(path.join(parent, folder), { recursive: true });
+      git(path.join(parent, folder), 'init');
+    }
+    await fs.mkdir(path.join(parent, 'node_modules', 'skipped'), { recursive: true });
+    git(path.join(parent, 'node_modules', 'skipped'), 'init');
+  });
+
+  const scan = (folder) =>
+    request('GET', `/api/filesystem/repositories?path=${encodeURIComponent(folder)}`);
+
+  it('finds nested repositories and skips installed packages', async () => {
+    const { body } = await scan(parent);
+    expect(body.repositories.map(({ name }) => name)).toEqual(['alpha', 'beta']);
+    expect(body.repositories[1].relativePath).toBe(path.join('nested', 'beta'));
+    expect(body.name).toBe(path.basename(parent));
+    expect(body.truncated).toBe(false);
+  });
+
+  it('finds repositories inside another repository, and the folder itself', async () => {
+    git(parent, 'init');
+    const { body } = await scan(parent);
+    expect(body.repositories.map(({ relativePath }) => relativePath)).toContain('.');
+    expect(body.repositories).toHaveLength(3);
+  });
+
+  it('refuses to scan a folder that cannot be read', async () => {
+    expect((await scan(path.join(parent, 'missing'))).status).toBe(400);
+  });
+
+  it('links every folder into one group', async () => {
+    const paths = (await scan(parent)).body.repositories.map((entry) => entry.path);
+    const groupName = path.basename(parent);
+
+    const { status, body } = await request('POST', '/api/repositories/bulk', { paths, groupName });
+
+    expect(status).toBe(201);
+    expect(body).toEqual({ linkedCount: 2, failures: [] });
+    const { body: groups } = await request('GET', '/api/repositories/groups');
+    const group = groups.find(({ name }) => name === groupName);
+    const { body: repositories } = await request('GET', '/api/repositories');
+    const members = repositories.filter(({ groupId }) => groupId === group.id);
+    expect(members.map(({ name }) => name).sort()).toEqual(['alpha', 'beta']);
+  });
+
+  it('links without a group when none is named', async () => {
+    const paths = [path.join(parent, 'alpha')];
+    await request('POST', '/api/repositories/bulk', { paths });
+    const { body: repositories } = await request('GET', '/api/repositories');
+    const linked = repositories.find((entry) => entry.name === 'alpha' && !entry.groupId);
+    expect(linked).toBeDefined();
+  });
+
+  it('links what it can and reports the rest', async () => {
+    const plain = path.join(parent, 'plain');
+    await fs.mkdir(plain);
+    const { body } = await request('POST', '/api/repositories/bulk', {
+      paths: [path.join(parent, 'alpha'), plain],
+    });
+    expect(body.linkedCount).toBe(1);
+    expect(body.failures).toHaveLength(1);
+    expect(body.failures[0].path).toBe(plain);
+  });
+
+  it('leaves a repository in the group it already chose', async () => {
+    const { body: group } = await request('POST', '/api/repositories/groups', { name: 'Mine' });
+    await request('PUT', `${repo.api}/group`, { groupId: group.id });
+
+    await request('POST', '/api/repositories/bulk', { paths: [repo.work], groupName: 'Other' });
+
+    const { body } = await request('GET', repo.api);
+    expect(body.groupId).toBe(group.id);
+  });
+
+  it('creates no group when nothing could be linked', async () => {
+    const plain = path.join(parent, 'plain');
+    await fs.mkdir(plain);
+    const groupName = `empty-${path.basename(parent)}`;
+    await request('POST', '/api/repositories/bulk', { paths: [plain], groupName });
+    const { body: groups } = await request('GET', '/api/repositories/groups');
+    expect(groups.some(({ name }) => name === groupName)).toBe(false);
+  });
+});
+
 describe('repositories added from git', () => {
   let remoteUrl;
   let stub;
@@ -1141,6 +1289,17 @@ describe('undoing the latest commit', () => {
     expect(status).toBe(204);
     expect(subject()).toBe('Initial commit');
     expect(git(repo.work, 'status', '--porcelain')).toBe('A  new.txt');
+  });
+
+  it('reports the whole message, so it can be used again', async () => {
+    await fs.writeFile(path.join(repo.work, 'new.txt'), 'new\n');
+    git(repo.work, 'add', '--all');
+    git(repo.work, 'commit', '--message', 'Add new', '--message', 'With a reason why.');
+
+    const { subject: title, message } = await lastCommit();
+
+    expect(title).toBe('Add new');
+    expect(message).toBe('Add new\n\nWith a reason why.');
   });
 
   it('leaves other work in progress as it was', async () => {

@@ -13,16 +13,36 @@ export function useRepository(repositoryId) {
   });
 }
 
-function useRepositoryListMutation(mutationFn) {
+export function useRepositoryGroups() {
+  return useQuery({ queryKey: queryKeys.repositoryGroups(), queryFn: repositoriesApi.listGroups });
+}
+
+function useInvalidatingMutation(mutationFn, ...queryKeysToRefresh) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.repositoryList() }),
+    onSuccess: () =>
+      Promise.all(
+        queryKeysToRefresh.map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+      ),
   });
+}
+
+function useRepositoryListMutation(mutationFn) {
+  return useInvalidatingMutation(mutationFn, queryKeys.repositoryList());
 }
 
 export function useLinkRepository() {
   return useRepositoryListMutation(repositoriesApi.link);
+}
+
+/** Can also create a group, so both lists need refreshing. */
+export function useLinkRepositories() {
+  return useInvalidatingMutation(
+    repositoriesApi.linkMany,
+    queryKeys.repositoryList(),
+    queryKeys.repositoryGroups(),
+  );
 }
 
 export function useUnlinkRepository() {
@@ -43,10 +63,44 @@ export function useLocateRepository(repositoryId) {
   return useRepositoryListMutation((path) => repositoriesApi.locate(repositoryId, path));
 }
 
+export function useSetRepositoryGroup() {
+  return useRepositoryListMutation(({ repositoryId, groupId }) =>
+    repositoriesApi.setGroup(repositoryId, groupId),
+  );
+}
+
+export function useCreateGroup() {
+  return useInvalidatingMutation(repositoriesApi.createGroup, queryKeys.repositoryGroups());
+}
+
+export function useRenameGroup() {
+  return useInvalidatingMutation(
+    ({ groupId, name }) => repositoriesApi.renameGroup(groupId, name),
+    queryKeys.repositoryGroups(),
+  );
+}
+
+export function useDeleteGroup() {
+  return useInvalidatingMutation(
+    repositoriesApi.deleteGroup,
+    queryKeys.repositoryList(),
+    queryKeys.repositoryGroups(),
+  );
+}
+
 export function useDirectories(path) {
   return useQuery({
     queryKey: queryKeys.directories(path),
     queryFn: () => filesystemApi.listDirectories(path),
     placeholderData: keepPreviousData,
+  });
+}
+
+/** Every repository inside `path`, nested ones included. Idle until `path` is set. */
+export function useRepositoryScan(path) {
+  return useQuery({
+    queryKey: queryKeys.repositoryScan(path),
+    queryFn: () => filesystemApi.findRepositories(path),
+    enabled: Boolean(path),
   });
 }

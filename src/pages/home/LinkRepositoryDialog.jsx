@@ -22,7 +22,7 @@ export function LinkRepositoryDialog({ onClose }) {
 
   const fromGit = source === 'git';
 
-  // A stub has nothing to open yet, so the dialog returns to its card on the list.
+  // A stub has nothing to open yet, so the dialog returns to its row on the list.
   const submitUrl = async () => {
     try {
       await addStub.mutateAsync(url.trim());
@@ -52,7 +52,7 @@ export function LinkRepositoryDialog({ onClose }) {
       {fromGit ? (
         <>
           <p className={styles.hint}>
-            Paste the repository’s URL. It gets a card where you can clone it, or locate a copy
+            Paste the repository’s URL. It gets a row where you can clone it, or locate a copy
             you already have.
           </p>
           <Input

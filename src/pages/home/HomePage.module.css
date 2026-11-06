@@ -28,17 +28,13 @@
 .headerActions {
   display: flex;
   gap: var(--space-2);
-  width: min(100%, 620px);
+  width: min(100%, 720px);
 }
 
-.viewToggle {
-  flex: none;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: var(--space-3);
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
 .list {
@@ -66,6 +62,13 @@
 .emptyState p {
   margin: 0 0 var(--space-5);
   color: var(--color-text-muted);
+}
+
+.emptyActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: center;
 }
 
 .noMatches {

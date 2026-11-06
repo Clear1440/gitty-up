@@ -534,8 +534,18 @@ export async function getLastCommit(repoPath) {
   if (!commit) return null;
 
   const { hash, shortHash, subject, parents } = commit;
-  const remoteBranches = await runGit(repoPath, ['branch', '--remotes', '--contains', hash]);
-  return { hash, shortHash, subject, parents, pushed: Boolean(remoteBranches.trim()) };
+  const [message, remoteBranches] = await Promise.all([
+    runGit(repoPath, ['log', '-1', '--format=%B', hash, '--']),
+    runGit(repoPath, ['branch', '--remotes', '--contains', hash]),
+  ]);
+  return {
+    hash,
+    shortHash,
+    subject,
+    message: message.trim(),
+    parents,
+    pushed: Boolean(remoteBranches.trim()),
+  };
 }
 
 /**

@@ -58,7 +58,7 @@ const GIT_ACTIONS = {
   undoCommit: {
     run: gitApi.undoCommit,
     title: 'Undo commit',
-    success: ({ subject }) => `Undid "${subject}". Its changes are staged.`,
+    success: ({ subject }) => `Undid "${subject}". Its changes and message are ready to commit.`,
   },
   stash: { run: gitApi.stash, title: 'Stash', success: () => 'Changes stashed' },
   stashApply: { run: gitApi.stashApply, title: 'Apply stash', success: () => 'Stash applied' },

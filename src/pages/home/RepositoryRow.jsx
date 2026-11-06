@@ -4,6 +4,7 @@ import {
   DisconnectOutlined,
   EditOutlined,
   FolderOpenOutlined,
+  FolderOutlined,
   MoreOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
@@ -14,16 +15,23 @@ import { Link } from 'react-router';
 import { AheadBehind } from '../../components/AheadBehind.jsx';
 import { RelativeTime } from '../../components/RelativeTime.jsx';
 import { paths } from '../../paths.js';
-import { useUnlinkRepository } from '../../queries/repositories.js';
+import {
+  useCreateGroup,
+  useSetRepositoryGroup,
+  useUnlinkRepository,
+} from '../../queries/repositories.js';
 import { useTabs } from '../../tabs/TabsContext.jsx';
-import styles from './RepositoryCard.module.css';
+import { GroupNameDialog } from './GroupNameDialog.jsx';
+import styles from './RepositoryRow.module.css';
 import { CloneRepositoryDialog, LocateRepositoryDialog } from './StubDialogs.jsx';
+
+const MIDDLE_BUTTON = 1;
 
 function Identity({ repository }) {
   const location = repository.path ?? repository.remoteUrl;
   return (
     <div className={styles.identity}>
-      <h2 className={styles.title}>{repository.name}</h2>
+      <h3 className={styles.title}>{repository.name}</h3>
       <p className={styles.path} title={location}>
         {location}
       </p>
@@ -39,12 +47,14 @@ function BranchLabel({ summary }) {
   );
 }
 
-function CardStatus({ summary }) {
+function RowStatus({ summary }) {
   return (
     <>
       <div className={styles.meta}>
         <BranchLabel summary={summary} />
-        <AheadBehind ahead={summary.ahead} behind={summary.behind} />
+        <span className={styles.syncState}>
+          <AheadBehind ahead={summary.ahead} behind={summary.behind} />
+        </span>
         {summary.changeCount > 0 && (
           <span className={styles.changes}>
             <EditOutlined /> {summary.changeCount}
@@ -94,11 +104,32 @@ function StubBody({ repository }) {
   );
 }
 
-export function RepositoryCard({ repository, view = 'card' }) {
+export function RepositoryRow({ repository, groups }) {
   const { modal, notification } = App.useApp();
   const unlink = useUnlinkRepository();
-  const { closeTab } = useTabs();
+  const setGroup = useSetRepositoryGroup();
+  const createGroup = useCreateGroup();
+  const [naming, setNaming] = useState(false);
+  const { closeTab, openTab } = useTabs();
   const isStub = repository.path === null;
+
+  const openInBackground = (event) => {
+    event.preventDefault();
+    openTab(repository.id, paths.repository(repository.id));
+  };
+
+  const moveToGroup = async (groupId) => {
+    try {
+      await setGroup.mutateAsync({ repositoryId: repository.id, groupId });
+    } catch (error) {
+      notification.error({ title: 'Could not move the repository', description: error.message });
+    }
+  };
+
+  const moveToNewGroup = async (name) => {
+    const group = await createGroup.mutateAsync(name);
+    await setGroup.mutateAsync({ repositoryId: repository.id, groupId: group.id });
+  };
 
   const confirmUnlink = () => {
     modal.confirm({
@@ -119,25 +150,47 @@ export function RepositoryCard({ repository, view = 'card' }) {
     });
   };
 
+  const groupItems = [
+    ...groups.map((group) => ({
+      key: `group-${group.id}`,
+      label: group.name,
+      disabled: group.id === repository.groupId,
+      onClick: () => moveToGroup(group.id),
+    })),
+    ...(groups.length > 0 ? [{ type: 'divider' }] : []),
+    ...(repository.groupId
+      ? [{ key: 'ungroup', label: 'Remove from group', onClick: () => moveToGroup(null) }]
+      : []),
+    { key: 'new-group', label: 'New group…', onClick: () => setNaming(true) },
+  ];
+
   const menuItems = [
+    { key: 'group', label: 'Move to group', icon: <FolderOutlined />, children: groupItems },
     { key: 'unlink', label: 'Unlink', icon: <DisconnectOutlined />, onClick: confirmUnlink },
   ];
 
   return (
-    <article
-      className={clsx(
-        styles.card,
-        view === 'list' && styles.row,
-        !repository.available && styles.unavailable,
-      )}
-    >
+    <article className={clsx(styles.row, !repository.available && styles.unavailable)}>
       {isStub ? (
         <StubBody repository={repository} />
       ) : (
-        <Link className={clsx(styles.body, styles.link)} to={paths.repository(repository.id)}>
+        <Link
+          className={clsx(styles.body, styles.link)}
+          to={paths.repository(repository.id)}
+          onClick={(event) => {
+            if (event.shiftKey) openInBackground(event);
+          }}
+          onAuxClick={(event) => {
+            if (event.button === MIDDLE_BUTTON) openInBackground(event);
+          }}
+          onMouseDown={(event) => {
+            // Stops the browser's autoscroll and shift-click text selection.
+            if (event.button === MIDDLE_BUTTON || event.shiftKey) event.preventDefault();
+          }}
+        >
           <Identity repository={repository} />
           {repository.available ? (
-            <CardStatus summary={repository.summary} />
+            <RowStatus summary={repository.summary} />
           ) : (
             <p className={styles.missing}>
               <WarningOutlined /> Folder not found
@@ -153,6 +206,14 @@ export function RepositoryCard({ repository, view = 'card' }) {
           aria-label={`Options for ${repository.name}`}
         />
       </Dropdown>
+      {naming && (
+        <GroupNameDialog
+          title="New group"
+          okText="Create and move"
+          onSave={moveToNewGroup}
+          onClose={() => setNaming(false)}
+        />
+      )}
     </article>
   );
 }

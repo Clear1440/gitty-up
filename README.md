@@ -93,7 +93,7 @@ Use tokens in stylesheets rather than raw colors or sizes, so the look stays eas
 | `git/gitService.js`  | One function per git operation                              |
 | `git/parsers.js`     | Turns git's machine-readable output into objects            |
 | `git/runGit.js`      | Runs git without a shell, with timeouts                     |
-| `store/`             | The list of linked repositories                             |
+| `store/`             | The list of linked repositories and their groups            |
 
 ## Security
 

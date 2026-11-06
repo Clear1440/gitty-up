@@ -3,9 +3,12 @@ import { Router } from 'express';
 import { badRequest, notFound } from '../errors.js';
 import * as git from '../git/gitService.js';
 import { parseRemoteUrl } from '../git/remoteUrl.js';
+import { mapWithLimit } from '../utils/mapWithLimit.js';
 
 const DEFAULT_COMMIT_PAGE_SIZE = 100;
 const MAX_COMMIT_PAGE_SIZE = 500;
+/** How many repositories to run git on at once. */
+const GIT_CONCURRENCY = 8;
 
 function requireString(value, name) {
   if (typeof value !== 'string' || !value.trim()) {
@@ -19,6 +22,11 @@ function requirePaths(paths) {
     Array.isArray(paths) && paths.length > 0 && paths.every((path) => typeof path === 'string');
   if (!isValid) throw badRequest('"paths" must be a non-empty list of file paths.');
   return paths;
+}
+
+function optionalString(value, name) {
+  if (value === undefined || value === null) return undefined;
+  return requireString(value, name).trim();
 }
 
 const optionalPaths = (paths) => (paths === undefined ? undefined : requirePaths(paths));
@@ -52,6 +60,21 @@ async function assertDirectory(folderPath) {
 async function resolveFolder(folderPath) {
   await assertDirectory(folderPath);
   return git.resolveWorkingTree(folderPath);
+}
+
+/** Resolves each folder on its own, so one bad folder cannot fail the rest. */
+async function resolveFolders(folderPaths) {
+  const results = await mapWithLimit(folderPaths, GIT_CONCURRENCY, async (folderPath) => {
+    try {
+      return { workingTree: await resolveFolder(folderPath.trim()) };
+    } catch (error) {
+      return { failure: { path: folderPath, message: error.message } };
+    }
+  });
+  return {
+    workingTrees: results.flatMap(({ workingTree }) => workingTree ?? []),
+    failures: results.flatMap(({ failure }) => failure ?? []),
+  };
 }
 
 function requireStub(repository) {
@@ -216,6 +239,36 @@ function createGitRouter() {
   return router;
 }
 
+function createGroupsRouter(store) {
+  const router = Router();
+
+  router.param('groupId', async (request, _response, next, id) => {
+    if (await store.getGroup(id)) next();
+    else next(notFound('That group does not exist.'));
+  });
+
+  router.get('/', async (_request, response) => {
+    response.json(await store.listGroups());
+  });
+
+  router.post('/', async (request, response) => {
+    const name = requireString(request.body?.name, 'name').trim();
+    response.status(201).json(await store.addGroup(name));
+  });
+
+  router.patch('/:groupId', async (request, response) => {
+    const name = requireString(request.body?.name, 'name').trim();
+    response.json(await store.renameGroup(request.params.groupId, name));
+  });
+
+  router.delete('/:groupId', async (request, response) => {
+    await store.removeGroup(request.params.groupId);
+    response.status(204).end();
+  });
+
+  return router;
+}
+
 export function createRepositoriesRouter(store) {
   const router = Router();
 
@@ -230,13 +283,22 @@ export function createRepositoriesRouter(store) {
   });
 
   router.get('/', async (_request, response) => {
-    response.json(await Promise.all((await store.list()).map(withSummary)));
+    response.json(await mapWithLimit(await store.list(), GIT_CONCURRENCY, withSummary));
   });
 
   router.post('/', async (request, response) => {
     const workingTree = await resolveFolder(requireString(request.body?.path, 'path').trim());
     response.status(201).json(await withSummary(await store.add(workingTree)));
   });
+
+  router.post('/bulk', async (request, response) => {
+    const groupName = optionalString(request.body?.groupName, 'groupName');
+    const { workingTrees, failures } = await resolveFolders(requirePaths(request.body?.paths));
+    await store.addMany(workingTrees, { groupName });
+    response.status(201).json({ linkedCount: new Set(workingTrees).size, failures });
+  });
+
+  router.use('/groups', createGroupsRouter(store));
 
   router.post('/stubs', async (request, response) => {
     const remote = parseRemoteUrl(requireString(request.body?.url, 'url'));
@@ -249,6 +311,15 @@ export function createRepositoriesRouter(store) {
 
   router.delete('/:repositoryId', async (request, response) => {
     await store.remove(request.repository.id);
+    response.status(204).end();
+  });
+
+  router.put('/:repositoryId/group', async (request, response) => {
+    const groupId = request.body?.groupId ?? null;
+    if (groupId !== null && !(await store.getGroup(groupId))) {
+      throw notFound('That group does not exist.');
+    }
+    await store.setGroup(request.repository.id, groupId);
     response.status(204).end();
   });
 

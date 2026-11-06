@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findNeighbourTab, rememberTab, removeTab } from './tabsModel.js';
+import { findNeighbourTab, moveTab, openTab, rememberTab, removeTab } from './tabsModel.js';
 
 const tab = (repositoryId) => ({ repositoryId, path: `/${repositoryId}` });
 
@@ -16,6 +16,36 @@ describe('rememberTab', () => {
   it('keeps the same array when nothing changed, so renders can bail out', () => {
     const tabs = [tab('a')];
     expect(rememberTab(tabs, 'a', '/a')).toBe(tabs);
+  });
+});
+
+describe('openTab', () => {
+  it('opens new tabs at the end', () => {
+    expect(openTab([tab('a')], 'b', '/b')).toEqual([tab('a'), tab('b')]);
+  });
+
+  it('leaves an open tab where it was, on the page it was showing', () => {
+    const tabs = [tab('a')];
+    expect(openTab(tabs, 'a', '/somewhere-else')).toBe(tabs);
+  });
+});
+
+describe('moveTab', () => {
+  const tabs = [tab('a'), tab('b'), tab('c')];
+  const order = (moved) => moved.map(({ repositoryId }) => repositoryId).join('');
+
+  it('moves a tab before the target', () => {
+    expect(order(moveTab(tabs, 'c', 'a'))).toBe('cab');
+  });
+
+  it('moves a tab after the target', () => {
+    expect(order(moveTab(tabs, 'a', 'b', true))).toBe('bac');
+    expect(order(moveTab(tabs, 'a', 'c', true))).toBe('bca');
+  });
+
+  it('leaves the tabs alone when dropped on itself or an unknown tab', () => {
+    expect(moveTab(tabs, 'a', 'a')).toBe(tabs);
+    expect(moveTab(tabs, 'a', 'home')).toBe(tabs);
   });
 });
 
