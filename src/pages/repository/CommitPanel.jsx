@@ -1,6 +1,10 @@
 import { CheckOutlined } from '@ant-design/icons';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button, Checkbox, Input, Tooltip } from 'antd';
 import { useState } from 'react';
+import { useMatch, useNavigate } from 'react-router';
+import { paths } from '../../paths.js';
+import { queryKeys } from '../../queries/queryKeys.js';
 import styles from './CommitPanel.module.css';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { useCommitDraft } from './useCommitDraft.js';
@@ -25,6 +29,9 @@ function placeholderFor({ status, amend }) {
 
 export function CommitPanel({ inputRef }) {
   const { repository, status, run, isBusy, pendingAction } = useRepositoryContext();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const onChanges = useMatch('/repositories/:repositoryId/changes');
   const [message, setMessage] = useCommitDraft(repository.id);
   const [amend, setAmend] = useState(false);
   const [pushAfterCommit, setPushAfterCommit] = useState(false);
@@ -55,6 +62,14 @@ export function CommitPanel({ inputRef }) {
       setMessage('');
       setAmend(false);
       setStageAllChoice(null);
+
+      // run() waits for the refetch, so unlike `status` this is what the commit left.
+      const { staged, unstaged, conflicted } = queryClient.getQueryData(
+        queryKeys.status(repository.id),
+      );
+      const isClean = staged.length + unstaged.length + conflicted.length === 0;
+      if (onChanges && isClean) navigate(paths.history(repository.id));
+
       if (pushAfterCommit) {
         // The commit stands even if this fails, and run() reports the failure.
         await run('push');
