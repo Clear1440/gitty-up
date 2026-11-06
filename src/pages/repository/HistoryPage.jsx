@@ -10,6 +10,7 @@ import { UNCOMMITTED, paths } from '../../paths.js';
 import { useCommits } from '../../queries/git.js';
 import { layoutCommitGraph } from './history/commitGraph.js';
 import { CommitGraphCell } from './history/CommitGraphCell.jsx';
+import { countChangedFiles } from './countChangedFiles.js';
 import { CommitPane } from './history/CommitPane.jsx';
 import { GraphTooltipArea } from './history/GraphTooltipArea.jsx';
 import { groupRefs } from './history/groupRefs.js';
@@ -77,10 +78,6 @@ function RefTag({ group }) {
       )}
     </Tag>
   );
-}
-
-function countChangedFiles({ staged, unstaged, conflicted }) {
-  return new Set([...staged, ...unstaged, ...conflicted].map((file) => file.path)).size;
 }
 
 /** Stands in for the work in progress, so that the tree can draw it as HEAD's next commit. */

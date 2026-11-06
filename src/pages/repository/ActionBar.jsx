@@ -4,10 +4,10 @@ import {
   CloudDownloadOutlined,
   CloudUploadOutlined,
   DownOutlined,
+  ExportOutlined,
   InboxOutlined,
   MergeOutlined,
   PlusOutlined,
-  SwapOutlined,
   SyncOutlined,
 } from '@ant-design/icons';
 import { App, Button, Divider, Dropdown, Space, Tooltip } from 'antd';
@@ -15,6 +15,7 @@ import { useNavigate } from 'react-router';
 import { AheadBehind } from '../../components/AheadBehind.jsx';
 import { paths } from '../../paths.js';
 import { useStashes } from '../../queries/git.js';
+import { countChangedFiles } from './countChangedFiles.js';
 import { useRepositoryContext } from './RepositoryContext.js';
 import styles from './ActionBar.module.css';
 
@@ -66,8 +67,7 @@ export function ActionBar() {
   const navigate = useNavigate();
   const { modal } = App.useApp();
 
-  const hasChanges =
-    status.staged.length + status.unstaged.length + status.conflicted.length > 0;
+  const changedFileCount = countChangedFiles(status);
   const midOperation = Boolean(status.operation);
 
   // The time makes every press a new request, even with the commit box already open.
@@ -99,20 +99,6 @@ export function ActionBar() {
     { key: 'force', label: 'Force push…', danger: true, onClick: confirmForcePush },
   ];
 
-  const stashMenu = [
-    {
-      key: 'message',
-      label: 'Stash with message…',
-      disabled: !hasChanges,
-      onClick: () => openDialog('stash'),
-    },
-    {
-      key: 'pop',
-      label: stashes.length > 0 ? `Pop latest (${stashes.length} stashed)` : 'Pop latest',
-      disabled: stashes.length === 0,
-      onClick: () => run('stashPop'),
-    },
-  ];
 
   return (
     <nav className={styles.actionBar} aria-label="Git actions">
@@ -161,29 +147,29 @@ export function ActionBar() {
         onClick={() => openDialog('createBranch')}
       />
       <ActionButton
-        label="Checkout"
-        hint="Switch to another branch"
-        icon={<SwapOutlined />}
-        disabled={isBusy || midOperation}
-        onClick={() => openDialog('checkout')}
-      />
-      <ActionButton
         label="Merge"
         hint="Merge or rebase with another branch"
         icon={<MergeOutlined />}
         disabled={isBusy || midOperation}
         onClick={() => openDialog('merge')}
       />
-      <SplitActionButton
+      <ActionButton
         label="Stash"
         hint="Set your changes aside"
         icon={<InboxOutlined />}
-        count={stashes.length}
+        count={changedFileCount}
         loading={pendingAction === 'stash'}
-        disabled={isBusy || midOperation || !hasChanges}
-        menuDisabled={isBusy || midOperation}
-        menuItems={stashMenu}
-        onClick={() => run('stash')}
+        disabled={isBusy || midOperation || changedFileCount === 0}
+        onClick={() => openDialog('stash')}
+      />
+      <ActionButton
+        label="Pop"
+        hint="Restore the latest stash and remove it"
+        icon={<ExportOutlined />}
+        count={stashes.length}
+        loading={pendingAction === 'stashPop'}
+        disabled={isBusy || midOperation || stashes.length === 0}
+        onClick={() => run('stashPop')}
       />
 
       {/* Last, so its changing width can never move a button under the cursor. */}
