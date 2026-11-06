@@ -14,6 +14,7 @@ import { countChangedFiles } from './countChangedFiles.js';
 import { CommitPane } from './history/CommitPane.jsx';
 import { GraphTooltipArea } from './history/GraphTooltipArea.jsx';
 import { findBranchTip, groupHasBranch, groupRefs } from './history/groupRefs.js';
+import { RefContextMenu } from './history/RefContextMenu.jsx';
 import { WorkingTreePane } from './history/WorkingTreePane.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
 import styles from './HistoryPage.module.css';
@@ -87,18 +88,20 @@ function PullRequestLink({ pullRequest }) {
 /** `focusRequest` plays the ring around it, and a new value plays it again. */
 function RefTag({ group, pullRequest, focusRequest }) {
   return (
-    <Tag
-      className={REF_TAG_STYLES[group.type]}
-      title={group.type === 'tag' ? group.name : describeRefGroup(group)}
-    >
-      <span className={styles.refName}>{group.name}</span>
-      {group.local && <LaptopOutlined className={styles.refIcon} aria-label="Local" />}
-      {group.remotes.length > 0 && (
-        <CloudOutlined className={styles.refIcon} aria-label="On a remote" />
-      )}
-      {pullRequest && <PullRequestLink pullRequest={pullRequest} />}
-      {focusRequest && <span key={focusRequest} className={styles.focusRing} aria-hidden />}
-    </Tag>
+    <RefContextMenu group={group}>
+      <Tag
+        className={REF_TAG_STYLES[group.type]}
+        title={group.type === 'tag' ? group.name : describeRefGroup(group)}
+      >
+        <span className={styles.refName}>{group.name}</span>
+        {group.local && <LaptopOutlined className={styles.refIcon} aria-label="Local" />}
+        {group.remotes.length > 0 && (
+          <CloudOutlined className={styles.refIcon} aria-label="On a remote" />
+        )}
+        {pullRequest && <PullRequestLink pullRequest={pullRequest} />}
+        {focusRequest && <span key={focusRequest} className={styles.focusRing} aria-hidden />}
+      </Tag>
+    </RefContextMenu>
   );
 }
 
@@ -127,8 +130,10 @@ function UncommittedRow({ graphRow, columnCount, fileCount, selected, onSelect }
         aria-pressed={selected}
       >
         Uncommitted changes
+        {/* A paused merge can have nothing left to count. */}
+        {fileCount > 0 && ` (${fileCount === 1 ? '1 file' : `${fileCount} files`})`}
       </button>
-      <span className={styles.time}>{fileCount === 1 ? '1 file' : `${fileCount} files`}</span>
+      <div />
       <div />
     </li>
   );
@@ -141,7 +146,8 @@ function CommitRow({ commit, graphRow, columnCount, selected, focus, pullRequest
     <li
       className={clsx(styles.commit, selected && styles.selectedCommit)}
       data-hash={commit.hash}
-      onClick={() => onSelect(commit.hash)}
+      // React bubbles clicks out of a label's menu to here, though it is elsewhere on the page.
+      onClick={(event) => event.currentTarget.contains(event.target) && onSelect(commit.hash)}
     >
       <div className={styles.tree}>
         <CommitGraphCell
