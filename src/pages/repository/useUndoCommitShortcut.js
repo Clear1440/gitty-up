@@ -50,7 +50,7 @@ export function useUndoCommitShortcut() {
           'This commit is already on a remote. Undoing it here leaves it there, so you would need to force push to replace it.',
         okText: 'Undo commit',
         okButtonProps: { danger: true },
-        autoFocusButton: 'cancel',
+        focusable: { autoFocusButton: 'cancel' },
         onOk: () => undoCommit({ allowPushed: true }),
       });
     };
