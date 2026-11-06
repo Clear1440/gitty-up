@@ -14,10 +14,13 @@
   border-style: dashed;
 }
 
-.link {
+.body {
   display: block;
   padding: var(--space-4);
   border-radius: inherit;
+}
+
+.link {
   color: inherit;
 }
 
@@ -96,4 +99,57 @@
   margin: 0;
   color: var(--color-warning);
   font-size: var(--font-size-sm);
+}
+
+.stubActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* List view: one line per repository, with columns that line up down the page. */
+.row .body {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 2fr);
+  align-items: center;
+  gap: var(--space-4);
+  /* The right side leaves room for the options button. */
+  padding: var(--space-2) calc(var(--space-6) + var(--space-3)) var(--space-2) var(--space-3);
+}
+
+.row .title {
+  margin: 0;
+  font-size: var(--font-size-md);
+}
+
+.row .path,
+.row .meta {
+  margin: 0;
+}
+
+.row .meta {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.row .missing,
+.row .stubActions {
+  grid-column: 2 / -1;
+}
+
+.row .menu {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+@media (max-width: 720px) {
+  .row .body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+
+  .row .missing,
+  .row .stubActions {
+    grid-column: auto;
+  }
 }

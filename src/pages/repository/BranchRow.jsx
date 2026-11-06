@@ -29,6 +29,13 @@ export function BranchRow({ branch, kind, selected }) {
     if (!branch.isCurrent && !blocked) run('checkout', { branch: branch.name, remote: isRemote });
   };
 
+  // Work in progress only exists on the checked out branch, so that is where it opens.
+  const open = () => {
+    navigate(
+      branch.isCurrent ? paths.changes(repository.id) : paths.history(repository.id, branch.name),
+    );
+  };
+
   const menuItems = [
     {
       key: 'checkout',
@@ -72,8 +79,8 @@ export function BranchRow({ branch, kind, selected }) {
       <button
         type="button"
         className={styles.button}
-        title={`${branch.name}\nDouble-click to check out`}
-        onClick={() => navigate(paths.history(repository.id, branch.name))}
+        title={branch.isCurrent ? branch.name : `${branch.name}\nDouble-click to check out`}
+        onClick={open}
         onDoubleClick={checkout}
       >
         <BranchIcon branch={branch} kind={kind} />

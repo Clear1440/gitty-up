@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import { Router } from 'express';
 import { badRequest, notFound } from '../errors.js';
 import * as git from '../git/gitService.js';
+import { parseRemoteUrl } from '../git/remoteUrl.js';
 
 const DEFAULT_COMMIT_PAGE_SIZE = 100;
 const MAX_COMMIT_PAGE_SIZE = 500;
@@ -28,6 +29,7 @@ function toCount(value, fallback, max = Number.MAX_SAFE_INTEGER) {
 }
 
 async function withSummary(repository) {
+  if (!repository.path) return { ...repository, available: false, summary: null };
   try {
     return { ...repository, available: true, summary: await git.getSummary(repository.path) };
   } catch {
@@ -39,6 +41,24 @@ async function withSummary(repository) {
 async function assertDirectory(folderPath) {
   const stats = await fs.stat(folderPath).catch(() => null);
   if (!stats?.isDirectory()) throw badRequest(`${folderPath} is not a folder.`);
+}
+
+async function resolveFolder(folderPath) {
+  await assertDirectory(folderPath);
+  return git.resolveWorkingTree(folderPath);
+}
+
+function requireStub(repository) {
+  if (repository.path) throw badRequest(`${repository.name} is already on this machine.`);
+  return repository;
+}
+
+/** A stub has no folder. Without this guard git would run in the server's own folder. */
+function requireWorkingCopy(request, _response, next) {
+  if (!request.repository.path) {
+    throw badRequest(`${request.repository.name} has not been cloned or located yet.`);
+  }
+  next();
 }
 
 /** Registers a POST route that runs a git action and replies 204 on success. */
@@ -155,10 +175,13 @@ export function createRepositoriesRouter(store) {
   });
 
   router.post('/', async (request, response) => {
-    const folderPath = requireString(request.body?.path, 'path').trim();
-    await assertDirectory(folderPath);
-    const workingTree = await git.resolveWorkingTree(folderPath);
+    const workingTree = await resolveFolder(requireString(request.body?.path, 'path').trim());
     response.status(201).json(await withSummary(await store.add(workingTree)));
+  });
+
+  router.post('/stubs', async (request, response) => {
+    const remote = parseRemoteUrl(requireString(request.body?.url, 'url'));
+    response.status(201).json(await withSummary(await store.addStub(remote)));
   });
 
   router.get('/:repositoryId', async (request, response) => {
@@ -170,7 +193,21 @@ export function createRepositoriesRouter(store) {
     response.status(204).end();
   });
 
-  router.use('/:repositoryId', createGitRouter());
+  router.post('/:repositoryId/clone', async (request, response) => {
+    const { id, name, remoteUrl } = requireStub(request.repository);
+    const parentPath = requireString(request.body?.parentPath, 'parentPath').trim();
+    await assertDirectory(parentPath);
+    const workingTree = await git.clone(remoteUrl, parentPath, name);
+    response.status(201).json(await withSummary(await store.resolveStub(id, workingTree)));
+  });
+
+  router.post('/:repositoryId/locate', async (request, response) => {
+    const { id } = requireStub(request.repository);
+    const workingTree = await resolveFolder(requireString(request.body?.path, 'path').trim());
+    response.json(await withSummary(await store.resolveStub(id, workingTree)));
+  });
+
+  router.use('/:repositoryId', requireWorkingCopy, createGitRouter());
 
   return router;
 }

@@ -55,6 +55,13 @@ export async function resolveWorkingTree(folderPath) {
   }
 }
 
+/** Clones into a new folder named `folderName` and resolves with its working tree. */
+export async function clone(url, parentPath, folderName) {
+  const target = path.join(parentPath, folderName);
+  await runGit(parentPath, ['clone', '--', url, target], { timeout: NETWORK_TIMEOUT_MS });
+  return resolveWorkingTree(target);
+}
+
 async function getOperation(repoPath) {
   const gitDir = (await runGit(repoPath, ['rev-parse', '--absolute-git-dir'])).trim();
   for (const { operation, marker } of OPERATION_MARKERS) {

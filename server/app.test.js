@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from './app.js';
 import { RepositoryStore } from './store/repositoryStore.js';
@@ -127,6 +128,117 @@ describe('linked repositories', () => {
 
   it('answers 404 for unknown repositories', async () => {
     expect((await request('GET', '/api/repositories/nope/status')).status).toBe(404);
+  });
+});
+
+describe('repositories added from git', () => {
+  let remoteUrl;
+  let stub;
+
+  const listed = async (id) =>
+    (await request('GET', '/api/repositories')).body.find((entry) => entry.id === id);
+
+  const emptyFolder = (name) => fs.mkdtemp(path.join(sandbox, `${name}-`));
+
+  beforeEach(async () => {
+    remoteUrl = pathToFileURL(repo.remote).href;
+    stub = (await request('POST', '/api/repositories/stubs', { url: remoteUrl })).body;
+  });
+
+  it('lists a stub with no folder, without duplicating it', async () => {
+    expect(stub).toMatchObject({ name: 'remote', path: null, remoteUrl, available: false });
+    const again = await request('POST', '/api/repositories/stubs', { url: remoteUrl });
+    expect(again.body.id).toBe(stub.id);
+    expect(await listed(stub.id)).toMatchObject({ path: null, summary: null });
+  });
+
+  it.each([
+    ['https://github.com/owner/project.git', 'project'],
+    ['https://github.com/owner/project/', 'project'],
+    ['git@github.com:owner/project.git', 'project'],
+    ['ssh://git@github.com/owner/project', 'project'],
+  ])('names %s after its repository', async (url, name) => {
+    const { body } = await request('POST', '/api/repositories/stubs', { url });
+    expect(body.name).toBe(name);
+  });
+
+  it.each([
+    'not a url',
+    '--upload-pack=touch',
+    'ext::sh -c touch% pwned',
+    'https://github.com',
+    'https://github.com/owner/..',
+  ])('rejects %s', async (url) => {
+    const { status } = await request('POST', '/api/repositories/stubs', { url });
+    expect(status).toBe(400);
+  });
+
+  it('refuses git actions on a stub instead of running them elsewhere', async () => {
+    const { status, body } = await request('GET', `/api/repositories/${stub.id}/status`);
+    expect(status).toBe(400);
+    expect(body.error.message).toMatch(/not been cloned/);
+  });
+
+  it('clones into the chosen folder and replaces the stub', async () => {
+    const parentPath = await emptyFolder('clone');
+    const { status, body } = await request('POST', `/api/repositories/${stub.id}/clone`, {
+      parentPath,
+    });
+
+    expect(status).toBe(201);
+    expect(body).toMatchObject({ name: 'remote', available: true });
+    expect(await fs.realpath(body.path)).toBe(await fs.realpath(path.join(parentPath, 'remote')));
+    expect(git(body.path, 'log', '-1', '--format=%s')).toBe('Initial commit');
+    expect(await listed(stub.id)).toBeUndefined();
+    expect(await listed(body.id)).toMatchObject({ available: true });
+  });
+
+  it('keeps the stub when the clone fails', async () => {
+    const parentPath = await emptyFolder('occupied');
+    await fs.mkdir(path.join(parentPath, 'remote'));
+    await fs.writeFile(path.join(parentPath, 'remote', 'file.txt'), 'taken');
+
+    const { status } = await request('POST', `/api/repositories/${stub.id}/clone`, { parentPath });
+
+    expect(status).toBe(409);
+    expect(await listed(stub.id)).toMatchObject({ path: null });
+  });
+
+  it('locates an existing working copy and replaces the stub', async () => {
+    const parentPath = await emptyFolder('located');
+    const copy = path.join(parentPath, 'copy');
+    git(parentPath, 'clone', remoteUrl, copy);
+
+    const { status, body } = await request('POST', `/api/repositories/${stub.id}/locate`, {
+      path: copy,
+    });
+
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ name: 'copy', available: true });
+    expect(await listed(stub.id)).toBeUndefined();
+  });
+
+  it('keeps the stub when the located folder is not a repository', async () => {
+    const plain = await fs.mkdtemp(path.join(os.tmpdir(), 'gity-up-plain-'));
+    const { status } = await request('POST', `/api/repositories/${stub.id}/locate`, {
+      path: plain,
+    });
+    expect(status).toBe(400);
+    expect(await listed(stub.id)).toMatchObject({ path: null });
+    await fs.rm(plain, { recursive: true, force: true });
+  });
+
+  it('removes the stub without duplicating a folder that is already linked', async () => {
+    const { body } = await request('POST', `/api/repositories/${stub.id}/locate`, {
+      path: repo.work,
+    });
+    expect(body.id).toBe(repo.id);
+    expect(await listed(stub.id)).toBeUndefined();
+  });
+
+  it('refuses to clone over a repository that already has a folder', async () => {
+    const { status } = await request('POST', `${repo.api}/clone`, { parentPath: sandbox });
+    expect(status).toBe(400);
   });
 });
 

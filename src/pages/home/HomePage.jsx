@@ -1,13 +1,27 @@
-import { FolderAddOutlined, SearchOutlined } from '@ant-design/icons';
-import { Button, Input, Result, Spin } from 'antd';
+import {
+  AppstoreOutlined,
+  FolderAddOutlined,
+  SearchOutlined,
+  UnorderedListOutlined,
+} from '@ant-design/icons';
+import { Button, Input, Result, Segmented, Spin } from 'antd';
 import { useState } from 'react';
 import { useRepositories } from '../../queries/repositories.js';
+import { readStored, writeStored } from '../../utils/storage.js';
 import styles from './HomePage.module.css';
 import { LinkRepositoryDialog } from './LinkRepositoryDialog.jsx';
 import { RepositoryCard } from './RepositoryCard.jsx';
 
+const VIEW_STORAGE_KEY = 'gity-up.repositoryView';
+
+const VIEWS = [
+  { value: 'card', label: 'Cards', icon: <AppstoreOutlined /> },
+  { value: 'list', label: 'List', icon: <UnorderedListOutlined /> },
+];
+
 function matches(repository, filter) {
-  const text = `${repository.name} ${repository.path}`.toLowerCase();
+  const location = repository.path ?? repository.remoteUrl;
+  const text = `${repository.name} ${location}`.toLowerCase();
   return text.includes(filter.trim().toLowerCase());
 }
 
@@ -15,6 +29,12 @@ export function HomePage() {
   const { data: repositories, isPending, error } = useRepositories();
   const [filter, setFilter] = useState('');
   const [linking, setLinking] = useState(false);
+  const [view, setView] = useState(() => readStored(VIEW_STORAGE_KEY, 'card'));
+
+  const changeView = (nextView) => {
+    setView(nextView);
+    writeStored(VIEW_STORAGE_KEY, nextView);
+  };
 
   const linkButton = (
     <Button type="primary" icon={<FolderAddOutlined />} onClick={() => setLinking(true)}>
@@ -29,7 +49,7 @@ export function HomePage() {
       return (
         <div className={styles.emptyState}>
           <h2>Link your first repository</h2>
-          <p>Point gity-up at a folder on this machine that contains a git repository.</p>
+          <p>Point gity-up at a folder on this machine, or add a repository by its git URL.</p>
           {linkButton}
         </div>
       );
@@ -40,9 +60,9 @@ export function HomePage() {
       return <p className={styles.noMatches}>No repositories match “{filter}”.</p>;
     }
     return (
-      <div className={styles.grid}>
+      <div className={view === 'list' ? styles.list : styles.grid}>
         {visible.map((repository) => (
-          <RepositoryCard key={repository.id} repository={repository} />
+          <RepositoryCard key={repository.id} repository={repository} view={view} />
         ))}
       </div>
     );
@@ -59,6 +79,13 @@ export function HomePage() {
         </div>
         {repositories?.length > 0 && (
           <div className={styles.headerActions}>
+            <Segmented
+              className={styles.viewToggle}
+              aria-label="Repository view"
+              options={VIEWS}
+              value={view}
+              onChange={changeView}
+            />
             <Input
               allowClear
               prefix={<SearchOutlined />}

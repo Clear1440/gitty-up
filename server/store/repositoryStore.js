@@ -10,7 +10,20 @@ function repositoryId(repositoryPath) {
   return createHash('sha256').update(key).digest('hex').slice(0, 12);
 }
 
-/** Persists the linked repositories as a JSON file in the data directory. */
+function createEntry(repositoryPath) {
+  return {
+    id: repositoryId(repositoryPath),
+    name: path.basename(repositoryPath),
+    path: repositoryPath,
+    linkedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Persists the linked repositories as a JSON file in the data directory.
+ * A stub is an entry known only by its remote URL. Its `path` stays null until
+ * it is cloned or located, when `resolveStub` swaps it for a real entry.
+ */
 export class RepositoryStore {
   #filePath;
   #repositories = null;
@@ -30,17 +43,35 @@ export class RepositoryStore {
 
   /** Links a repository. Linking the same folder twice returns the existing entry. */
   async add(repositoryPath) {
-    const id = repositoryId(repositoryPath);
+    const repository = createEntry(repositoryPath);
+    const existing = await this.get(repository.id);
+    if (existing) return existing;
+
+    await this.#save([...(await this.list()), repository]);
+    return repository;
+  }
+
+  /** Adds a stub. Adding the same URL twice returns the existing entry. */
+  async addStub({ url, name }) {
+    const id = repositoryId(`remote:${url}`);
     const existing = await this.get(id);
     if (existing) return existing;
 
-    const repository = {
-      id,
-      name: path.basename(repositoryPath),
-      path: repositoryPath,
-      linkedAt: new Date().toISOString(),
-    };
-    await this.#save([...(await this.list()), repository]);
+    const stub = { id, name, path: null, remoteUrl: url, linkedAt: new Date().toISOString() };
+    await this.#save([...(await this.list()), stub]);
+    return stub;
+  }
+
+  /** Turns a stub into a linked repository, keeping its place in the list. */
+  async resolveStub(stubId, repositoryPath) {
+    const repository = createEntry(repositoryPath);
+    const existing = await this.get(repository.id);
+    if (existing) {
+      await this.remove(stubId);
+      return existing;
+    }
+    const repositories = await this.list();
+    await this.#save(repositories.map((entry) => (entry.id === stubId ? repository : entry)));
     return repository;
   }
 

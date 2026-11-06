@@ -1,9 +1,9 @@
 import { CheckOutlined } from '@ant-design/icons';
-import { Button, Checkbox, Input } from 'antd';
+import { Button, Checkbox, Input, Tooltip } from 'antd';
 import { useState } from 'react';
 import styles from './CommitPanel.module.css';
 import { useRepositoryContext } from './RepositoryContext.js';
-import { useCommitDraft } from './useCommitDraft.js';
+import { useCommitDraft, usePushAfterCommit } from './useCommitDraft.js';
 
 const describeFiles = (count) => (count === 1 ? '1 file' : `${count} files`);
 
@@ -26,6 +26,7 @@ function placeholderFor({ status, amend }) {
 export function CommitPanel({ inputRef }) {
   const { repository, status, run, isBusy, pendingAction } = useRepositoryContext();
   const [message, setMessage] = useCommitDraft(repository.id);
+  const [pushAfterCommit, setPushAfterCommit] = usePushAfterCommit(repository.id);
   const [amend, setAmend] = useState(false);
   // Null until the user chooses, so the default can follow what is staged.
   const [stageAllChoice, setStageAllChoice] = useState(null);
@@ -39,6 +40,13 @@ export function CommitPanel({ inputRef }) {
   const hasMessage = Boolean(message.trim());
   const blocker = findBlocker({ status, fileCount, hasMessage, amend });
   const canCommit = !blocker && !isBusy;
+  const buttonLabel = [
+    amend ? 'Amend' : 'Commit',
+    pushAfterCommit && '& push',
+    status.branch && `to ${status.branch}`,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   const commit = async () => {
     if (!canCommit) return;
@@ -47,6 +55,8 @@ export function CommitPanel({ inputRef }) {
       setMessage('');
       setAmend(false);
       setStageAllChoice(null);
+      // The commit stands even if this fails, and run() reports the failure.
+      if (pushAfterCommit) await run('push');
     }
   };
 
@@ -80,17 +90,31 @@ export function CommitPanel({ inputRef }) {
         </Checkbox>
       </div>
       <div className={styles.submit}>
-        <span className={styles.summary}>{blocker ?? describeFiles(fileCount)}</span>
-        <Button
-          type="primary"
-          icon={<CheckOutlined />}
-          disabled={!canCommit}
-          loading={pendingAction === 'commit'}
-          onClick={commit}
+        <Checkbox
+          checked={pushAfterCommit}
+          onChange={(event) => setPushAfterCommit(event.target.checked)}
         >
-          {amend ? 'Amend' : 'Commit'}
-          {status.branch && ` to ${status.branch}`}
-        </Button>
+          Push after commit
+        </Checkbox>
+        {/* It opens over the checkbox above, so it must never catch a click meant for it. */}
+        <Tooltip
+          title={blocker ?? describeFiles(fileCount)}
+          classNames={{ root: styles.commitTooltip }}
+          mouseLeaveDelay={0}
+        >
+          {/* A disabled button fires no hover events, so the wrapper carries the tooltip. */}
+          <span className={styles.commitButton}>
+            <Button
+              type="primary"
+              icon={<CheckOutlined />}
+              disabled={!canCommit}
+              loading={pendingAction === 'commit' || (pushAfterCommit && pendingAction === 'push')}
+              onClick={commit}
+            >
+              {buttonLabel}
+            </Button>
+          </span>
+        </Tooltip>
       </div>
     </section>
   );

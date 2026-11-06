@@ -13,20 +13,34 @@ export function useRepository(repositoryId) {
   });
 }
 
-export function useLinkRepository() {
+function useRepositoryListMutation(mutationFn) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: repositoriesApi.link,
+    mutationFn,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.repositoryList() }),
   });
 }
 
+export function useLinkRepository() {
+  return useRepositoryListMutation(repositoriesApi.link);
+}
+
 export function useUnlinkRepository() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: repositoriesApi.unlink,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.repositoryList() }),
-  });
+  return useRepositoryListMutation(repositoriesApi.unlink);
+}
+
+export function useAddRepositoryStub() {
+  return useRepositoryListMutation(repositoriesApi.addStub);
+}
+
+export function useCloneRepository(repositoryId) {
+  return useRepositoryListMutation((parentPath) =>
+    repositoriesApi.clone(repositoryId, parentPath),
+  );
+}
+
+export function useLocateRepository(repositoryId) {
+  return useRepositoryListMutation((path) => repositoriesApi.locate(repositoryId, path));
 }
 
 export function useDirectories(path) {

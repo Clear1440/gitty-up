@@ -28,13 +28,23 @@
 .headerActions {
   display: flex;
   gap: var(--space-2);
-  width: min(100%, 440px);
+  width: min(100%, 620px);
+}
+
+.viewToggle {
+  flex: none;
 }
 
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: var(--space-3);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .emptyState {

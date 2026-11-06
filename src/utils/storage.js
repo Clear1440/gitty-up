@@ -11,6 +11,6 @@ export function writeStored(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
-    // Losing this only means tabs are not restored next time.
+    // Losing this only means tabs and preferences are not restored next time.
   }
 }

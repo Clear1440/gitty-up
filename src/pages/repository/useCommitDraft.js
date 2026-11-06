@@ -1,14 +1,22 @@
 import { useEffect, useState } from 'react';
 import { readStored, writeStored } from '../../utils/storage.js';
 
-/** A commit message that survives switching tabs and reloading the app. */
-export function useCommitDraft(repositoryId) {
-  const storageKey = `gity-up.commit-draft.${repositoryId}`;
-  const [draft, setDraft] = useState(() => readStored(storageKey, ''));
+function useStoredValue(storageKey, fallback) {
+  const [value, setValue] = useState(() => readStored(storageKey, fallback));
 
   useEffect(() => {
-    writeStored(storageKey, draft);
-  }, [storageKey, draft]);
+    writeStored(storageKey, value);
+  }, [storageKey, value]);
 
-  return [draft, setDraft];
+  return [value, setValue];
+}
+
+/** A commit message that survives switching tabs and reloading the app. */
+export function useCommitDraft(repositoryId) {
+  return useStoredValue(`gity-up.commit-draft.${repositoryId}`, '');
+}
+
+/** Whether committing also pushes, remembered for each repository. */
+export function usePushAfterCommit(repositoryId) {
+  return useStoredValue(`gity-up.push-after-commit.${repositoryId}`, false);
 }

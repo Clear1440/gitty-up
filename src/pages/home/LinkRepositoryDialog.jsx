@@ -1,93 +1,80 @@
-import { ArrowUpOutlined } from '@ant-design/icons';
-import { Alert, Button, Input, Select, Space } from 'antd';
+import { BranchesOutlined, FolderOpenOutlined } from '@ant-design/icons';
+import { Alert, Input, Segmented } from 'antd';
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
 import { ActionDialog } from '../../components/ActionDialog.jsx';
-import { paths } from '../../paths.js';
-import { useDirectories, useLinkRepository } from '../../queries/repositories.js';
-import { FolderList } from './FolderList.jsx';
+import { useAddRepositoryStub, useLinkRepository } from '../../queries/repositories.js';
+import { FolderPicker, useFolderPicker } from './FolderPicker.jsx';
 import styles from './LinkRepositoryDialog.module.css';
+import { useOpenAfter } from './useOpenAfter.js';
 
-/** "Copy as path" on Windows wraps the path in quotes. */
-const cleanPath = (path) => path.trim().replace(/^"(.*)"$/, '$1');
-
-function findRoot({ roots, path }) {
-  return roots.find((root) => path.toLowerCase().startsWith(root.toLowerCase()));
-}
+const SOURCES = [
+  { value: 'filesystem', label: 'File system', icon: <FolderOpenOutlined /> },
+  { value: 'git', label: 'Git', icon: <BranchesOutlined /> },
+];
 
 export function LinkRepositoryDialog({ onClose }) {
-  const navigate = useNavigate();
+  const [source, setSource] = useState('filesystem');
+  const [url, setUrl] = useState('');
+  const picker = useFolderPicker();
   const link = useLinkRepository();
-  // `folder` is what gets linked. `browsing` is what the list shows, which only
-  // follows the text field once editing finishes, not on every keystroke.
-  const [folder, setFolder] = useState('');
-  const [browsing, setBrowsing] = useState();
-  const directories = useDirectories(browsing);
-  const listing = directories.data;
+  const addStub = useAddRepositoryStub();
+  const linkAndOpen = useOpenAfter(link);
 
-  const goTo = (path) => {
-    setFolder(path);
-    setBrowsing(path);
-    link.reset();
-  };
+  const fromGit = source === 'git';
 
-  const handleSubmit = async () => {
+  // A stub has nothing to open yet, so the dialog returns to its card on the list.
+  const submitUrl = async () => {
     try {
-      const repository = await link.mutateAsync(cleanPath(folder));
-      navigate(paths.repository(repository.id));
+      await addStub.mutateAsync(url.trim());
       return true;
     } catch {
       return false;
     }
   };
 
-  const error = link.error ?? directories.error;
+  const error = fromGit ? addStub.error : (link.error ?? picker.error);
 
   return (
     <ActionDialog
       title="Link a repository"
-      okText="Link repository"
-      canSubmit={Boolean(cleanPath(folder))}
-      onSubmit={handleSubmit}
+      okText={fromGit ? 'Add repository' : 'Link repository'}
+      canSubmit={Boolean(fromGit ? url.trim() : picker.selected)}
+      onSubmit={fromGit ? submitUrl : () => linkAndOpen(picker.selected)}
       onClose={onClose}
     >
-      <p className={styles.hint}>
-        Choose a folder on this machine, or paste its path. Nothing is copied or moved.
-      </p>
-      <Space.Compact block>
-        <Select
-          aria-label="Drive"
-          className={styles.driveSelect}
-          value={listing && findRoot(listing)}
-          options={listing?.roots.map((root) => ({ label: root, value: root }))}
-          onChange={goTo}
-        />
-        <Button
-          aria-label="Parent folder"
-          icon={<ArrowUpOutlined />}
-          disabled={!listing?.parent}
-          onClick={() => goTo(listing.parent)}
-        />
-        <Input
-          autoFocus
-          aria-label="Folder path"
-          placeholder={listing?.path}
-          value={folder}
-          onChange={(event) => {
-            setFolder(event.target.value);
-            link.reset();
-          }}
-          onBlur={() => {
-            if (cleanPath(folder)) setBrowsing(cleanPath(folder));
-          }}
-        />
-      </Space.Compact>
-      <FolderList
-        directories={listing?.directories}
-        isLoading={directories.isPending}
-        onOpen={goTo}
+      <Segmented
+        block
+        className={styles.source}
+        options={SOURCES}
+        value={source}
+        onChange={setSource}
       />
-      {error && <Alert type="error" showIcon title={error.message} />}
+      {fromGit ? (
+        <>
+          <p className={styles.hint}>
+            Paste the repository’s URL. It gets a card where you can clone it, or locate a copy
+            you already have.
+          </p>
+          <Input
+            autoFocus
+            aria-label="Repository URL"
+            placeholder="https://github.com/owner/repository.git"
+            value={url}
+            onChange={(event) => {
+              setUrl(event.target.value);
+              addStub.reset();
+            }}
+          />
+        </>
+      ) : (
+        <>
+          <p className={styles.hint}>
+            Choose a folder on this machine, or paste its path. Nothing is copied or moved.
+          </p>
+          <FolderPicker picker={picker} onChange={link.reset} />
+        </>
+      )}
+      {error && <Alert className={styles.error} type="error" showIcon title={error.message} />}
     </ActionDialog>
   );
 }

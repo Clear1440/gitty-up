@@ -30,6 +30,15 @@
   max-width: 260px;
 }
 
+.commitButton {
+  display: inline-flex;
+  max-width: 100%;
+}
+
+.commitTooltip {
+  pointer-events: none;
+}
+
 .submit button {
   max-width: 100%;
 }
@@ -37,9 +46,4 @@
 .submit button span:last-child {
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.summary {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
 }
