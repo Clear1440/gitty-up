@@ -10,6 +10,11 @@ const GIT_ACTIONS = {
   // A pull or push can legitimately do nothing, so these don't claim anything moved.
   pull: { run: gitApi.pull, title: 'Pull', success: () => 'Pull complete' },
   push: { run: gitApi.push, title: 'Push', success: () => 'Push complete' },
+  publishBranch: {
+    run: gitApi.push,
+    title: 'Publish',
+    success: ({ remote, upstreamName }) => `Published to ${remote}/${upstreamName}`,
+  },
   checkout: {
     run: gitApi.checkout,
     title: 'Checkout',

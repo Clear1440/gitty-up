@@ -1,4 +1,5 @@
 import { readPixels } from '../../../styles/readToken.js';
+import styles from './CommitGraphCell.module.css';
 
 const ROW_HEIGHT = readPixels('--size-commit-row');
 const COLUMN_WIDTH = readPixels('--size-graph-column');
@@ -40,7 +41,7 @@ export function CommitGraphCell({ row, columnCount, isHead, isMerge, isUncommitt
   const nodeColor = graphColor(row.color);
 
   return (
-    <svg width={width} height={ROW_HEIGHT} aria-hidden style={{ flex: 'none' }}>
+    <svg width={width} height={ROW_HEIGHT} aria-hidden style={{ flex: 'none', overflow: 'visible' }}>
       {row.segments.map((segment, index) => (
         <path
           key={index}
@@ -54,14 +55,25 @@ export function CommitGraphCell({ row, columnCount, isHead, isMerge, isUncommitt
         />
       ))}
       {isHead && (
-        <circle
-          cx={columnX(row.column)}
-          cy={ROW_MIDDLE}
-          r={NODE_RADIUS + 3}
-          fill="none"
-          stroke="var(--color-text)"
-          strokeWidth={1.5}
-        />
+        <>
+          <circle
+            className={styles.headPulse}
+            cx={columnX(row.column)}
+            cy={ROW_MIDDLE}
+            r={NODE_RADIUS + 3}
+            fill="none"
+            stroke={nodeColor}
+            strokeWidth={2}
+          />
+          <circle
+            cx={columnX(row.column)}
+            cy={ROW_MIDDLE}
+            r={NODE_RADIUS + 3}
+            fill="none"
+            stroke="var(--color-text)"
+            strokeWidth={1.5}
+          />
+        </>
       )}
       <circle
         cx={columnX(row.column)}

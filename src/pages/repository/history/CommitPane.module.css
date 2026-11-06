@@ -73,6 +73,7 @@
   flex-direction: column;
   box-sizing: border-box;
   height: var(--diff-pane-files, auto);
+  min-height: 64px;
   max-height: min(var(--diff-pane-files, max(34cqh, var(--ten-files))), calc(100% - 120px));
   border-bottom: 1px solid var(--color-border);
 }

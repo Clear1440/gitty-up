@@ -116,13 +116,30 @@ describe('buildBranchTree', () => {
     expect(nodes.map((node) => node.label ?? node.name)).toEqual(['a', 'f', 'b']);
   });
 
-  it('files remote branches under their remote', () => {
-    const [origin] = buildBranchTree([
+  it('leaves a lone remote out of the tree', () => {
+    const nodes = buildBranchTree([
       branch('origin/main', { remote: 'origin', localName: 'main' }),
       branch('origin/feature/x', { remote: 'origin', localName: 'feature/x' }),
+      branch('origin/feature/y', { remote: 'origin', localName: 'feature/y' }),
     ]);
 
-    expect(origin).toMatchObject({ name: 'origin', path: 'origin/' });
+    expect(nodes).toMatchObject([
+      { type: 'branch', label: 'main' },
+      { type: 'folder', name: 'feature', isRemote: false },
+    ]);
+    expect(nodes[0].branch.name).toBe('origin/main');
+  });
+
+  it('files remote branches under their remote when asked', () => {
+    const [origin] = buildBranchTree(
+      [
+        branch('origin/main', { remote: 'origin', localName: 'main' }),
+        branch('origin/feature/x', { remote: 'origin', localName: 'feature/x' }),
+      ],
+      { showRemotes: true },
+    );
+
+    expect(origin).toMatchObject({ name: 'origin', path: 'origin/', isRemote: true });
     expect(origin.children).toMatchObject([
       { type: 'branch', label: 'main' },
       { type: 'branch', label: 'feature/x' },

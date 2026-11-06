@@ -11,6 +11,14 @@ import {
 const nul = (...records) => `${records.join('\0')}\0`;
 
 describe('parseStatus', () => {
+  it('tells an upstream that is gone from one that is there', () => {
+    const header = ['# branch.oid abc', '# branch.head main', '# branch.upstream origin/main'];
+
+    expect(parseStatus(nul(...header, '# branch.ab +0 -0')).upstreamGone).toBe(false);
+    expect(parseStatus(nul(...header)).upstreamGone).toBe(true);
+    expect(parseStatus(nul('# branch.oid abc', '# branch.head main')).upstreamGone).toBe(false);
+  });
+
   it('reads branch tracking headers', () => {
     const status = parseStatus(
       nul(

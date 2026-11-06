@@ -55,11 +55,14 @@ export function BranchSidebar({ resizeHandle }) {
   const local = sortBranches(filterBranches(branches?.local ?? [], filter), sort);
   const remote = sortBranches(filterBranches(branches?.remote ?? [], filter), sort);
 
+  // Counted before filtering, or the folders would come and go while typing.
+  const showRemotes = new Set(branches?.remote.map(({ remote: name }) => name)).size > 1;
+
   const renderBranches = (list, kind) => {
     if (list.length === 0) return <p className={styles.empty}>No branches</p>;
     return (
       <BranchTree
-        nodes={buildBranchTree(list)}
+        nodes={buildBranchTree(list, { showRemotes })}
         kind={kind}
         selectedRef={selectedRef}
         // A match inside a closed folder would otherwise look like no match at all.

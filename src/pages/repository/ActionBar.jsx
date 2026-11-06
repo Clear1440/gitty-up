@@ -19,6 +19,7 @@ import { useStashes } from '../../queries/git.js';
 import { queryKeys } from '../../queries/queryKeys.js';
 import { countChangedFiles } from './countChangedFiles.js';
 import { useRepositoryContext } from './RepositoryContext.js';
+import { needsPublishing, usePush } from './usePush.js';
 import { useUndoCommitShortcut } from './useUndoCommitShortcut.js';
 import styles from './ActionBar.module.css';
 
@@ -70,6 +71,7 @@ export function ActionBar() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { message, modal } = App.useApp();
+  const push = usePush();
   useUndoCommitShortcut();
 
   const changedFileCount = countChangedFiles(status);
@@ -94,6 +96,11 @@ export function ActionBar() {
   };
 
   const confirmForcePush = () => {
+    // With nothing on the remote there is nothing to overwrite.
+    if (needsPublishing(status)) {
+      push();
+      return;
+    }
     modal.confirm({
       title: `Force push ${status.branch}?`,
       content:
@@ -143,13 +150,13 @@ export function ActionBar() {
       />
       <SplitActionButton
         label="Push"
-        hint={status.upstream ? `Push to ${status.upstream}` : 'Publish this branch'}
+        hint={needsPublishing(status) ? 'Publish this branch' : `Push to ${status.upstream}`}
         icon={<CloudUploadOutlined />}
         count={status.ahead}
         loading={pendingAction === 'push'}
         disabled={isBusy || midOperation || !status.branch}
         menuItems={pushMenu}
-        onClick={() => run('push')}
+        onClick={() => push()}
       />
       <Divider orientation="vertical" />
 

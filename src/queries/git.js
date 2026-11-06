@@ -22,6 +22,13 @@ export function useBranches(repositoryId) {
   });
 }
 
+export function useRemotes(repositoryId) {
+  return useQuery({
+    queryKey: queryKeys.remotes(repositoryId),
+    queryFn: () => gitApi.getRemotes(repositoryId),
+  });
+}
+
 export function useCommits(repositoryId, ref) {
   return useInfiniteQuery({
     queryKey: queryKeys.commits(repositoryId, ref),
