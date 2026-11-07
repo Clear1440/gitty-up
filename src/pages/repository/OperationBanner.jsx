@@ -1,9 +1,14 @@
 import { Alert, Button, Popconfirm, Space } from 'antd';
 import { useRepositoryContext } from './RepositoryContext.js';
 
-const LABELS = { merge: 'Merge', rebase: 'Rebase' };
+const LABELS = { merge: 'Merge', rebase: 'Rebase', 'cherry-pick': 'Cherry-pick' };
+const CONTINUE_LABELS = {
+  merge: 'Finish merge',
+  rebase: 'Continue rebase',
+  'cherry-pick': 'Finish cherry-pick',
+};
 
-/** Appears while a merge or rebase is paused and waiting on the user. */
+/** Appears while a merge, rebase or cherry-pick is paused and waiting on the user. */
 export function OperationBanner() {
   const { status, run, isBusy } = useRepositoryContext();
   if (!status.operation) return null;
@@ -28,7 +33,7 @@ export function OperationBanner() {
             disabled={isBusy || conflictCount > 0}
             onClick={() => run('continueOperation')}
           >
-            {status.operation === 'merge' ? 'Finish merge' : 'Continue rebase'}
+            {CONTINUE_LABELS[status.operation]}
           </Button>
           <Popconfirm
             title={`Abort this ${status.operation}?`}

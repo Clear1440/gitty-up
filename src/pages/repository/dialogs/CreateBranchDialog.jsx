@@ -5,10 +5,13 @@ import { useRepositoryContext } from '../RepositoryContext.js';
 import { BranchNameInput } from './BranchNameInput.jsx';
 import { BranchSelect } from './BranchSelect.jsx';
 
-export function CreateBranchDialog({ startPoint: initialStartPoint, onClose }) {
+/** `commit` starts the branch from a commit rather than a branch. */
+export function CreateBranchDialog({ startPoint: initialStartPoint, commit, onClose }) {
   const { status, run } = useRepositoryContext();
   const [name, setName] = useState('');
-  const [startPoint, setStartPoint] = useState(initialStartPoint ?? status.branch ?? undefined);
+  const [startPoint, setStartPoint] = useState(
+    commit?.hash ?? initialStartPoint ?? status.branch ?? undefined,
+  );
   const [switchTo, setSwitchTo] = useState(true);
 
   return (
@@ -32,6 +35,7 @@ export function CreateBranchDialog({ startPoint: initialStartPoint, onClose }) {
           placeholder="Start from HEAD"
           value={startPoint}
           onChange={setStartPoint}
+          commit={commit}
         />
         <Checkbox checked={switchTo} onChange={(event) => setSwitchTo(event.target.checked)}>
           Switch to the new branch

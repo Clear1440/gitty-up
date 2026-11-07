@@ -3,6 +3,7 @@ import { cloneElement } from 'react';
 import { useBranches } from '../../../queries/git.js';
 import { useRepositoryContext } from '../RepositoryContext.js';
 import { useBranchMenu } from '../useBranchMenu.js';
+import styles from './RefBranchActions.module.css';
 
 function BranchActions({ branch, kind, children }) {
   const { items, checkout } = useBranchMenu(branch, kind);
@@ -13,10 +14,14 @@ function BranchActions({ branch, kind, children }) {
     onDoubleClick: checkout,
   });
 
+  // The commit row has a menu and double click of its own, which a label stands in for.
+  const stop = (event) => event.stopPropagation();
   return (
-    <Dropdown menu={{ items }} trigger={['contextMenu']}>
-      {label}
-    </Dropdown>
+    <span className={styles.actions} onContextMenu={stop} onDoubleClick={stop}>
+      <Dropdown menu={{ items }} trigger={['contextMenu']}>
+        {label}
+      </Dropdown>
+    </span>
   );
 }
 

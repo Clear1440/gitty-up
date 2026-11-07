@@ -38,6 +38,9 @@ export const gitApi = {
   mergeInto: (id, { target, noFastForward }) =>
     http.post(route(id, '/merge-into'), { target, noFastForward }),
   rebase: (id, { branch }) => http.post(route(id, '/rebase'), { branch }),
+  checkoutCommit: (id, { hash }) => http.post(route(id, '/checkout-commit'), { hash }),
+  cherryPick: (id, { hash }) => http.post(route(id, '/cherry-pick'), { hash }),
+  resetToCommit: (id, { hash, mode }) => http.post(route(id, '/reset'), { hash, mode }),
   abortOperation: (id) => http.post(route(id, '/operation/abort')),
   continueOperation: (id) => http.post(route(id, '/operation/continue')),
 

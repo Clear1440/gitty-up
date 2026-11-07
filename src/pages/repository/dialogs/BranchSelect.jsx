@@ -4,8 +4,8 @@ import { useRepositoryContext } from '../RepositoryContext.js';
 
 const toOption = ({ name }) => ({ label: name, value: name });
 
-/** A searchable picker over local and remote branches. */
-export function BranchSelect({ value, onChange, excludeCurrent = false, ...selectProps }) {
+/** A searchable picker over local and remote branches, and `commit` too if given. */
+export function BranchSelect({ value, onChange, excludeCurrent = false, commit, ...selectProps }) {
   const { repository, status } = useRepositoryContext();
   const { data: branches } = useBranches(repository.id);
 
@@ -13,6 +13,19 @@ export function BranchSelect({ value, onChange, excludeCurrent = false, ...selec
     (branch) => !(excludeCurrent && branch.name === status.branch),
   );
   const options = [
+    ...(commit
+      ? [
+          {
+            label: 'Commit',
+            options: [
+              {
+                label: `${commit.shortHash} ${commit.subject}`,
+                value: commit.hash,
+              },
+            ],
+          },
+        ]
+      : []),
     { label: 'Local', options: local.map(toOption) },
     { label: 'Remote', options: (branches?.remote ?? []).map(toOption) },
   ];

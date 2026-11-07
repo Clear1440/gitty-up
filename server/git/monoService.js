@@ -422,6 +422,18 @@ export async function getLastCommit() {
   return null;
 }
 
+export async function checkoutCommit() {
+  throw badRequest('Open the repository on its own to check out a commit.');
+}
+
+export async function cherryPick() {
+  throw badRequest('Open the repository on its own to cherry-pick a commit.');
+}
+
+export async function resetToCommit() {
+  throw badRequest('Open the repository on its own to reset to a commit.');
+}
+
 export async function undoCommit() {
   throw badRequest('Open the repository on its own to undo a commit.');
 }

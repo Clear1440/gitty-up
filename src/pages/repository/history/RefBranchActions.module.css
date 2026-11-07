@@ -1,0 +1,4 @@
+/* Only there to catch events, so it must not change the layout of the labels. */
+.actions {
+  display: contents;
+}

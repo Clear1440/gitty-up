@@ -1,5 +1,5 @@
 import { CloudOutlined, LaptopOutlined, PullRequestOutlined } from '@ant-design/icons';
-import { Avatar, Button, Empty, Result, Spin, Tag } from 'antd';
+import { Avatar, Button, Dropdown, Empty, Result, Spin, Tag } from 'antd';
 import clsx from 'clsx';
 import { useEffect, useMemo, useRef } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router';
@@ -15,6 +15,7 @@ import { CommitPane } from './history/CommitPane.jsx';
 import { GraphTooltipArea } from './history/GraphTooltipArea.jsx';
 import { findBranchTip, groupHasBranch, groupRefs } from './history/groupRefs.js';
 import { RefBranchActions } from './history/RefBranchActions.jsx';
+import { useCommitMenu } from './history/useCommitMenu.js';
 import { WorkingTreePane } from './history/WorkingTreePane.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
 import styles from './HistoryPage.module.css';
@@ -142,13 +143,17 @@ function UncommittedRow({ graphRow, columnCount, fileCount, selected, onSelect }
 
 function CommitRow({ commit, graphRow, columnCount, selected, focus, pullRequests, onSelect }) {
   const groups = groupRefs(commit.refs);
+  const { items, checkout } = useCommitMenu(commit);
+  // React bubbles events out of a menu to here, though it is elsewhere on the page.
+  const isInRow = (event) => event.currentTarget.contains(event.target);
 
-  return (
+  const row = (
     <li
       className={clsx(styles.commit, selected && styles.selectedCommit)}
       data-hash={commit.hash}
-      // React bubbles clicks out of a label's menu to here, though it is elsewhere on the page.
-      onClick={(event) => event.currentTarget.contains(event.target) && onSelect(commit.hash)}
+      // The second click of a double click would close the commit again.
+      onClick={(event) => isInRow(event) && event.detail < 2 && onSelect(commit.hash)}
+      onDoubleClick={(event) => isInRow(event) && checkout()}
     >
       <div className={styles.tree}>
         <CommitGraphCell
@@ -194,6 +199,13 @@ function CommitRow({ commit, graphRow, columnCount, selected, focus, pullRequest
         {commit.shortHash}
       </code>
     </li>
+  );
+
+  if (!items) return row;
+  return (
+    <Dropdown menu={{ items }} trigger={['contextMenu']}>
+      {row}
+    </Dropdown>
   );
 }
 

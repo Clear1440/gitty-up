@@ -207,6 +207,15 @@ function createGitRouter() {
   action(router, '/push', (service, path, { force, remote, upstreamName }) =>
     service.push(path, { force: force === true, remote, upstreamName }),
   );
+  action(router, '/checkout-commit', (service, path, { hash }) =>
+    service.checkoutCommit(path, { hash: requireString(hash, 'hash') }),
+  );
+  action(router, '/cherry-pick', (service, path, { hash }) =>
+    service.cherryPick(path, { hash: requireString(hash, 'hash') }),
+  );
+  action(router, '/reset', (service, path, { hash, mode }) =>
+    service.resetToCommit(path, { hash: requireString(hash, 'hash'), mode }),
+  );
   action(router, '/checkout', (service, path, { branch, remote }) =>
     service.checkout(path, { branch: requireString(branch, 'branch'), remote: remote === true }),
   );

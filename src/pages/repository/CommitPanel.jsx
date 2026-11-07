@@ -15,7 +15,8 @@ const describeRepositories = (count) => (count === 1 ? '1 repository' : `${count
 
 /** Says why committing is not possible right now, or returns null when it is. */
 function findBlocker({ status, fileCount, hasMessage, amend }) {
-  const isMerging = status.operation === 'merge';
+  // Git has a message ready for a merge or cherry-pick.
+  const isMerging = status.operation === 'merge' || status.operation === 'cherry-pick';
   if (status.conflicted.length > 0) return 'Resolve conflicts first';
   if (status.operation === 'rebase') return 'Finish the rebase first';
   if (fileCount === 0 && !amend && !isMerging) return 'No changes to commit';
@@ -25,6 +26,7 @@ function findBlocker({ status, fileCount, hasMessage, amend }) {
 
 function placeholderFor({ status, amend }) {
   if (status.operation === 'merge') return 'Leave empty to use the merge message';
+  if (status.operation === 'cherry-pick') return "Leave empty to use the commit's message";
   if (amend) return 'Leave empty to keep the previous message';
   return 'Commit message (Ctrl+Enter to commit)';
 }

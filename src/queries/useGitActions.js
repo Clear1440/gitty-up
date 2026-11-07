@@ -57,6 +57,22 @@ const GIT_ACTIONS = {
     success: ({ source, target }) => `Merged ${source} into ${target}`,
   },
   rebase: { run: gitApi.rebase, title: 'Rebase', success: ({ branch }) => `Rebased onto ${branch}` },
+  checkoutCommit: {
+    run: gitApi.checkoutCommit,
+    title: 'Checkout',
+    success: ({ shortHash }) => `Checked out ${shortHash}, on no branch`,
+  },
+  cherryPick: {
+    run: gitApi.cherryPick,
+    title: 'Cherry-pick',
+    success: ({ subject }) => `Cherry-picked "${subject}"`,
+  },
+  resetToCommit: {
+    run: gitApi.resetToCommit,
+    title: 'Reset',
+    success: ({ shortHash, mode }) =>
+      mode === 'soft' ? `Reset to ${shortHash}. Later changes are staged.` : `Reset to ${shortHash}`,
+  },
   abortOperation: { run: gitApi.abortOperation, title: 'Abort', success: () => 'Aborted' },
   continueOperation: { run: gitApi.continueOperation, title: 'Continue', success: () => 'Done' },
   stage: { run: gitApi.stage, title: 'Stage' },

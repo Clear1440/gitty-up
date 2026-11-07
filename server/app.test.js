@@ -1597,3 +1597,82 @@ describe('folder browsing', () => {
     expect(body.parent).toBe(path.dirname(root));
   });
 });
+
+describe('acting on a commit', () => {
+  const head = () => git(repo.work, 'rev-parse', 'HEAD');
+  const post = (route, body) => request('POST', `${repo.api}${route}`, body);
+
+  it('checks out a commit without a branch', async () => {
+    const first = head();
+    await writeAndCommit(repo.work, 'b.txt', 'b\n', 'Second');
+
+    expect((await post('/checkout-commit', { hash: first })).status).toBe(204);
+    expect(head()).toBe(first);
+    const { body } = await request('GET', `${repo.api}/status`);
+    expect(body.branch).toBeNull();
+  });
+
+  it('cherry-picks a commit from another branch', async () => {
+    git(repo.work, 'switch', '-c', 'topic');
+    await writeAndCommit(repo.work, 'topic.txt', 'topic\n', 'Topic work');
+    const picked = head();
+    git(repo.work, 'switch', 'main');
+
+    expect((await post('/cherry-pick', { hash: picked })).status).toBe(204);
+    expect(git(repo.work, 'log', '-1', '--format=%s')).toBe('Topic work');
+    expect(git(repo.work, 'status', '--porcelain')).toBe('');
+  });
+
+  it('leaves nothing half done when the branch already has the changes', async () => {
+    git(repo.work, 'switch', '-c', 'topic');
+    await writeAndCommit(repo.work, 'topic.txt', 'topic\n', 'Topic work');
+    const picked = head();
+    git(repo.work, 'switch', 'main');
+    await writeAndCommit(repo.work, 'topic.txt', 'topic\n', 'Same work');
+
+    expect((await post('/cherry-pick', { hash: picked })).status).toBe(409);
+    const { body } = await request('GET', `${repo.api}/status`);
+    expect(body.operation).toBeNull();
+  });
+
+  it('pauses a conflicted cherry-pick until it is finished', async () => {
+    git(repo.work, 'switch', '-c', 'topic');
+    await writeAndCommit(repo.work, 'readme.txt', 'topic\n', 'Topic edit');
+    const picked = head();
+    git(repo.work, 'switch', 'main');
+    await writeAndCommit(repo.work, 'readme.txt', 'main\n', 'Main edit');
+
+    const { status, body } = await post('/cherry-pick', { hash: picked });
+    expect(status).toBe(409);
+    expect(body.error.code).toBe('CONFLICTS');
+    expect((await request('GET', `${repo.api}/status`)).body.operation).toBe('cherry-pick');
+
+    await fs.writeFile(path.join(repo.work, 'readme.txt'), 'both\n');
+    git(repo.work, 'add', 'readme.txt');
+    expect((await post('/operation/continue')).status).toBe(204);
+    expect(git(repo.work, 'log', '-1', '--format=%s')).toBe('Topic edit');
+  });
+
+  it('resets softly, keeping later changes staged', async () => {
+    const first = head();
+    await writeAndCommit(repo.work, 'b.txt', 'b\n', 'Second');
+
+    expect((await post('/reset', { hash: first, mode: 'soft' })).status).toBe(204);
+    expect(head()).toBe(first);
+    expect(git(repo.work, 'status', '--porcelain')).toBe('A  b.txt');
+  });
+
+  it('resets hard, discarding later and uncommitted changes', async () => {
+    const first = head();
+    await writeAndCommit(repo.work, 'b.txt', 'b\n', 'Second');
+    await fs.writeFile(path.join(repo.work, 'readme.txt'), 'edited\n');
+
+    expect((await post('/reset', { hash: first, mode: 'hard' })).status).toBe(204);
+    expect(head()).toBe(first);
+    expect(git(repo.work, 'status', '--porcelain')).toBe('');
+  });
+
+  it('refuses an unknown reset mode', async () => {
+    expect((await post('/reset', { hash: head(), mode: 'mixed' })).status).toBe(400);
+  });
+});

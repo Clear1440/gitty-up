@@ -22,6 +22,7 @@ const OPERATION_MARKERS = [
   { operation: 'rebase', marker: 'rebase-merge' },
   { operation: 'rebase', marker: 'rebase-apply' },
   { operation: 'merge', marker: 'MERGE_HEAD' },
+  { operation: 'cherry-pick', marker: 'CHERRY_PICK_HEAD' },
 ];
 
 const PULL_MODE_FLAGS = { merge: '--no-rebase', rebase: '--rebase', 'ff-only': '--ff-only' };
@@ -95,7 +96,7 @@ async function getOperation(repoPath) {
 
 async function requireOperation(repoPath) {
   const operation = await getOperation(repoPath);
-  if (!operation) throw gitFailure('There is no merge or rebase in progress.');
+  if (!operation) throw gitFailure('There is no merge, rebase or cherry-pick in progress.');
   return operation;
 }
 
@@ -549,7 +550,8 @@ export async function abortOperation(repoPath) {
 export async function continueOperation(repoPath) {
   const operation = await requireOperation(repoPath);
   await reportingConflicts(repoPath, () =>
-    runGit(repoPath, operation === 'merge' ? ['commit', '--no-edit'] : ['rebase', '--continue']),
+    // A merge or cherry-pick finishes by committing, with the message git prepared.
+    runGit(repoPath, operation === 'rebase' ? ['rebase', '--continue'] : ['commit', '--no-edit']),
   );
 }
 
@@ -583,8 +585,8 @@ export async function commit(repoPath, { message, amend = false, stageAll = fals
   // Staging everything here would commit the conflict markers.
   if (conflicted.length > 0) throw gitFailure('Resolve the conflicts before committing.');
 
-  // A merge already has a message, and an amend can keep the existing one.
-  const canReuseMessage = operation === 'merge' || amend;
+  // A merge or cherry-pick already has a message, and an amend can keep the existing one.
+  const canReuseMessage = operation === 'merge' || operation === 'cherry-pick' || amend;
   if (!trimmed && !canReuseMessage) throw badRequest('A commit message is required.');
 
   if (stageAll) await stage(repoPath);
@@ -593,6 +595,54 @@ export async function commit(repoPath, { message, amend = false, stageAll = fals
     ...(amend ? ['--amend'] : []),
     ...(trimmed ? ['--message', trimmed] : ['--no-edit']),
   ]);
+}
+
+async function assertNoOperation(repoPath, doing) {
+  const { operation } = await getStatus(repoPath);
+  if (operation) throw gitFailure(`Finish the ${operation} before ${doing}.`);
+}
+
+/** Checks out a commit on its own, without a branch. */
+export async function checkoutCommit(repoPath, { hash }) {
+  assertCommitHash(hash);
+  await runGit(repoPath, ['switch', '--detach', hash]);
+}
+
+/**
+ * Copies a commit onto the checked out branch. When git gives up for any reason other
+ * than conflicts, such as the branch already having those changes, nothing is left
+ * half done.
+ */
+export async function cherryPick(repoPath, { hash }) {
+  assertCommitHash(hash);
+  await assertNoOperation(repoPath, 'cherry-picking');
+  const [, ...parents] = (await runGit(repoPath, ['rev-list', '--parents', '-n', '1', hash]))
+    .trim()
+    .split(' ');
+  if (parents.length > 1) throw badRequest('A merge commit cannot be cherry-picked.');
+
+  try {
+    await reportingConflicts(repoPath, () => runGit(repoPath, ['cherry-pick', hash]));
+  } catch (error) {
+    if (error.code !== 'CONFLICTS' && (await getOperation(repoPath)) === 'cherry-pick') {
+      await runGit(repoPath, ['cherry-pick', '--abort']);
+    }
+    throw error;
+  }
+}
+
+const RESET_MODES = new Set(['soft', 'hard']);
+
+/**
+ * Moves the checked out branch to a commit. `soft` keeps every change since then,
+ * staged. `hard` throws them away, uncommitted ones included, though files git has
+ * never tracked stay.
+ */
+export async function resetToCommit(repoPath, { hash, mode }) {
+  assertCommitHash(hash);
+  if (!RESET_MODES.has(mode)) throw badRequest(`Unknown reset mode: ${mode}`);
+  await assertNoOperation(repoPath, 'resetting');
+  await runGit(repoPath, ['reset', `--${mode}`, hash]);
 }
 
 /** The commit HEAD is on, and whether any remote branch has it. Null with no commits yet. */
