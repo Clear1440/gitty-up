@@ -430,9 +430,28 @@ export async function createBranch(repoPath, { name, startPoint = 'HEAD', switch
   );
 }
 
-export async function deleteBranch(repoPath, { name, force = false }) {
+/** With `deleteRemote`, also deletes the branch's upstream, once the local branch is gone. */
+export async function deleteBranch(repoPath, { name, force = false, deleteRemote = false }) {
   assertRef(name);
+  // Read first, as git forgets the upstream along with the branch.
+  const upstream = deleteRemote ? await findLiveUpstream(repoPath, name) : null;
   await runGit(repoPath, ['branch', force ? '-D' : '-d', name]);
+  if (!upstream) return;
+
+  try {
+    await deleteRemoteBranch(repoPath, { name: upstream });
+  } catch (error) {
+    throw gitFailure(`Deleted ${name}, but could not delete ${upstream}. ${error.message}`, error.details);
+  }
+}
+
+async function findLiveUpstream(repoPath, name) {
+  const { local } = await getBranches(repoPath);
+  const branch = local.find((candidate) => candidate.name === name);
+  if (!branch?.upstream || branch.upstreamGone) {
+    throw badRequest(`${name} has no branch on a remote to delete.`);
+  }
+  return branch.upstream;
 }
 
 /** Deletes a branch from its remote, which also removes the local tracking ref. */

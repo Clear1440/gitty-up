@@ -1,10 +1,12 @@
 import { Button, Result, Spin } from 'antd';
-import { useMemo, useRef, useState } from 'react';
-import { Link, Outlet, useParams } from 'react-router';
+import { useQueryClient } from '@tanstack/react-query';
+import { use, useMemo, useRef, useState } from 'react';
+import { Link, Outlet, useParams, useSearchParams } from 'react-router';
 import { ResizeHandle } from '../../components/ResizeHandle.jsx';
 import { useResizableSizes } from '../../components/useResizableSizes.js';
 import { paths } from '../../paths.js';
 import { useStatus } from '../../queries/git.js';
+import { loadRepository } from '../../queries/loadRepository.js';
 import { useRepository } from '../../queries/repositories.js';
 import { useGitActions } from '../../queries/useGitActions.js';
 import { ActionBar } from './ActionBar.jsx';
@@ -67,6 +69,12 @@ function RepositoryWorkspace({ repository }) {
 
 export function RepositoryLayout() {
   const { repositoryId } = useParams();
+  const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
+  // Waiting here, rather than in each panel, keeps the previous page on screen until
+  // this one can show everything at once, instead of a spinner for every panel.
+  use(loadRepository(queryClient, repositoryId, searchParams.get('ref') ?? undefined));
+
   const { data: repository, error, isPending } = useRepository(repositoryId);
 
   if (isPending) return <Spin className="centered" size="large" />;

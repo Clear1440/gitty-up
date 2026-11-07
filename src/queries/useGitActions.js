@@ -32,7 +32,7 @@ const GIT_ACTIONS = {
   deleteBranch: {
     run: gitApi.deleteBranch,
     title: 'Delete branch',
-    success: ({ name }) => `Deleted ${name}`,
+    success: ({ name, upstream }) => (upstream ? `Deleted ${name} and ${upstream}` : `Deleted ${name}`),
   },
   deleteRemoteBranch: {
     run: gitApi.deleteRemoteBranch,

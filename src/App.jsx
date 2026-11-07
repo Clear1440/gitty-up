@@ -11,6 +11,9 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 2_000,
+      // Kept a while after its tab is left, so switching back shows it straight away
+      // while it refreshes, rather than loading from scratch.
+      gcTime: 30 * 60_000,
       // Only server hiccups are worth retrying. A 4xx will fail the same way again.
       retry: (failureCount, error) => failureCount < 1 && error.status >= 500,
     },

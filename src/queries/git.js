@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { infiniteQueryOptions, queryOptions, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { gitApi } from '../api';
 import { queryKeys } from './queryKeys.js';
 
@@ -6,20 +6,45 @@ const COMMIT_PAGE_SIZE = 100;
 const STATUS_POLL_MS = 5_000;
 const PULL_REQUESTS_STALE_MS = 5 * 60_000;
 
-export function useStatus(repositoryId) {
-  return useQuery({
+export const statusQuery = (repositoryId) =>
+  queryOptions({
     queryKey: queryKeys.status(repositoryId),
     queryFn: () => gitApi.getStatus(repositoryId),
+  });
+
+export const branchesQuery = (repositoryId) =>
+  queryOptions({
+    queryKey: queryKeys.branches(repositoryId),
+    queryFn: () => gitApi.getBranches(repositoryId),
+  });
+
+export const stashesQuery = (repositoryId) =>
+  queryOptions({
+    queryKey: queryKeys.stashes(repositoryId),
+    queryFn: () => gitApi.getStashes(repositoryId),
+  });
+
+/** One page per fetch. `ref` is a branch, or undefined for every branch. */
+export const commitsQuery = (repositoryId, ref) =>
+  infiniteQueryOptions({
+    queryKey: queryKeys.commits(repositoryId, ref),
+    queryFn: ({ pageParam }) =>
+      gitApi.getCommits(repositoryId, { ref, limit: COMMIT_PAGE_SIZE, skip: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length < COMMIT_PAGE_SIZE ? undefined : allPages.length * COMMIT_PAGE_SIZE,
+  });
+
+export function useStatus(repositoryId) {
+  return useQuery({
+    ...statusQuery(repositoryId),
     // Files also change outside the app, in editors and terminals.
     refetchInterval: STATUS_POLL_MS,
   });
 }
 
 export function useBranches(repositoryId) {
-  return useQuery({
-    queryKey: queryKeys.branches(repositoryId),
-    queryFn: () => gitApi.getBranches(repositoryId),
-  });
+  return useQuery(branchesQuery(repositoryId));
 }
 
 export function useRemotes(repositoryId) {
@@ -31,12 +56,7 @@ export function useRemotes(repositoryId) {
 
 export function useCommits(repositoryId, ref) {
   return useInfiniteQuery({
-    queryKey: queryKeys.commits(repositoryId, ref),
-    queryFn: ({ pageParam }) =>
-      gitApi.getCommits(repositoryId, { ref, limit: COMMIT_PAGE_SIZE, skip: pageParam }),
-    initialPageParam: 0,
-    getNextPageParam: (lastPage, allPages) =>
-      lastPage.length < COMMIT_PAGE_SIZE ? undefined : allPages.length * COMMIT_PAGE_SIZE,
+    ...commitsQuery(repositoryId, ref),
     select: (data) => data.pages.flat(),
   });
 }
@@ -66,10 +86,7 @@ export function usePullRequests(repositoryId) {
 }
 
 export function useStashes(repositoryId) {
-  return useQuery({
-    queryKey: queryKeys.stashes(repositoryId),
-    queryFn: () => gitApi.getStashes(repositoryId),
-  });
+  return useQuery(stashesQuery(repositoryId));
 }
 
 /** `file` is `{ path, staged, untracked }`, or null when nothing is selected. */

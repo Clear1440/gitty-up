@@ -27,8 +27,8 @@ export const gitApi = {
   checkout: (id, { branch, remote }) => http.post(route(id, '/checkout'), { branch, remote }),
   createBranch: (id, { name, startPoint, switchTo }) =>
     http.post(route(id, '/branches'), { name, startPoint, switchTo }),
-  deleteBranch: (id, { name, force }) =>
-    http.delete(route(id, `/branches/${encodeURIComponent(name)}`), { force }),
+  deleteBranch: (id, { name, force, deleteRemote }) =>
+    http.delete(route(id, `/branches/${encodeURIComponent(name)}`), { force, deleteRemote }),
   deleteRemoteBranch: (id, { name }) =>
     http.delete(route(id, `/remote-branches/${encodeURIComponent(name)}`)),
   pruneBranches: (id, { force }) => http.post(route(id, '/prune-branches'), { force }),
