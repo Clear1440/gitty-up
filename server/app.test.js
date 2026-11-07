@@ -51,7 +51,7 @@ async function createRepository(name) {
 }
 
 beforeAll(async () => {
-  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'gity-up-test-'));
+  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'gitty-up-test-'));
   const app = createApp({ store: new RepositoryStore(path.join(sandbox, 'data')) });
   await new Promise((resolve) => {
     server = app.listen(0, '127.0.0.1', resolve);
@@ -110,7 +110,7 @@ describe('linked repositories', () => {
   });
 
   it('rejects folders that are not repositories', async () => {
-    const plain = await fs.mkdtemp(path.join(os.tmpdir(), 'gity-up-plain-'));
+    const plain = await fs.mkdtemp(path.join(os.tmpdir(), 'gitty-up-plain-'));
     const { status, body } = await request('POST', '/api/repositories', { path: plain });
     expect(status).toBe(400);
     expect(body.error.message).toContain('not inside a git working tree');
@@ -367,7 +367,7 @@ describe('repositories added from git', () => {
   });
 
   it('keeps the stub when the located folder is not a repository', async () => {
-    const plain = await fs.mkdtemp(path.join(os.tmpdir(), 'gity-up-plain-'));
+    const plain = await fs.mkdtemp(path.join(os.tmpdir(), 'gitty-up-plain-'));
     const { status } = await request('POST', `/api/repositories/${stub.id}/locate`, {
       path: plain,
     });

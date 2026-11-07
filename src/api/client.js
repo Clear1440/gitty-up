@@ -27,7 +27,7 @@ async function send(url, init) {
     throw new ApiError({
       status: 0,
       code: 'NETWORK',
-      message: 'Could not reach the gity-up server. Is it running?',
+      message: 'Could not reach the gitty-up server. Is it running?',
     });
   }
 }
@@ -48,7 +48,7 @@ async function request(method, path, { query, body } = {}) {
   throw new ApiError({
     status: response.status,
     code: payload?.error?.code ?? 'UNKNOWN',
-    message: payload?.error?.message ?? 'The gity-up server sent an unexpected response.',
+    message: payload?.error?.message ?? 'The gitty-up server sent an unexpected response.',
     details: payload?.error?.details,
   });
 }

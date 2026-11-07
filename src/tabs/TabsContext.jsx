@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { readStored, writeStored } from '../utils/storage.js';
 import { moveTab, openTab, removeTab, rememberTab } from './tabsModel.js';
 
-const STORAGE_KEY = 'gity-up.tabs';
+const STORAGE_KEY = 'gitty-up.tabs';
 
 const TabsContext = createContext(null);
 

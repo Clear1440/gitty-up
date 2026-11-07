@@ -12,7 +12,7 @@ const repository = (name, branch, groupId) => ({
 
 describe('matchesSearch', () => {
   it('matches the repository name, ignoring case', () => {
-    expect(matchesSearch(repository('Gity-Up', 'main'), 'gity')).toBe(true);
+    expect(matchesSearch(repository('Gitty-Up', 'main'), 'gitty')).toBe(true);
   });
 
   it('matches the current branch', () => {

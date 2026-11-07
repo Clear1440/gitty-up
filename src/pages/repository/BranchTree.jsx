@@ -10,7 +10,7 @@ import styles from './BranchSidebar.module.css';
  * they never touched have no entry, so they keep following `opensByDefault`.
  */
 export function useFolderChoices(repositoryId) {
-  const storageKey = `gity-up.branch-folders.${repositoryId}`;
+  const storageKey = `gitty-up.branch-folders.${repositoryId}`;
   const [choices, setChoices] = useState(() => readStored(storageKey, {}));
 
   const setFolderOpen = (key, open) => {

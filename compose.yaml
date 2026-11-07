@@ -1,16 +1,16 @@
 # docker compose up -d --build, then open http://localhost:4317
 services:
-  gity-up:
+  gitty-up:
     build: .
-    image: gity-up
+    image: gitty-up
     restart: unless-stopped
     ports:
       # Published on this machine only: the server runs git and has no sign-in.
       - "127.0.0.1:4317:4317"
     volumes:
-      - gity-up-data:/data
+      - gitty-up-data:/data
       # The folder holding your repositories. It shows up as "repos" in the folder picker.
-      - ${GITY_UP_REPOS:-~/projects}:/home/node/repos
+      - ${GITTY_UP_REPOS:-~/projects}:/home/node/repos
       # Optional: your git name and email, read-only.
       # - ~/.gitconfig:/home/node/.gitconfig:ro
     environment:
@@ -23,4 +23,4 @@ services:
       # GIT_CONFIG_VALUE_0: "true"
 
 volumes:
-  gity-up-data:
+  gitty-up-data:

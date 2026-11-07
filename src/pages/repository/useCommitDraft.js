@@ -1,7 +1,7 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import { readStored, writeStored } from '../../utils/storage.js';
 
-const storageKey = (repositoryId) => `gity-up.commit-draft.${repositoryId}`;
+const storageKey = (repositoryId) => `gitty-up.commit-draft.${repositoryId}`;
 
 // Kept here as well as in storage, so a draft still works when storage is blocked.
 const drafts = new Map();

@@ -46,7 +46,7 @@ function createWindow(appUrl) {
     height: 900,
     minWidth: 900,
     minHeight: 600,
-    title: 'Gity Up',
+    title: 'Gitty Up',
     backgroundColor: BACKGROUND_COLOR,
     autoHideMenuBar: true,
     show: false,
@@ -100,7 +100,7 @@ if (!app.requestSingleInstanceLock()) {
       createWindow(appUrl);
     })
     .catch((error) => {
-      dialog.showErrorBox('Gity Up could not start', error.message);
+      dialog.showErrorBox('Gitty Up could not start', error.message);
       app.quit();
     });
 }

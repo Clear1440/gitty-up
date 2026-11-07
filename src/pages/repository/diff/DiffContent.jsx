@@ -7,7 +7,7 @@ import { HunkRow, LineRow, PairRow } from './DiffRows.jsx';
 import { buildRows } from './diffRows.js';
 
 const MAX_ROWS = 3_000;
-const VIEW_STORAGE_KEY = 'gity-up.diff-view';
+const VIEW_STORAGE_KEY = 'gitty-up.diff-view';
 const NO_SELECTION = new Set();
 
 const VIEWS = [

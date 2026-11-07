@@ -54,7 +54,7 @@ export async function listPullRequests(repoPath, remoteUrl) {
       {
         headers: {
           Accept: 'application/vnd.github+json',
-          'User-Agent': 'gity-up',
+          'User-Agent': 'gitty-up',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),

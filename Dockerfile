@@ -21,9 +21,9 @@ RUN apk add --no-cache git openssh-client \
 
 WORKDIR /app
 ENV NODE_ENV=production \
-  GITY_UP_HOST=0.0.0.0 \
-  GITY_UP_PORT=4317 \
-  GITY_UP_DATA_DIR=/data
+  GITTY_UP_HOST=0.0.0.0 \
+  GITTY_UP_PORT=4317 \
+  GITTY_UP_DATA_DIR=/data
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY server ./server

@@ -1,7 +1,7 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
-const SERVER_PORT = process.env.GITY_UP_PORT ?? 4317;
+const SERVER_PORT = process.env.GITTY_UP_PORT ?? 4317;
 
 export default defineConfig({
   plugins: [react()],

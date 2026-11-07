@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { readStored, writeStored } from '../../utils/storage.js';
 import { BRANCH_SORTS, DEFAULT_BRANCH_SORT } from './branchTree.js';
 
-const STORAGE_KEY = 'gity-up.branch-sort';
+const STORAGE_KEY = 'gitty-up.branch-sort';
 
 function readSort() {
   const stored = readStored(STORAGE_KEY, DEFAULT_BRANCH_SORT);

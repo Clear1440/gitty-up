@@ -22,7 +22,7 @@ import { RepositoryRow } from './RepositoryRow.jsx';
 import { RepositorySection } from './RepositorySection.jsx';
 import { buildSections } from './sections.js';
 
-const COLLAPSED_STORAGE_KEY = 'gity-up.collapsedGroups';
+const COLLAPSED_STORAGE_KEY = 'gitty-up.collapsedGroups';
 const NO_GROUPS = [];
 
 function useCollapsedSections() {
@@ -117,7 +117,7 @@ export function HomePage() {
       return (
         <div className={styles.emptyState}>
           <h2>Link your first repository</h2>
-          <p>Point gity-up at a folder on this machine, or add a repository by its git URL.</p>
+          <p>Point gitty-up at a folder on this machine, or add a repository by its git URL.</p>
           <div className={styles.emptyActions}>
             {linkButton}
             {bulkImportButton}

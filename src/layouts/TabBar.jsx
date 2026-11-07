@@ -13,7 +13,7 @@ import styles from './TabBar.module.css';
 const HOME_TAB = 'home';
 
 /** A private type, so a dragged tab cannot drop as text into a field. */
-const DRAG_TYPE = 'application/x-gity-up-tab';
+const DRAG_TYPE = 'application/x-gitty-up-tab';
 
 const HOME_ITEM = {
   key: HOME_TAB,

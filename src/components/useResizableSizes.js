@@ -44,7 +44,7 @@ export function keyboardStep(key, edge) {
  * `limits` must be a constant: `{ [name]: { min, max } }`.
  */
 export function useResizableSizes(containerRef, group, limits) {
-  const storageKey = `gity-up.sizes.${group}`;
+  const storageKey = `gitty-up.sizes.${group}`;
   const [sizes, setSizes] = useState(() => sanitizeSizes(readStored(storageKey, {}), limits));
 
   useEffect(() => {

@@ -69,7 +69,7 @@ async function createMono() {
 }
 
 beforeAll(async () => {
-  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'gity-up-mono-test-'));
+  sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'gitty-up-mono-test-'));
   const app = createApp({ store: new RepositoryStore(path.join(sandbox, 'data')) });
   await new Promise((resolve) => {
     server = app.listen(0, '127.0.0.1', resolve);

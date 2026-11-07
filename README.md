@@ -1,4 +1,4 @@
-# gity-up
+# gitty-up
 
 A dark mode git client built for clarity. Link the repositories on your machine, see every branch,
 and run the common git actions from a bar at the top. Sharing information between users is the
@@ -34,9 +34,9 @@ npm start
 
 These environment variables change the defaults:
 
-- `GITY_UP_PORT`: the server port (default `4317`)
-- `GITY_UP_DATA_DIR`: where the list of linked repositories is kept (default `~/.gity-up`)
-- `GITY_UP_HOST`: the address the server binds to (default `127.0.0.1`). Requests must still be
+- `GITTY_UP_PORT`: the server port (default `4317`)
+- `GITTY_UP_DATA_DIR`: where the list of linked repositories is kept (default `~/.gitty-up`)
+- `GITTY_UP_HOST`: the address the server binds to (default `127.0.0.1`). Requests must still be
   addressed to `localhost`, so this only matters inside a container.
 
 Only `express` is a runtime dependency. Everything the client uses is a dev dependency, because
@@ -46,7 +46,7 @@ Vite bundles it into `dist/`. Keeping it that way keeps the installers and Docke
 
 The desktop app is the same server and client inside [Electron](https://www.electronjs.org/).
 `electron/main.js` starts the server on `127.0.0.1` and opens a window on it. If port `4317` is
-taken, it uses any free port. It shares `~/.gity-up` with `npm start`, so both list the same
+taken, it uses any free port. It shares `~/.gitty-up` with `npm start`, so both list the same
 repositories. Git must already be installed on the machine.
 
 ### Releasing
@@ -78,7 +78,7 @@ Nothing is signed yet, so:
   **Run anyway**.
 - **macOS:** the app is signed ad hoc only, so Gatekeeper blocks the first launch. Open it, then
   allow it under **System Settings → Privacy & Security → Open Anyway**. You can also run
-  `xattr -cr "/Applications/Gity Up.app"`.
+  `xattr -cr "/Applications/Gitty Up.app"`.
 
 To sign later, add these secrets to the repository and the workflow's env:
 
@@ -99,9 +99,9 @@ docker compose up -d --build
 
 Then open http://localhost:4317. [compose.yaml](compose.yaml) sets up:
 
-- **Repositories:** the folder named by `GITY_UP_REPOS`, which defaults to `~/projects`. It is
+- **Repositories:** the folder named by `GITTY_UP_REPOS`, which defaults to `~/projects`. It is
   mounted at `/home/node/repos`, the `repos` folder in the folder picker. Repository paths are the
-  container's paths, so the container keeps its own list in the `gity-up-data` volume.
+  container's paths, so the container keeps its own list in the `gitty-up-data` volume.
 - **Port:** published on `127.0.0.1` only. The server has no sign-in, so don't publish it to
   your network.
 - **Pushing:** over HTTPS to GitHub, set `GH_TOKEN` in your shell or a `.env` file next to

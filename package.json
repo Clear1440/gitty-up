@@ -1,5 +1,5 @@
 {
-  "name": "gity-up",
+  "name": "gitty-up",
   "private": true,
   "version": "0.1.0",
   "description": "A git client with a liquid glass UI.",
@@ -45,9 +45,9 @@
     "vitest": "^5.1.0"
   },
   "build": {
-    "appId": "com.clear1440.gityup",
-    "productName": "Gity Up",
-    "artifactName": "gity-up-${version}-${os}-${arch}.${ext}",
+    "appId": "com.clear1440.gittyup",
+    "productName": "Gitty Up",
+    "artifactName": "gitty-up-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release",
       "buildResources": "build"
