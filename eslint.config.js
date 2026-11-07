@@ -3,10 +3,10 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 
 export default [
-  { ignores: ['dist'] },
+  { ignores: ['dist', 'release'] },
   js.configs.recommended,
   {
-    files: ['server/**/*.js', '*.config.js'],
+    files: ['server/**/*.js', 'electron/**/*.js', '*.config.js'],
     languageOptions: { globals: globals.node },
   },
   {

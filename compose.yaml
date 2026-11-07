@@ -1,0 +1,26 @@
+# docker compose up -d --build, then open http://localhost:4317
+services:
+  gity-up:
+    build: .
+    image: gity-up
+    restart: unless-stopped
+    ports:
+      # Published on this machine only: the server runs git and has no sign-in.
+      - "127.0.0.1:4317:4317"
+    volumes:
+      - gity-up-data:/data
+      # The folder holding your repositories. It shows up as "repos" in the folder picker.
+      - ${GITY_UP_REPOS:-~/projects}:/home/node/repos
+      # Optional: your git name and email, read-only.
+      # - ~/.gitconfig:/home/node/.gitconfig:ro
+    environment:
+      # A GitHub token, for pushing over HTTPS and showing pull requests of private repositories.
+      GH_TOKEN: ${GH_TOKEN:-}
+      # On Windows, uncomment these to match Git for Windows' line endings,
+      # or every file may show as changed:
+      # GIT_CONFIG_COUNT: "1"
+      # GIT_CONFIG_KEY_0: core.autocrlf
+      # GIT_CONFIG_VALUE_0: "true"
+
+volumes:
+  gity-up-data:
