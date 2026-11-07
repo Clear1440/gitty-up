@@ -1,4 +1,10 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { filesystemApi, repositoriesApi } from '../api';
 import { queryKeys } from './queryKeys.js';
 
@@ -6,11 +12,14 @@ export function useRepositories() {
   return useQuery({ queryKey: queryKeys.repositoryList(), queryFn: repositoriesApi.list });
 }
 
-export function useRepository(repositoryId) {
-  return useQuery({
+export const repositoryQuery = (repositoryId) =>
+  queryOptions({
     queryKey: queryKeys.repository(repositoryId),
     queryFn: () => repositoriesApi.get(repositoryId),
   });
+
+export function useRepository(repositoryId) {
+  return useQuery(repositoryQuery(repositoryId));
 }
 
 export function useRepositoryGroups() {

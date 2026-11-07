@@ -84,6 +84,11 @@ export function TabBar({ activeRepositoryId }) {
   const { tabs, closeTab, moveTab } = useTabs();
   const { data: repositories } = useRepositories();
   const wrapTab = useTabDrag(moveTab);
+  // The next repository can take a moment to load, and its page only appears once it
+  // has. Showing the clicked tab as active straight away makes the click feel instant.
+  const [switching, setSwitching] = useState(null);
+  const activeKey = activeRepositoryId ?? HOME_TAB;
+  if (switching && switching.from !== activeKey) setSwitching(null);
 
   const nameOf = (repositoryId) =>
     repositories?.find((repository) => repository.id === repositoryId)?.name;
@@ -101,6 +106,7 @@ export function TabBar({ activeRepositoryId }) {
 
   const handleChange = (key) => {
     const tab = tabs.find(({ repositoryId }) => repositoryId === key);
+    setSwitching({ from: activeKey, to: key });
     navigate(tab ? tab.path : paths.home());
   };
 
@@ -119,7 +125,7 @@ export function TabBar({ activeRepositoryId }) {
         type="editable-card"
         hideAdd
         size="small"
-        activeKey={activeRepositoryId ?? HOME_TAB}
+        activeKey={switching?.to ?? activeKey}
         items={items}
         tabBarExtraContent={{ left: <Logo /> }}
         renderTabBar={(tabBarProps, DefaultTabBar) => (

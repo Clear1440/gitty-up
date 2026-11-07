@@ -1,11 +1,11 @@
-import { Navigate, createBrowserRouter } from 'react-router';
+import { Navigate, createBrowserRouter, redirect } from 'react-router';
 import { AppLayout } from './layouts/AppLayout.jsx';
 import { RouteErrorPage } from './layouts/RouteErrorPage.jsx';
 import { HomePage } from './pages/home/HomePage.jsx';
 import { NotFoundPage } from './pages/NotFoundPage.jsx';
 import { HistoryPage } from './pages/repository/HistoryPage.jsx';
 import { RepositoryLayout } from './pages/repository/RepositoryLayout.jsx';
-import { UNCOMMITTED } from './paths.js';
+import { UNCOMMITTED, paths } from './paths.js';
 
 export const router = createBrowserRouter([
   {
@@ -18,7 +18,8 @@ export const router = createBrowserRouter([
         path: 'repositories/:repositoryId',
         element: <RepositoryLayout />,
         children: [
-          { index: true, element: <Navigate to="history" replace /> },
+          // Redirecting before rendering, unlike <Navigate>, never shows an empty page.
+          { index: true, loader: ({ params }) => redirect(paths.history(params.repositoryId)) },
           { path: 'history', element: <HistoryPage /> },
           // Tabs saved before this page was folded into history still point here.
           {

@@ -168,6 +168,7 @@ function createGitRouter() {
     await git.deleteBranch(request.repository.path, {
       name: request.params.branch,
       force: request.query.force === 'true',
+      deleteRemote: request.query.deleteRemote === 'true',
     });
     response.status(204).end();
   });

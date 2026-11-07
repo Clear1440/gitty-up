@@ -81,7 +81,11 @@ export function useBranchMenu(branch, kind) {
           label: 'Delete…',
           danger: true,
           disabled: branch.isCurrent,
-          onClick: () => openDialog('deleteBranch', { name: branch.name }),
+          onClick: () =>
+            openDialog('deleteBranch', {
+              name: branch.name,
+              upstream: branch.upstreamGone ? null : branch.upstream,
+            }),
         },
   ];
 

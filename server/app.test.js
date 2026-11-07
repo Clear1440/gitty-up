@@ -420,6 +420,40 @@ describe('branches', () => {
     expect(body.local.map((branch) => branch.name)).toContain('feature/login');
   });
 
+  it('deletes a local branch and its remote copy together', async () => {
+    git(repo.work, 'switch', '--create', 'feature/login');
+    git(repo.work, 'push', '--set-upstream', 'origin', 'feature/login:shared-login');
+    git(repo.work, 'switch', 'main');
+
+    const encoded = encodeURIComponent('feature/login');
+    const { status } = await request('DELETE', `${repo.api}/branches/${encoded}?deleteRemote=true`);
+
+    expect(status).toBe(204);
+    expect(git(repo.remote, 'branch', '--list')).not.toContain('shared-login');
+    const { body } = await request('GET', `${repo.api}/branches`);
+    expect(body.local.map((branch) => branch.name)).toEqual(['main']);
+    expect(body.remote.map((branch) => branch.name)).toEqual(['origin/main']);
+  });
+
+  it('touches neither copy when the local branch cannot be deleted', async () => {
+    git(repo.work, 'switch', '--create', 'unmerged');
+    git(repo.work, 'push', '--set-upstream', 'origin', 'unmerged');
+    await writeAndCommit(repo.work, 'a.txt', 'a\n', 'Unmerged work');
+    git(repo.work, 'switch', 'main');
+
+    const { status } = await request('DELETE', `${repo.api}/branches/unmerged?deleteRemote=true`);
+
+    expect(status).toBe(409);
+    expect(git(repo.remote, 'branch', '--list')).toContain('unmerged');
+  });
+
+  it('refuses to delete the remote copy of a branch that has none', async () => {
+    git(repo.work, 'branch', 'local-only');
+    const { status } = await request('DELETE', `${repo.api}/branches/local-only?deleteRemote=true`);
+    expect(status).toBe(400);
+    expect(git(repo.work, 'branch', '--list')).toContain('local-only');
+  });
+
   it('refuses to delete a remote branch it does not know', async () => {
     const { status } = await request('DELETE', `${repo.api}/remote-branches/origin%2Fnope`);
     expect(status).toBe(400);
