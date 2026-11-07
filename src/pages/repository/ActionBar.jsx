@@ -18,6 +18,7 @@ import { paths } from '../../paths.js';
 import { useStashes } from '../../queries/git.js';
 import { queryKeys } from '../../queries/queryKeys.js';
 import { countChangedFiles } from './countChangedFiles.js';
+import { MonoMembers } from './MonoMembers.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { needsPublishing, usePush } from './usePush.js';
 import { useUndoCommitShortcut } from './useUndoCommitShortcut.js';
@@ -53,15 +54,18 @@ function SplitActionButton({ menuItems, menuDisabled, ...actionProps }) {
 function CurrentBranch({ status }) {
   const title = status.upstream ? `Tracking ${status.upstream}` : 'No upstream branch';
   return (
-    <Tooltip title={title}>
-      <div className={styles.currentBranch}>
-        <BranchesOutlined />
-        <span className={styles.currentBranchName}>
-          {status.branch ?? `detached at ${status.headHash?.slice(0, 7)}`}
-        </span>
-        <AheadBehind ahead={status.ahead} behind={status.behind} />
-      </div>
-    </Tooltip>
+    <div className={styles.currentBranch}>
+      <Tooltip title={title}>
+        <div className={styles.currentBranchDetails}>
+          <BranchesOutlined />
+          <span className={styles.currentBranchName}>
+            {status.branch ?? `detached at ${status.headHash?.slice(0, 7)}`}
+          </span>
+          <AheadBehind ahead={status.ahead} behind={status.behind} />
+        </div>
+      </Tooltip>
+      {status.mono && <MonoMembers />}
+    </div>
   );
 }
 
@@ -103,8 +107,9 @@ export function ActionBar() {
     }
     modal.confirm({
       title: `Force push ${status.branch}?`,
-      content:
-        'This replaces the branch on the remote with yours. It stops if someone else has pushed since your last fetch.',
+      content: repository.isMono
+        ? 'In every repository here, this replaces the branch on the remote with yours. Each one stops if someone else has pushed since your last fetch.'
+        : 'This replaces the branch on the remote with yours. It stops if someone else has pushed since your last fetch.',
       okText: 'Force push',
       okButtonProps: { danger: true },
       onOk: () => run('push', { force: true }),
@@ -192,7 +197,11 @@ export function ActionBar() {
       />
       <ActionButton
         label="Pop"
-        hint="Restore the latest stash and remove it"
+        hint={
+          status.mono
+            ? 'Restore the newest stash. Each repository has its own, so press once per stash.'
+            : 'Restore the latest stash and remove it'
+        }
         icon={<ExportOutlined />}
         count={stashes.length}
         loading={pendingAction === 'stashPop'}

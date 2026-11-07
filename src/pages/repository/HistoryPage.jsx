@@ -186,6 +186,7 @@ function CommitRow({ commit, graphRow, columnCount, selected, focus, pullRequest
         title={commit.subject}
         aria-pressed={selected}
       >
+        {commit.repository && <span className={styles.repository}>{commit.repository}</span>}
         {commit.subject}
       </button>
       <RelativeTime className={styles.time} date={commit.date} />
@@ -198,6 +199,7 @@ function CommitRow({ commit, graphRow, columnCount, selected, focus, pullRequest
 
 export function HistoryPage() {
   const { repository, status } = useRepositoryContext();
+  const allBranchesLabel = repository.isMono ? 'All shared branches' : 'All branches';
   const [searchParams, setSearchParams] = useSearchParams();
   const ref = searchParams.get('ref') ?? undefined;
   const selectedHash = searchParams.get('commit');
@@ -294,7 +296,7 @@ export function HistoryPage() {
     >
       <div className={styles.scrollArea}>
         <header className={styles.header}>
-          <h2 className={styles.heading}>{ref ?? 'All branches'}</h2>
+          <h2 className={styles.heading}>{ref ?? allBranchesLabel}</h2>
           {ref && showAllBranches}
           {focusedBranch && !focusedHash && !isSearching && !isFetchingNextPage && (
             <>

@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import { Router } from 'express';
 import { badRequest, notFound } from '../errors.js';
 import * as git from '../git/gitService.js';
+import * as mono from '../git/monoService.js';
 import { parseRemoteUrl } from '../git/remoteUrl.js';
 import { mapWithLimit } from '../utils/mapWithLimit.js';
 
@@ -78,22 +79,28 @@ async function resolveFolders(folderPaths) {
 }
 
 function requireStub(repository) {
-  if (repository.path) throw badRequest(`${repository.name} is already on this machine.`);
+  if (repository.path || repository.isMono) {
+    throw badRequest(`${repository.name} is already on this machine.`);
+  }
   return repository;
 }
 
 /** A stub has no folder. Without this guard git would run in the server's own folder. */
 function requireWorkingCopy(request, _response, next) {
-  if (!request.repository.path) {
+  if (!request.repository.path && !request.repository.isMono) {
     throw badRequest(`${request.repository.name} has not been cloned or located yet.`);
   }
   next();
 }
 
-/** Registers a POST route that runs a git action and replies 204 on success. */
+/**
+ * Registers a POST route that runs a git action and replies 204 on success. `run` is
+ * given the service and target from the repositoryId param, as either kind of repository
+ * has its own.
+ */
 function action(router, route, run) {
   router.post(route, async (request, response) => {
-    await run(request.repository.path, request.body ?? {});
+    await run(request.service, request.target, request.body ?? {});
     response.status(204).end();
   });
 }
@@ -102,29 +109,29 @@ function createGitRouter() {
   const router = Router({ mergeParams: true });
 
   router.get('/status', async (request, response) => {
-    response.json(await git.getStatus(request.repository.path));
+    response.json(await request.service.getStatus(request.target));
   });
 
   router.get('/branches', async (request, response) => {
-    response.json(await git.getBranches(request.repository.path));
+    response.json(await request.service.getBranches(request.target));
   });
 
   router.get('/remotes', async (request, response) => {
-    response.json(await git.getRemoteOptions(request.repository.path));
+    response.json(await request.service.getRemoteOptions(request.target));
   });
 
   router.get('/last-commit', async (request, response) => {
-    response.json(await git.getLastCommit(request.repository.path));
+    response.json(await request.service.getLastCommit(request.target));
   });
 
   router.get('/pull-requests', async (request, response) => {
-    response.json(await git.getPullRequests(request.repository.path));
+    response.json(await request.service.getPullRequests(request.target));
   });
 
   router.get('/commits', async (request, response) => {
     const { ref, limit, skip } = request.query;
     response.json(
-      await git.getCommits(request.repository.path, {
+      await request.service.getCommits(request.target, {
         // Without a ref, history covers every branch.
         ref: ref || undefined,
         allBranches: !ref,
@@ -135,12 +142,12 @@ function createGitRouter() {
   });
 
   router.get('/commits/:hash', async (request, response) => {
-    response.json(await git.getCommitDetails(request.repository.path, request.params.hash));
+    response.json(await request.service.getCommitDetails(request.target, request.params.hash));
   });
 
   router.get('/commits/:hash/diff', async (request, response) => {
     const { path: filePath, originalPath, fullFile } = request.query;
-    const diff = await git.getCommitDiff(request.repository.path, {
+    const diff = await request.service.getCommitDiff(request.target, {
       hash: request.params.hash,
       filePath: requireString(filePath, 'path'),
       originalPath: originalPath || undefined,
@@ -150,12 +157,12 @@ function createGitRouter() {
   });
 
   router.get('/stashes', async (request, response) => {
-    response.json(await git.getStashes(request.repository.path));
+    response.json(await request.service.getStashes(request.target));
   });
 
   router.get('/diff', async (request, response) => {
     const { path: filePath, staged, untracked, fullFile } = request.query;
-    const diff = await git.getDiff(request.repository.path, {
+    const diff = await request.service.getDiff(request.target, {
       filePath: requireString(filePath, 'path'),
       staged: staged === 'true',
       untracked: untracked === 'true',
@@ -165,7 +172,7 @@ function createGitRouter() {
   });
 
   router.delete('/branches/:branch', async (request, response) => {
-    await git.deleteBranch(request.repository.path, {
+    await request.service.deleteBranch(request.target, {
       name: request.params.branch,
       force: request.query.force === 'true',
       deleteRemote: request.query.deleteRemote === 'true',
@@ -174,74 +181,79 @@ function createGitRouter() {
   });
 
   router.delete('/remote-branches/:branch', async (request, response) => {
-    await git.deleteRemoteBranch(request.repository.path, { name: request.params.branch });
+    await request.service.deleteRemoteBranch(request.target, { name: request.params.branch });
     response.status(204).end();
   });
 
   router.post('/prune-branches', async (request, response) => {
     const force = request.body?.force === true;
-    response.json(await git.pruneGoneBranches(request.repository.path, { force }));
+    response.json(await request.service.pruneGoneBranches(request.target, { force }));
   });
 
-  action(router, '/branches', (path, { name, startPoint, switchTo }) =>
-    git.createBranch(path, {
+  action(router, '/branches', (service, path, { name, startPoint, switchTo }) =>
+    service.createBranch(path, {
       name: requireString(name, 'name'),
       startPoint: startPoint || undefined,
       switchTo: switchTo !== false,
     }),
   );
-  action(router, '/fetch', (path) => git.fetchAll(path));
-  action(router, '/pull', (path, { mode }) => git.pull(path, { mode }));
-  action(router, '/push', (path, { force, remote, upstreamName }) =>
-    git.push(path, { force: force === true, remote, upstreamName }),
+  action(router, '/fetch', (service, path) => service.fetchAll(path));
+  action(router, '/pull', (service, path, { mode }) => service.pull(path, { mode }));
+  action(router, '/push', (service, path, { force, remote, upstreamName }) =>
+    service.push(path, { force: force === true, remote, upstreamName }),
   );
-  action(router, '/checkout', (path, { branch, remote }) =>
-    git.checkout(path, { branch: requireString(branch, 'branch'), remote: remote === true }),
+  action(router, '/checkout', (service, path, { branch, remote }) =>
+    service.checkout(path, { branch: requireString(branch, 'branch'), remote: remote === true }),
   );
-  action(router, '/merge', (path, { branch, noFastForward }) =>
-    git.merge(path, {
+  action(router, '/merge', (service, path, { branch, noFastForward }) =>
+    service.merge(path, {
       branch: requireString(branch, 'branch'),
       noFastForward: noFastForward === true,
     }),
   );
-  action(router, '/merge-into', (path, { target, noFastForward }) =>
-    git.mergeInto(path, {
+  action(router, '/merge-into', (service, path, { target, noFastForward }) =>
+    service.mergeInto(path, {
       target: requireString(target, 'target'),
       noFastForward: noFastForward === true,
     }),
   );
-  action(router, '/rebase', (path, { branch }) =>
-    git.rebase(path, { branch: requireString(branch, 'branch') }),
+  action(router, '/rebase', (service, path, { branch }) =>
+    service.rebase(path, { branch: requireString(branch, 'branch') }),
   );
-  action(router, '/operation/abort', (path) => git.abortOperation(path));
-  action(router, '/operation/continue', (path) => git.continueOperation(path));
-  action(router, '/stage', (path, { paths }) => git.stage(path, { paths: optionalPaths(paths) }));
-  action(router, '/unstage', (path, { paths }) =>
-    git.unstage(path, { paths: optionalPaths(paths) }),
+  action(router, '/operation/abort', (service, path) => service.abortOperation(path));
+  action(router, '/operation/continue', (service, path) => service.continueOperation(path));
+  action(router, '/stage', (service, path, { paths }) =>
+    service.stage(path, { paths: optionalPaths(paths) }),
   );
-  action(router, '/stage-lines', (repoPath, { path, staged, untracked, fullFile, hash, lines }) =>
-    git.stageLines(repoPath, {
-      filePath: requireString(path, 'path'),
-      staged: staged === true,
-      untracked: untracked === true,
-      fullFile: fullFile === true,
-      hash: requireString(hash, 'hash'),
-      lines: requireLines(lines),
+  action(router, '/unstage', (service, path, { paths }) =>
+    service.unstage(path, { paths: optionalPaths(paths) }),
+  );
+  action(router, '/stage-lines', (service, repoPath, body) =>
+    service.stageLines(repoPath, {
+      filePath: requireString(body.path, 'path'),
+      staged: body.staged === true,
+      untracked: body.untracked === true,
+      fullFile: body.fullFile === true,
+      hash: requireString(body.hash, 'hash'),
+      lines: requireLines(body.lines),
     }),
   );
-  action(router, '/discard', (path, { paths }) =>
-    git.discard(path, { paths: requirePaths(paths) }),
+  action(router, '/discard', (service, path, { paths }) =>
+    service.discard(path, { paths: requirePaths(paths) }),
   );
-  action(router, '/commit', (path, { message, amend, stageAll }) =>
-    git.commit(path, { message, amend: amend === true, stageAll: stageAll === true }),
+  action(router, '/commit', (service, path, { message, amend, stageAll }) =>
+    service.commit(path, { message, amend: amend === true, stageAll: stageAll === true }),
   );
-  action(router, '/undo-commit', (path, { hash, allowPushed }) =>
-    git.undoCommit(path, { hash: requireString(hash, 'hash'), allowPushed: allowPushed === true }),
+  action(router, '/undo-commit', (service, path, { hash, allowPushed }) =>
+    service.undoCommit(path, {
+      hash: requireString(hash, 'hash'),
+      allowPushed: allowPushed === true,
+    }),
   );
-  action(router, '/stash', (path, { message }) => git.stashSave(path, { message }));
-  action(router, '/stash/apply', (path, { ref }) => git.stashApply(path, { ref }));
-  action(router, '/stash/pop', (path, { ref }) => git.stashPop(path, { ref }));
-  action(router, '/stash/drop', (path, { ref }) => git.stashDrop(path, { ref }));
+  action(router, '/stash', (service, path, { message }) => service.stashSave(path, { message }));
+  action(router, '/stash/apply', (service, path, { ref }) => service.stashApply(path, { ref }));
+  action(router, '/stash/pop', (service, path, { ref }) => service.stashPop(path, { ref }));
+  action(router, '/stash/drop', (service, path, { ref }) => service.stashDrop(path, { ref }));
 
   return router;
 }
@@ -268,6 +280,12 @@ function createGroupsRouter(store) {
     response.json(await store.renameGroup(request.params.groupId, name));
   });
 
+  router.post('/:groupId/mono', async (request, response) => {
+    const branch = requireString(request.body?.branch, 'branch').trim();
+    const group = await store.getGroup(request.params.groupId);
+    response.json(await mono.openMono(store, group, branch));
+  });
+
   router.delete('/:groupId', async (request, response) => {
     await store.removeGroup(request.params.groupId);
     response.status(204).end();
@@ -280,12 +298,28 @@ export function createRepositoriesRouter(store) {
   const router = Router();
 
   router.param('repositoryId', async (request, _response, next, id) => {
+    if (mono.isMonoId(id)) {
+      const group = await store.getGroup(mono.groupIdOf(id));
+      const target = group && (await mono.resolveMono(store, group));
+      if (!target) {
+        next(notFound('That group has not been opened as a mono repo.'));
+        return;
+      }
+      request.repository = mono.describeMono(target);
+      request.service = mono;
+      request.target = target;
+      next();
+      return;
+    }
+
     const repository = await store.get(id);
     if (!repository) {
       next(notFound('That repository is not linked.'));
       return;
     }
     request.repository = repository;
+    request.service = git;
+    request.target = repository.path;
     next();
   });
 
@@ -313,7 +347,8 @@ export function createRepositoriesRouter(store) {
   });
 
   router.get('/:repositoryId', async (request, response) => {
-    response.json(await withSummary(request.repository));
+    const { repository } = request;
+    response.json(repository.isMono ? repository : await withSummary(repository));
   });
 
   router.delete('/:repositoryId', async (request, response) => {

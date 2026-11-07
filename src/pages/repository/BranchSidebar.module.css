@@ -15,6 +15,14 @@
   padding: var(--space-3) var(--space-3) var(--space-1);
 }
 
+.monoNote {
+  flex: none;
+  margin: 0;
+  padding: var(--space-1) var(--space-3) 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
 .body {
   flex: 1;
   min-height: 0;

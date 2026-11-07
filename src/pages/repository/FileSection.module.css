@@ -92,6 +92,10 @@
   color: var(--color-text-muted);
 }
 
+.folder {
+  color: var(--color-primary-strong);
+}
+
 .actions {
   display: flex;
   flex: none;

@@ -2,7 +2,7 @@ import { ActionDialog } from '../../../components/ActionDialog.jsx';
 import { useRepositoryContext } from '../RepositoryContext.js';
 
 export function DeleteRemoteBranchDialog({ name, remote, localName, onClose }) {
-  const { run } = useRepositoryContext();
+  const { repository, run } = useRepositoryContext();
 
   return (
     <ActionDialog
@@ -12,7 +12,8 @@ export function DeleteRemoteBranchDialog({ name, remote, localName, onClose }) {
       onSubmit={() => run('deleteRemoteBranch', { name })}
       onClose={onClose}
     >
-      This removes {localName} from {remote} for everyone using it. Any local branch stays.
+      This removes {localName} from {remote} for everyone using it
+      {repository.isMono && ', in every repository here'}. Any local branch stays.
     </ActionDialog>
   );
 }

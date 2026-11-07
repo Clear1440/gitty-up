@@ -107,6 +107,20 @@ export async function getStatus(repoPath) {
   return { ...parseStatus(output), operation };
 }
 
+/** The checked out branch's name, or null on a detached HEAD. */
+export async function getCurrentBranch(repoPath) {
+  return (await runGit(repoPath, ['branch', '--show-current'])).trim() || null;
+}
+
+/** Whether a local branch of exactly this name exists. */
+export async function hasLocalBranch(repoPath, name) {
+  assertRef(name);
+  const output = await runGit(repoPath, ['rev-parse', '--verify', '--quiet', `refs/heads/${name}`], {
+    allowedExitCodes: [0, 1],
+  });
+  return Boolean(output.trim());
+}
+
 async function getRemotes(repoPath) {
   return (await runGit(repoPath, ['remote'])).split('\n').filter(Boolean);
 }
@@ -180,24 +194,30 @@ async function hasCommits(repoPath) {
 
 /**
  * Lists commits, newest first, always with children before their parents, which the
- * client's git tree relies on. `allBranches` walks every branch and tag instead of `ref`.
+ * client's git tree relies on. `allBranches` walks every branch and tag instead of `ref`,
+ * and `revisions` walks exactly those. They go in over stdin, as there can be hundreds.
  */
 export async function getCommits(
   repoPath,
-  { ref = 'HEAD', allBranches = false, limit = 100, skip = 0 } = {},
+  { ref = 'HEAD', allBranches = false, revisions, limit = 100, skip = 0 } = {},
 ) {
   assertRef(ref);
   if (!(await hasCommits(repoPath))) return [];
+  const walk = allBranches ? ['--branches', '--remotes', '--tags', 'HEAD'] : [ref];
   const [output, remotes] = await Promise.all([
-    runGit(repoPath, [
-      'log',
-      '--date-order',
-      ...COMMIT_LOG_FLAGS,
-      `--max-count=${limit}`,
-      `--skip=${skip}`,
-      ...(allBranches ? ['--branches', '--remotes', '--tags', 'HEAD'] : [ref]),
-      '--',
-    ]),
+    runGit(
+      repoPath,
+      [
+        'log',
+        '--date-order',
+        ...COMMIT_LOG_FLAGS,
+        `--max-count=${limit}`,
+        `--skip=${skip}`,
+        ...(revisions ? ['--stdin'] : walk),
+        '--',
+      ],
+      { input: revisions?.join('\n') },
+    ),
     getRemotes(repoPath),
   ]);
   return parseCommits(output, remotes);
@@ -450,14 +470,15 @@ export async function deleteRemoteBranch(repoPath, { name }) {
 /**
  * Deletes the local branches whose remote branch is gone, as left behind once a pull
  * request is merged. Branches that never had an upstream are not touched. Without
- * `force`, git keeps any with unmerged commits, and those are reported as kept.
+ * `force`, git keeps any with unmerged commits, and those are reported as kept. `names`
+ * limits it to those branches.
  */
-export async function pruneGoneBranches(repoPath, { force = false } = {}) {
+export async function pruneGoneBranches(repoPath, { force = false, names } = {}) {
   const { local } = await getBranches(repoPath);
   const result = { deleted: [], kept: [] };
 
   for (const { name, upstreamGone, isCurrent } of local) {
-    if (!upstreamGone || isCurrent) continue;
+    if (!upstreamGone || isCurrent || (names && !names.includes(name))) continue;
     try {
       await deleteBranch(repoPath, { name, force });
       result.deleted.push(name);

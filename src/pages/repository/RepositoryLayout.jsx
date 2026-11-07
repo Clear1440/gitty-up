@@ -81,6 +81,16 @@ export function RepositoryLayout() {
   if (error) {
     return <Result status="warning" title="Repository unavailable" subTitle={error.message} extra={<BackHome />} />;
   }
+  if (repository.isMono && !repository.available) {
+    return (
+      <Result
+        status="info"
+        title={`Nothing in ${repository.name} is on ${repository.branch} any more`}
+        subTitle="Every repository in this group has moved to another branch. Open the group again to pick one."
+        extra={<BackHome />}
+      />
+    );
+  }
   if (!repository.available) {
     return (
       <Result

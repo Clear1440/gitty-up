@@ -34,7 +34,8 @@ function withoutGroup(repository) {
  * Persists the linked repositories and their groups as a JSON file in the data directory.
  * A stub is an entry known only by its remote URL. Its `path` stays null until
  * it is cloned or located, when `resolveStub` swaps it for a real entry.
- * A repository belongs to at most one group, through its optional `groupId`.
+ * A repository belongs to at most one group, through its optional `groupId`. A group
+ * opened as a mono repo also remembers the branch it is on, as `monoBranch`.
  */
 export class RepositoryStore {
   #filePath;
@@ -145,6 +146,14 @@ export class RepositoryStore {
     const renamed = groups.map((group) => (group.id === id ? { ...group, name } : group));
     await this.#save({ groups: renamed });
     return renamed.find((group) => group.id === id);
+  }
+
+  /** Sets the branch a group opens on as a mono repo. Having one is what marks it opened. */
+  async setMonoBranch(id, monoBranch) {
+    const groups = await this.listGroups();
+    await this.#save({
+      groups: groups.map((group) => (group.id === id ? { ...group, monoBranch } : group)),
+    });
   }
 
   /** Removes a group. Its repositories stay linked and become ungrouped. */

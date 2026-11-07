@@ -11,6 +11,8 @@ import { usePush } from './usePush.js';
 
 const describeFiles = (count) => (count === 1 ? '1 file' : `${count} files`);
 
+const describeRepositories = (count) => (count === 1 ? '1 repository' : `${count} repositories`);
+
 /** Says why committing is not possible right now, or returns null when it is. */
 function findBlocker({ status, fileCount, hasMessage, amend }) {
   const isMerging = status.operation === 'merge';
@@ -50,6 +52,8 @@ export function CommitPanel({ onClean }) {
   const stageAll = unstagedCount > 0 && (stageAllChoice ?? (status.staged.length === 0 && !amend));
   const filesToCommit = [...status.staged, ...(stageAll ? status.unstaged : [])];
   const fileCount = new Set(filesToCommit.map((file) => file.path)).size;
+  // Only mono repo files say which repository they are in.
+  const repositories = [...new Set(filesToCommit.map((file) => file.repository))].filter(Boolean);
 
   const hasMessage = Boolean(message.trim());
   const blocker = findBlocker({ status, fileCount, hasMessage, amend });
@@ -58,13 +62,19 @@ export function CommitPanel({ onClean }) {
     amend ? 'Amend' : 'Commit',
     pushAfterCommit && '& push',
     status.branch && `to ${status.branch}`,
+    repositories.length > 0 && `in ${describeRepositories(repositories.length)}`,
   ]
     .filter(Boolean)
     .join(' ');
 
   const commit = async () => {
     if (!canCommit) return;
-    const committed = await run('commit', { message, amend, stageAll });
+    const committed = await run('commit', {
+      message,
+      amend,
+      stageAll,
+      repositoryCount: repositories.length,
+    });
     if (committed) {
       setMessage('');
       setAmend(false);
@@ -101,9 +111,12 @@ export function CommitPanel({ onClean }) {
         onKeyDown={handleKeyDown}
       />
       <div className={styles.options}>
-        <Checkbox checked={amend} onChange={(event) => setAmend(event.target.checked)}>
-          Amend previous
-        </Checkbox>
+        {/* Each repository has its own previous commit, so there is no one to amend. */}
+        {!status.mono && (
+          <Checkbox checked={amend} onChange={(event) => setAmend(event.target.checked)}>
+            Amend previous
+          </Checkbox>
+        )}
         <Checkbox
           checked={pushAfterCommit}
           onChange={(event) => setPushAfterCommit(event.target.checked)}
@@ -113,7 +126,9 @@ export function CommitPanel({ onClean }) {
       </div>
       {/* It opens over the checkboxes above, so it must never catch a click meant for them. */}
       <Tooltip
-        title={blocker ?? describeFiles(fileCount)}
+        title={
+          blocker ?? [describeFiles(fileCount), ...repositories].join(repositories.length ? ' · ' : '')
+        }
         classNames={{ root: styles.commitTooltip }}
         mouseLeaveDelay={0}
       >

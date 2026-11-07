@@ -42,6 +42,7 @@ function StashRow({ stash }) {
       <div className={styles.text} title={stash.message}>
         <p className={styles.message}>{stash.message}</p>
         <p className={styles.meta}>
+          {stash.repository && `${stash.repository} · `}
           {stash.branch && `${stash.branch} · `}
           <RelativeTime date={stash.date} />
         </p>

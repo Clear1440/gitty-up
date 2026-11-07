@@ -43,7 +43,7 @@ function SortMenu({ sort, onChange }) {
 }
 
 export function BranchSidebar({ resizeHandle }) {
-  const { repository } = useRepositoryContext();
+  const { repository, status } = useRepositoryContext();
   const { data: branches, isPending } = useBranches(repository.id);
   const { data: stashes = [] } = useStashes(repository.id);
   const [filter, setFilter] = useState('');
@@ -104,6 +104,9 @@ export function BranchSidebar({ resizeHandle }) {
         />
         <SortMenu sort={sort} onChange={setSort} />
       </div>
+      {status.mono && (
+        <p className={styles.monoNote}>Branches shared by every repository</p>
+      )}
       <div className={styles.body}>
         {isPending ? (
           <Spin className="centered" />

@@ -97,6 +97,15 @@ export function useDeleteGroup() {
   );
 }
 
+/** Opens a group as a mono repo on a branch, which may differ from the last time. */
+export function useOpenMono() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ groupId, branch }) => repositoriesApi.openMono(groupId, branch),
+    onSuccess: ({ id }) => queryClient.invalidateQueries({ queryKey: queryKeys.repository(id) }),
+  });
+}
+
 export function useDirectories(path) {
   return useQuery({
     queryKey: queryKeys.directories(path),

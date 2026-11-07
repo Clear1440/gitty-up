@@ -1,11 +1,11 @@
-import { HomeFilled } from '@ant-design/icons';
+import { ClusterOutlined, HomeFilled } from '@ant-design/icons';
 import { Tabs } from 'antd';
 import clsx from 'clsx';
 import { cloneElement, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Logo } from '../components/Logo.jsx';
-import { paths } from '../paths.js';
-import { useRepositories } from '../queries/repositories.js';
+import { isMonoRepositoryId, monoGroupId, paths } from '../paths.js';
+import { useRepositories, useRepositoryGroups } from '../queries/repositories.js';
 import { useTabs } from '../tabs/TabsContext.jsx';
 import { findNeighbourTab } from '../tabs/tabsModel.js';
 import styles from './TabBar.module.css';
@@ -83,6 +83,7 @@ export function TabBar({ activeRepositoryId }) {
   const navigate = useNavigate();
   const { tabs, closeTab, moveTab } = useTabs();
   const { data: repositories } = useRepositories();
+  const { data: groups } = useRepositoryGroups();
   const wrapTab = useTabDrag(moveTab);
   // The next repository can take a moment to load, and its page only appears once it
   // has. Showing the clicked tab as active straight away makes the click feel instant.
@@ -90,17 +91,22 @@ export function TabBar({ activeRepositoryId }) {
   const activeKey = activeRepositoryId ?? HOME_TAB;
   if (switching && switching.from !== activeKey) setSwitching(null);
 
-  const nameOf = (repositoryId) =>
-    repositories?.find((repository) => repository.id === repositoryId)?.name;
+  const nameOf = (repositoryId) => {
+    if (isMonoRepositoryId(repositoryId)) {
+      return groups?.find((group) => group.id === monoGroupId(repositoryId))?.name;
+    }
+    return repositories?.find((repository) => repository.id === repositoryId)?.name;
+  };
 
   // A tab can outlive its repository if it was unlinked in another window.
-  const openTabs = repositories ? tabs.filter((tab) => nameOf(tab.repositoryId)) : tabs;
+  const openTabs = repositories && groups ? tabs.filter((tab) => nameOf(tab.repositoryId)) : tabs;
 
   const items = [
     HOME_ITEM,
     ...openTabs.map((tab) => ({
       key: tab.repositoryId,
       label: nameOf(tab.repositoryId) ?? '…',
+      icon: isMonoRepositoryId(tab.repositoryId) ? <ClusterOutlined /> : undefined,
     })),
   ];
 

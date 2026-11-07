@@ -4,7 +4,7 @@ import { ActionDialog } from '../../../components/ActionDialog.jsx';
 import { useRepositoryContext } from '../RepositoryContext.js';
 
 export function StashDialog({ onClose }) {
-  const { run } = useRepositoryContext();
+  const { repository, run } = useRepositoryContext();
   const [message, setMessage] = useState('');
 
   return (
@@ -14,6 +14,9 @@ export function StashDialog({ onClose }) {
       onSubmit={() => run('stash', { message })}
       onClose={onClose}
     >
+      {repository.isMono && (
+        <p>Each repository with changes keeps its own stash, under this message.</p>
+      )}
       <Input
         autoFocus
         aria-label="Stash message"
