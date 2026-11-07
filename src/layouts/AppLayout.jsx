@@ -3,6 +3,7 @@ import { Spin } from 'antd';
 import { Suspense, useEffect, useRef } from 'react';
 import { Outlet, useLocation, useMatch } from 'react-router';
 import { loadRepository, refFromPath } from '../queries/loadRepository.js';
+import { useAutoFetch } from '../queries/useAutoFetch.js';
 import { useTabs } from '../tabs/TabsContext.jsx';
 import styles from './AppLayout.module.css';
 import { TabBar } from './TabBar.jsx';
@@ -43,6 +44,7 @@ export function AppLayout() {
   const repositoryId = useMatch('/repositories/:repositoryId/*')?.params.repositoryId ?? null;
   const { rememberTab } = useTabs();
   useWarmOpenTabs(repositoryId);
+  useAutoFetch(repositoryId);
 
   // Any route into a repository opens its tab, so deep links and reloads just work.
   useEffect(() => {

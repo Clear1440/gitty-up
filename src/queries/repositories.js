@@ -1,12 +1,13 @@
 import {
   keepPreviousData,
   queryOptions,
+  useIsMutating,
   useMutation,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
 import { filesystemApi, repositoriesApi } from '../api';
-import { queryKeys } from './queryKeys.js';
+import { mutationKeys, queryKeys } from './queryKeys.js';
 
 export function useRepositories() {
   return useQuery({ queryKey: queryKeys.repositoryList(), queryFn: repositoriesApi.list });
@@ -56,11 +57,21 @@ export function useLinkRepositories() {
 
 /** Fetches every repository, then rereads all of them, as branches may have moved. */
 export function useFetchAllRepositories() {
-  return useInvalidatingMutation(
-    repositoriesApi.fetchAll,
-    queryKeys.repositoryList(),
-    queryKeys.allRepositories(),
-  );
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: mutationKeys.fetchAll(),
+    mutationFn: repositoriesApi.fetchAll,
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.repositoryList() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.allRepositories() }),
+      ]),
+  });
+}
+
+/** True while any fetch of every repository runs, including one started automatically. */
+export function useIsFetchingAllRepositories() {
+  return useIsMutating({ mutationKey: mutationKeys.fetchAll() }) > 0;
 }
 
 export function useUnlinkRepository() {

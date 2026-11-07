@@ -2,7 +2,9 @@ import {
   BranchesOutlined,
   CloudDownloadOutlined,
   DisconnectOutlined,
+  CloseOutlined,
   EditOutlined,
+  ExportOutlined,
   FolderOpenOutlined,
   FolderOutlined,
   MoreOutlined,
@@ -24,6 +26,7 @@ import { useTabs } from '../../tabs/TabsContext.jsx';
 import { GroupNameDialog } from './GroupNameDialog.jsx';
 import styles from './RepositoryRow.module.css';
 import { CloneRepositoryDialog, LocateRepositoryDialog } from './StubDialogs.jsx';
+import { useRepositorySelectionContext } from './useRepositorySelection.js';
 
 const MIDDLE_BUTTON = 1;
 
@@ -111,12 +114,35 @@ export function RepositoryRow({ repository, groups }) {
   const createGroup = useCreateGroup();
   const [naming, setNaming] = useState(false);
   const { closeTab, openTab } = useTabs();
+  const selection = useRepositorySelectionContext();
   const isStub = repository.path === null;
+  const isSelected = selection.isSelected(repository.id);
 
   const openInBackground = (event) => {
     event.preventDefault();
     openTab(repository.id, paths.repository(repository.id));
   };
+
+  const handleClick = (event) => {
+    const toggle = event.ctrlKey || event.metaKey;
+    if (toggle || event.shiftKey) {
+      event.preventDefault();
+      selection.click(repository.id, { toggle, range: event.shiftKey });
+    } else {
+      selection.clear();
+    }
+  };
+
+  const selectedCount = selection.selectedIds.length;
+  const contextItems = [
+    {
+      key: 'open',
+      label: selectedCount > 1 ? `Open ${selectedCount} repositories in tabs` : 'Open in new tab',
+      icon: <ExportOutlined />,
+      onClick: selection.openSelected,
+    },
+    { key: 'clear', label: 'Clear selection', icon: <CloseOutlined />, onClick: selection.clear },
+  ];
 
   const moveToGroup = async (groupId) => {
     try {
@@ -169,17 +195,21 @@ export function RepositoryRow({ repository, groups }) {
     { key: 'unlink', label: 'Unlink', icon: <DisconnectOutlined />, onClick: confirmUnlink },
   ];
 
-  return (
-    <article className={clsx(styles.row, !repository.available && styles.unavailable)}>
+  const row = (
+    <article
+      className={clsx(
+        styles.row,
+        !repository.available && styles.unavailable,
+        isSelected && styles.selected,
+      )}
+    >
       {isStub ? (
         <StubBody repository={repository} />
       ) : (
         <Link
           className={clsx(styles.body, styles.link)}
           to={paths.repository(repository.id)}
-          onClick={(event) => {
-            if (event.shiftKey) openInBackground(event);
-          }}
+          onClick={handleClick}
           onAuxClick={(event) => {
             if (event.button === MIDDLE_BUTTON) openInBackground(event);
           }}
@@ -215,5 +245,17 @@ export function RepositoryRow({ repository, groups }) {
         />
       )}
     </article>
+  );
+
+  if (isStub) return row;
+  return (
+    <Dropdown
+      menu={{ items: contextItems }}
+      trigger={['contextMenu']}
+      // Right-clicking a row outside the selection picks just that row, as file managers do.
+      onOpenChange={(open) => open && !isSelected && selection.selectOnly(repository.id)}
+    >
+      {row}
+    </Dropdown>
   );
 }

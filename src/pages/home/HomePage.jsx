@@ -1,5 +1,7 @@
 import {
   FolderAddOutlined,
+  CloseOutlined,
+  ExportOutlined,
   FolderOutlined,
   ImportOutlined,
   SearchOutlined,
@@ -10,6 +12,7 @@ import { useState } from 'react';
 import {
   useCreateGroup,
   useFetchAllRepositories,
+  useIsFetchingAllRepositories,
   useRepositories,
   useRepositoryGroups,
 } from '../../queries/repositories.js';
@@ -21,6 +24,7 @@ import { LinkRepositoryDialog } from './LinkRepositoryDialog.jsx';
 import { RepositoryRow } from './RepositoryRow.jsx';
 import { RepositorySection } from './RepositorySection.jsx';
 import { buildSections } from './sections.js';
+import { RepositorySelectionContext, useRepositorySelection } from './useRepositorySelection.js';
 
 const COLLAPSED_STORAGE_KEY = 'gitty-up.collapsedGroups';
 const NO_GROUPS = [];
@@ -45,6 +49,7 @@ const repositoryCount = (count) => (count === 1 ? '1 repository' : `${count} rep
 function RefreshAllButton() {
   const { notification } = App.useApp();
   const fetchAll = useFetchAllRepositories();
+  const isFetching = useIsFetchingAllRepositories();
 
   const refresh = async () => {
     try {
@@ -75,12 +80,35 @@ function RefreshAllButton() {
     <Tooltip title="Fetch all repositories">
       <Button
         type="text"
-        icon={<SyncOutlined spin={fetchAll.isPending} />}
-        disabled={fetchAll.isPending}
+        icon={<SyncOutlined spin={isFetching} />}
+        disabled={isFetching}
         aria-label="Fetch all repositories"
         onClick={refresh}
       />
     </Tooltip>
+  );
+}
+
+/** Shows what ctrl and shift clicks picked, with the same actions as the right-click menu. */
+function SelectionBar({ selection }) {
+  const count = selection.selectedIds.length;
+  if (count === 0) return null;
+
+  return (
+    <div className={styles.selectionBar} role="status">
+      <span>
+        {repositoryCount(count)} selected
+        <span className={styles.selectionHint}> · Esc to clear</span>
+      </span>
+      <div className={styles.selectionActions}>
+        <Button size="small" type="primary" icon={<ExportOutlined />} onClick={selection.openSelected}>
+          Open in tabs
+        </Button>
+        <Button size="small" icon={<CloseOutlined />} onClick={selection.clear}>
+          Clear
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -95,6 +123,16 @@ export function HomePage() {
   const closeDialog = () => setDialog(null);
   const isSearching = Boolean(search.trim());
   const hasContent = repositories?.length > 0 || groups.length > 0;
+  const sections = repositories ? buildSections(repositories, groups, search) : [];
+  // A match inside a collapsed section must still be seen.
+  const isCollapsed = (section) => !isSearching && collapsed.includes(section.id);
+  // Rows that can be picked to open together: those on show that have a folder.
+  const selectableIds = sections
+    .filter((section) => groups.length === 0 || !isCollapsed(section))
+    .flatMap((section) => section.repositories)
+    .filter((repository) => repository.path !== null)
+    .map((repository) => repository.id);
+  const selection = useRepositorySelection(selectableIds);
 
   const linkButton = (
     <Button type="primary" icon={<FolderAddOutlined />} onClick={() => setDialog('link')}>
@@ -126,7 +164,6 @@ export function HomePage() {
       );
     }
 
-    const sections = buildSections(repositories, groups, search);
     if (sections.length === 0) {
       return <p className={styles.noMatches}>No repositories match “{search}”.</p>;
     }
@@ -147,8 +184,7 @@ export function HomePage() {
             key={section.id}
             section={section}
             groups={groups}
-            // A match inside a collapsed section must still be seen.
-            collapsed={!isSearching && collapsed.includes(section.id)}
+            collapsed={isCollapsed(section)}
             onToggle={() => toggle(section.id)}
           />
         ))}
@@ -186,7 +222,8 @@ export function HomePage() {
           </div>
         )}
       </header>
-      {renderContent()}
+      <SelectionBar selection={selection} />
+      <RepositorySelectionContext value={selection}>{renderContent()}</RepositorySelectionContext>
       {dialog === 'link' && <LinkRepositoryDialog onClose={closeDialog} />}
       {dialog === 'bulk' && <BulkImportDialog onClose={closeDialog} />}
       {dialog === 'group' && (

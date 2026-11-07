@@ -28,4 +28,5 @@ export const queryKeys = {
 
 export const mutationKeys = {
   gitAction: (id) => ['git-action', id],
+  fetchAll: () => ['fetch-all'],
 };

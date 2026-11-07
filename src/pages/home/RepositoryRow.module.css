@@ -11,6 +11,12 @@
   border-color: var(--color-primary);
 }
 
+.selected,
+.selected:hover {
+  border-color: var(--color-primary);
+  background: var(--color-surface-selected);
+}
+
 .unavailable {
   border-style: dashed;
 }
