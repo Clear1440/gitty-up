@@ -17,7 +17,8 @@
     "test": "vitest run",
     "lint": "eslint .",
     "desktop": "npm run build && electron .",
-    "package": "npm run build && electron-builder"
+    "package": "npm run build && electron-builder",
+    "release": "node scripts/release.js"
   },
   "dependencies": {
     "express": "^5.3.0"

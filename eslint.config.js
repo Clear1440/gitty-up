@@ -6,7 +6,7 @@ export default [
   { ignores: ['dist', 'release'] },
   js.configs.recommended,
   {
-    files: ['server/**/*.js', 'electron/**/*.js', '*.config.js'],
+    files: ['server/**/*.js', 'electron/**/*.js', 'scripts/**/*.js', '*.config.js'],
     languageOptions: { globals: globals.node },
   },
   {

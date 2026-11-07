@@ -8,3 +8,4 @@ build
 electron
 **/*.test.js
 *.log
+scripts

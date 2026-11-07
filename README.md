@@ -51,14 +51,24 @@ repositories. Git must already be installed on the machine.
 
 ### Releasing
 
-Push a version tag and [the Release workflow](.github/workflows/release.yml) builds a Windows
-installer (`.exe`) and a macOS disk image (`.dmg`, for both Intel and Apple Silicon). It attaches
-them to a **draft** GitHub release, which you then publish.
+Run the release script from `main` with the new version:
 
 ```bash
-npm version 0.2.0
-git push --follow-tags
+npm run release -- 0.2.0
 ```
+
+[scripts/release.js](scripts/release.js) checks that `main` is up to date with `origin` and that
+the version is new. It commits any uncommitted changes, asking for a message first. Then it sets
+the version in `package.json`, tags it as `v0.2.0` and pushes `main` and the tag. It shows what it
+will do and asks before changing anything.
+
+- `patch`, `minor` or `major` in place of a version bumps the current one.
+- The version already in `package.json` tags it as it is, which suits a first release.
+- `-m "message"` gives the commit message for uncommitted changes, and `-y` skips the question.
+
+The tag starts [the Release workflow](.github/workflows/release.yml). It builds a Windows
+installer (`.exe`) and a macOS disk image (`.dmg`, for both Intel and Apple Silicon) and attaches
+them to a **draft** GitHub release, which you then publish.
 
 ### Code signing
 
