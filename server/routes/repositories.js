@@ -171,6 +171,11 @@ function createGitRouter() {
     response.json({ diff, hash: git.hashDiff(diff) });
   });
 
+  router.get('/conflict', async (request, response) => {
+    const filePath = requireString(request.query.path, 'path');
+    response.json(await request.service.getConflict(request.target, { filePath }));
+  });
+
   router.delete('/branches/:branch', async (request, response) => {
     await request.service.deleteBranch(request.target, {
       name: request.params.branch,
@@ -238,7 +243,15 @@ function createGitRouter() {
       lines: requireLines(body.lines),
     }),
   );
-  action(router, '/discard', (service, path, { paths }) =>
+  action(router, '/resolve-conflict', (service, repoPath, { path, content, side, remove }) =>
+    service.resolveConflict(repoPath, {
+      filePath: requireString(path, 'path'),
+      content,
+      side: side ?? undefined,
+      remove: remove === true,
+    }),
+  );
+  action(router, '/discard',(service, path, { paths }) =>
     service.discard(path, { paths: requirePaths(paths) }),
   );
   action(router, '/commit', (service, path, { message, amend, stageAll }) =>

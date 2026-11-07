@@ -1485,6 +1485,61 @@ describe('committing during a conflict', () => {
   });
 });
 
+describe('resolving a conflict', () => {
+  beforeEach(async () => {
+    git(repo.work, 'switch', '-c', 'topic');
+    await writeAndCommit(repo.work, 'readme.txt', 'theirs\n', 'Topic change');
+    git(repo.work, 'switch', 'main');
+    await writeAndCommit(repo.work, 'readme.txt', 'ours\n', 'Main change');
+    await request('POST', `${repo.api}/merge`, { branch: 'topic' });
+  });
+
+  it('reads every version of the file and names both branches', async () => {
+    const { status, body } = await request('GET', `${repo.api}/conflict?path=readme.txt`);
+
+    expect(status).toBe(200);
+    expect(body).toMatchObject({
+      path: 'readme.txt',
+      base: 'one\n',
+      ours: 'ours\n',
+      theirs: 'theirs\n',
+      labels: { ours: 'main', theirs: 'topic' },
+      binary: false,
+    });
+    expect(body.working).toContain('<<<<<<<');
+  });
+
+  it('writes the resolved file and marks it resolved', async () => {
+    const { status } = await request('POST', `${repo.api}/resolve-conflict`, {
+      path: 'readme.txt',
+      content: 'ours\ntheirs\n',
+    });
+
+    expect(status).toBe(204);
+    expect(await fs.readFile(path.join(repo.work, 'readme.txt'), 'utf8')).toBe('ours\ntheirs\n');
+    const { body: state } = await request('GET', `${repo.api}/status`);
+    expect(state.conflicted).toHaveLength(0);
+    expect(state.staged.map((file) => file.path)).toContain('readme.txt');
+  });
+
+  it('can take one side whole', async () => {
+    await request('POST', `${repo.api}/resolve-conflict`, { path: 'readme.txt', side: 'theirs' });
+
+    expect(await fs.readFile(path.join(repo.work, 'readme.txt'), 'utf8')).toBe('theirs\n');
+  });
+
+  it('refuses a file that has no conflict', async () => {
+    const { status } = await request('GET', `${repo.api}/conflict?path=other.txt`);
+    const write = await request('POST', `${repo.api}/resolve-conflict`, {
+      path: '../escape.txt',
+      content: 'x',
+    });
+
+    expect(status).toBe(400);
+    expect(write.status).toBe(400);
+  });
+});
+
 describe('stashing a clean tree', () => {
   it('reports that there was nothing to stash', async () => {
     const { status, body } = await request('POST', `${repo.api}/stash`, {});

@@ -15,6 +15,11 @@ export const queryKeys = {
   commitDiff: (id, hash, file) => [ROOT, 'detail', id, 'commit', hash, 'diff', file],
   stashes: (id) => [ROOT, 'detail', id, 'stashes'],
   diff: (id, file) => [ROOT, 'detail', id, 'diff', file],
+  /**
+   * Outside `repository` on purpose: git actions refetch everything under it, and
+   * resolving a conflict would then refetch, and fail to find, the conflict just resolved.
+   */
+  conflict: (id, path) => [ROOT, 'conflict', id, path],
   /** Outside `repository` on purpose: git actions must not spend GitHub's rate limit. */
   pullRequests: (id) => [ROOT, 'pull-requests', id],
   directories: (path) => ['directories', path ?? null],

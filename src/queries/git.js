@@ -89,6 +89,21 @@ export function useStashes(repositoryId) {
   return useQuery(stashesQuery(repositoryId));
 }
 
+/**
+ * Every version of a conflicted file. Read once: refetching while someone is resolving
+ * it would reset their work, and resolving it ends the conflict anyway.
+ */
+export function useConflict(repositoryId, path) {
+  return useQuery({
+    queryKey: queryKeys.conflict(repositoryId, path),
+    queryFn: () => gitApi.getConflict(repositoryId, { path }),
+    staleTime: Infinity,
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
 /** `file` is `{ path, staged, untracked }`, or null when nothing is selected. */
 export function useDiff(repositoryId, file, { fullFile }) {
   return useQuery({

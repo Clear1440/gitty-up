@@ -21,6 +21,9 @@ export const paths = {
   /** Every branch's history, with this branch's latest commit scrolled to and marked. */
   focusBranch: (repositoryId, branch) =>
     `/repositories/${repositoryId}/history?${new URLSearchParams({ focus: branch })}`,
+  /** The three-way editor for one conflicted file. */
+  resolveConflict: (repositoryId, path) =>
+    `/repositories/${repositoryId}/resolve?${new URLSearchParams({ path })}`,
   uncommitted: (repositoryId) =>
     `/repositories/${repositoryId}/history?${new URLSearchParams({ commit: UNCOMMITTED })}`,
 };

@@ -12,7 +12,8 @@ export function createApp({ store }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(localOnly);
-  app.use(express.json());
+  // A resolved conflict sends the whole file back, which can be far over the 100kb default.
+  app.use(express.json({ limit: '50mb' }));
 
   app.use('/api/repositories', createRepositoriesRouter(store));
   app.use('/api/filesystem', createFilesystemRouter());

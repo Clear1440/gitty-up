@@ -7,6 +7,8 @@ import {
 } from '@ant-design/icons';
 import { Button, Empty, Popconfirm, Tooltip } from 'antd';
 import { useState } from 'react';
+import { useNavigate } from 'react-router';
+import { paths } from '../../../paths.js';
 import { CommitPanel } from '../CommitPanel.jsx';
 import { DiffView } from '../DiffView.jsx';
 import { FileSection } from '../FileSection.jsx';
@@ -50,7 +52,8 @@ function findSelectedFile({ staged, unstaged, conflicted }, choice) {
 }
 
 function WorkingTreeFiles({ selected, onSelect }) {
-  const { status, run, isBusy } = useRepositoryContext();
+  const { repository, status, run, isBusy } = useRepositoryContext();
+  const navigate = useNavigate();
   const { staged, unstaged, conflicted } = status;
 
   const select = (isStaged) => (file) => onSelect({ path: file.path, staged: isStaged });
@@ -65,12 +68,23 @@ function WorkingTreeFiles({ selected, onSelect }) {
         isSelected={isSelected(false)}
         onSelect={select(false)}
         renderActions={(file) => (
-          <IconAction
-            label="Mark as resolved"
-            icon={<CheckOutlined />}
-            disabled={isBusy}
-            onClick={() => run('stage', { paths: [file.path] })}
-          />
+          <>
+            <Button
+              size="small"
+              type="primary"
+              ghost
+              disabled={isBusy}
+              onClick={() => navigate(paths.resolveConflict(repository.id, file.path))}
+            >
+              Resolve conflict
+            </Button>
+            <IconAction
+              label="Mark as resolved as it is"
+              icon={<CheckOutlined />}
+              disabled={isBusy}
+              onClick={() => run('stage', { paths: [file.path] })}
+            />
+          </>
         )}
       />
       <FileSection

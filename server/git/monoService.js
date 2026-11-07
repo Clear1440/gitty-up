@@ -249,6 +249,17 @@ export function stageLines(mono, { filePath, ...options }) {
   return git.stageLines(member.path, { ...options, filePath: path });
 }
 
+export async function getConflict(mono, { filePath, ...options }) {
+  const { member, path } = findMember(mono, filePath);
+  // The client knows the file by its mono path, so it gets that back.
+  return { ...(await git.getConflict(member.path, { ...options, filePath: path })), path: filePath };
+}
+
+export function resolveConflict(mono, { filePath, ...options }) {
+  const { member, path } = findMember(mono, filePath);
+  return git.resolveConflict(member.path, { ...options, filePath: path });
+}
+
 export async function fetchAll(mono) {
   await forEachMember(mono.members, ({ path }) => git.fetchAll(path));
 }

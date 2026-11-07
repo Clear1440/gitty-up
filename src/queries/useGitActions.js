@@ -62,6 +62,11 @@ const GIT_ACTIONS = {
   stage: { run: gitApi.stage, title: 'Stage' },
   unstage: { run: gitApi.unstage, title: 'Unstage' },
   stageLines: { run: gitApi.stageLines, title: 'Stage lines' },
+  resolveConflict: {
+    run: gitApi.resolveConflict,
+    title: 'Resolve conflict',
+    success: ({ path, remove }) => (remove ? `Deleted ${path}` : `Resolved ${path}`),
+  },
   discard: { run: gitApi.discard, title: 'Discard', success: () => 'Changes discarded' },
   commit: {
     run: gitApi.commit,

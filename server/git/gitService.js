@@ -687,3 +687,134 @@ export async function stashDrop(repoPath, { ref }) {
   assertStashRef(ref);
   await runGit(repoPath, ['stash', 'drop', ref]);
 }
+
+/** Which version of a conflicted file each index stage holds. */
+const CONFLICT_STAGES = { 1: 'base', 2: 'ours', 3: 'theirs' };
+
+async function readGitFile(gitDir, name) {
+  try {
+    return (await fs.readFile(path.join(gitDir, name), 'utf8')).trim();
+  } catch {
+    return null;
+  }
+}
+
+/** A commit's branch name where git can find one, or else its short hash. */
+async function nameCommit(repoPath, hash) {
+  if (!hash) return null;
+  const name = await runGit(
+    repoPath,
+    ['name-rev', '--name-only', '--no-undefined', '--refs=refs/heads/*', hash],
+    { allowedExitCodes: [0, 128] },
+  );
+  return name.trim() || hash.slice(0, 7);
+}
+
+/**
+ * What to call the two sides of a conflict. Stage 2 is always the branch being merged
+ * into: during a rebase that is the branch being rebased onto, as git replays the
+ * branch's own commits on top of it.
+ */
+async function getConflictLabels(repoPath) {
+  const gitDir = (await runGit(repoPath, ['rev-parse', '--absolute-git-dir'])).trim();
+  const operation = await getOperation(repoPath);
+
+  if (operation === 'rebase') {
+    const folder = (await exists(path.join(gitDir, 'rebase-merge'))) ? 'rebase-merge' : 'rebase-apply';
+    const onto = await readGitFile(gitDir, `${folder}/onto`);
+    const headName = await readGitFile(gitDir, `${folder}/head-name`);
+    return {
+      ours: (await nameCommit(repoPath, onto)) ?? 'HEAD',
+      theirs: headName?.replace(/^refs\/heads\//, '') ?? 'Commit being rebased',
+    };
+  }
+
+  const ours = (await getCurrentBranch(repoPath)) ?? 'HEAD';
+  if (operation === 'merge') {
+    // "Merge branch 'topic'" or "Merge remote-tracking branch 'origin/topic'".
+    const message = await readGitFile(gitDir, 'MERGE_MSG');
+    const named = /^Merge (?:remote-tracking )?branch '([^']+)'/.exec(message ?? '')?.[1];
+    const theirs = named ?? (await nameCommit(repoPath, await readGitFile(gitDir, 'MERGE_HEAD')));
+    return { ours, theirs: theirs ?? 'Incoming' };
+  }
+
+  const cherryPick = await readGitFile(gitDir, 'CHERRY_PICK_HEAD');
+  if (cherryPick) return { ours, theirs: await nameCommit(repoPath, cherryPick) };
+  // Applying a stash is the other way to end up with conflicts.
+  return { ours, theirs: 'Stashed changes' };
+}
+
+async function requireConflicted(repoPath, filePath) {
+  const { conflicted } = await getStatus(repoPath);
+  if (!conflicted.some((file) => file.path === filePath)) {
+    throw badRequest(`${filePath} has no conflict to resolve.`);
+  }
+}
+
+/** The file on disk, which must stay inside the working tree whatever the path says. */
+function workingFilePath(repoPath, filePath) {
+  const root = path.resolve(repoPath);
+  const target = path.resolve(root, filePath);
+  if (!target.startsWith(root + path.sep)) throw badRequest(`Invalid path: ${filePath}`);
+  return target;
+}
+
+/**
+ * The versions of a conflicted file: the common ancestor, each side, and the file on
+ * disk. A side the other one deleted is null, as is the ancestor when both added the
+ * file. Each is converted as a checkout would, so line endings match the working tree.
+ */
+export async function getConflict(repoPath, { filePath }) {
+  await requireConflicted(repoPath, filePath);
+
+  const entries = await runGitOnPaths(repoPath, ['ls-files', '--unmerged', '-z', '--', filePath]);
+  const stages = new Set(
+    entries
+      .split('\0')
+      .filter(Boolean)
+      .map((entry) => entry.split('\t')[0].split(' ')[2]),
+  );
+
+  const versions = { base: null, ours: null, theirs: null };
+  await Promise.all(
+    Object.entries(CONFLICT_STAGES).map(async ([stage, side]) => {
+      if (!stages.has(stage)) return;
+      versions[side] = await runGit(repoPath, ['cat-file', '--filters', `:${stage}:${filePath}`]);
+    }),
+  );
+
+  const [working, labels] = await Promise.all([
+    fs.readFile(workingFilePath(repoPath, filePath), 'utf8').catch(() => null),
+    getConflictLabels(repoPath),
+  ]);
+  const binary = [versions.base, versions.ours, versions.theirs].some((text) =>
+    text?.includes('\0'),
+  );
+  return { path: filePath, ...versions, working, labels, binary };
+}
+
+const RESOLVE_SIDES = { ours: '--ours', theirs: '--theirs' };
+
+/**
+ * Writes `content` as the resolved file and marks it resolved. Or `side` takes one side's
+ * version whole, which is the way to resolve a binary file, and `remove` deletes the file,
+ * which is how a conflict between a change and a deletion ends up siding with the deletion.
+ */
+export async function resolveConflict(repoPath, { filePath, content, side, remove = false }) {
+  await requireConflicted(repoPath, filePath);
+  if (remove) {
+    await runGitOnPaths(repoPath, ['rm', '--quiet', '--force', '--', filePath]);
+    return;
+  }
+  if (side !== undefined) {
+    if (!RESOLVE_SIDES[side]) throw badRequest(`Unknown side: ${side}`);
+    await runGitOnPaths(repoPath, ['checkout', RESOLVE_SIDES[side], '--', filePath]);
+    await stage(repoPath, { paths: [filePath] });
+    return;
+  }
+  if (typeof content !== 'string') throw badRequest('"content" is required.');
+  const target = workingFilePath(repoPath, filePath);
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  await fs.writeFile(target, content);
+  await stage(repoPath, { paths: [filePath] });
+}

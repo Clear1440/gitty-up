@@ -1,7 +1,8 @@
 import { Button, Result, Spin } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
+import clsx from 'clsx';
 import { use, useMemo, useRef, useState } from 'react';
-import { Link, Outlet, useParams, useSearchParams } from 'react-router';
+import { Link, Outlet, useMatch, useParams, useSearchParams } from 'react-router';
 import { ResizeHandle } from '../../components/ResizeHandle.jsx';
 import { useResizableSizes } from '../../components/useResizableSizes.js';
 import { paths } from '../../paths.js';
@@ -30,6 +31,7 @@ function RepositoryWorkspace({ repository }) {
   const { data: status, error } = useStatus(repository.id);
   const actions = useGitActions(repository.id);
   const [dialog, setDialog] = useState(null);
+  const resolving = Boolean(useMatch('/repositories/:repositoryId/resolve'));
   const bodyRef = useRef(null);
   const { style: bodyStyle, handleFor } = useResizableSizes(bodyRef, 'workspace', WORKSPACE_LIMITS);
 
@@ -53,10 +55,17 @@ function RepositoryWorkspace({ repository }) {
       <div className={styles.workspace}>
         <ActionBar />
         <OperationBanner />
-        <div ref={bodyRef} className={styles.body} style={bodyStyle}>
-          <BranchSidebar
-            resizeHandle={<ResizeHandle label="Resize branches" {...handleFor('sidebar')} />}
-          />
+        <div
+          ref={bodyRef}
+          className={clsx(styles.body, resolving && styles.fullWidth)}
+          style={bodyStyle}
+        >
+          {/* Resolving a conflict needs the width for its three panes. */}
+          {!resolving && (
+            <BranchSidebar
+              resizeHandle={<ResizeHandle label="Resize branches" {...handleFor('sidebar')} />}
+            />
+          )}
           <section className={styles.main}>
             <Outlet />
           </section>
