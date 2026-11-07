@@ -352,6 +352,21 @@ export function createRepositoriesRouter(store) {
     response.status(201).json({ linkedCount: new Set(workingTrees).size, failures });
   });
 
+  /** Fetches every linked folder. One failing remote cannot stop the rest. */
+  router.post('/fetch', async (_request, response) => {
+    const repositories = (await store.list()).filter((repository) => repository.path);
+    const results = await mapWithLimit(repositories, GIT_CONCURRENCY, async ({ id, name, path }) => {
+      try {
+        await git.fetchAll(path);
+        return null;
+      } catch (error) {
+        return { id, name, message: error.message };
+      }
+    });
+    const failures = results.filter(Boolean);
+    response.json({ fetchedCount: repositories.length - failures.length, failures });
+  });
+
   router.use('/groups', createGroupsRouter(store));
 
   router.post('/stubs', async (request, response) => {

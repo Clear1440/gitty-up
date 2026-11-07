@@ -3,11 +3,13 @@ import {
   FolderOutlined,
   ImportOutlined,
   SearchOutlined,
+  SyncOutlined,
 } from '@ant-design/icons';
-import { Button, Input, Result, Spin } from 'antd';
+import { App, Button, Input, Result, Spin, Tooltip } from 'antd';
 import { useState } from 'react';
 import {
   useCreateGroup,
+  useFetchAllRepositories,
   useRepositories,
   useRepositoryGroups,
 } from '../../queries/repositories.js';
@@ -35,6 +37,51 @@ function useCollapsedSections() {
   };
 
   return { collapsed, toggle };
+}
+
+const repositoryCount = (count) => (count === 1 ? '1 repository' : `${count} repositories`);
+
+/** Fetches every linked repository, so ahead and behind counts catch up with the remotes. */
+function RefreshAllButton() {
+  const { notification } = App.useApp();
+  const fetchAll = useFetchAllRepositories();
+
+  const refresh = async () => {
+    try {
+      const { fetchedCount, failures } = await fetchAll.mutateAsync();
+      if (failures.length === 0) {
+        notification.success({ title: `Fetched ${repositoryCount(fetchedCount)}` });
+        return;
+      }
+      notification.warning({
+        title: `Could not fetch ${repositoryCount(failures.length)}`,
+        description: (
+          <ul className={styles.failures}>
+            {failures.map(({ id, name, message }) => (
+              <li key={id}>
+                <strong>{name}</strong>: {message}
+              </li>
+            ))}
+          </ul>
+        ),
+        duration: 0,
+      });
+    } catch (error) {
+      notification.error({ title: 'Could not fetch the repositories', description: error.message });
+    }
+  };
+
+  return (
+    <Tooltip title="Fetch all repositories">
+      <Button
+        type="text"
+        icon={<SyncOutlined spin={fetchAll.isPending} />}
+        disabled={fetchAll.isPending}
+        aria-label="Fetch all repositories"
+        onClick={refresh}
+      />
+    </Tooltip>
+  );
 }
 
 export function HomePage() {
@@ -113,7 +160,10 @@ export function HomePage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div>
-          <h1 className={styles.title}>Repositories</h1>
+          <div className={styles.titleRow}>
+            {repositories?.length > 0 && <RefreshAllButton />}
+            <h1 className={styles.title}>Repositories</h1>
+          </div>
           {repositories?.length > 0 && (
             <p className={styles.subtitle}>{repositories.length} linked</p>
           )}

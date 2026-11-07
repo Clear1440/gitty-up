@@ -663,6 +663,27 @@ describe('syncing with the remote', () => {
     expect(pulled.behind).toBe(0);
   });
 
+  it('fetches every linked repository at once, reporting each one that fails', async () => {
+    const other = path.join(repo.work, '..', 'other');
+    git(path.dirname(other), 'clone', repo.remote, other);
+    git(other, 'config', 'user.name', 'Other');
+    git(other, 'config', 'user.email', 'other@example.com');
+    await writeAndCommit(other, 'theirs.txt', 'theirs\n', 'Their work');
+    git(other, 'push');
+    const broken = await createRepository(`repo-${repositoryCount}-broken`);
+    await fs.rm(broken.remote, { recursive: true, force: true });
+
+    const { status, body } = await request('POST', '/api/repositories/fetch');
+
+    expect(status).toBe(200);
+    expect(body.fetchedCount).toBeGreaterThan(0);
+    const failedIds = body.failures.map(({ id }) => id);
+    expect(failedIds).toContain(broken.id);
+    expect(failedIds).not.toContain(repo.id);
+    const { body: list } = await request('GET', '/api/repositories');
+    expect(list.find(({ id }) => id === repo.id).summary.behind).toBe(1);
+  });
+
   it('publishes a branch under another name, and keeps pushing to it', async () => {
     await request('POST', `${repo.api}/branches`, { name: 'topic' });
     await writeAndCommit(repo.work, 'a.txt', 'a\n', 'Topic work');

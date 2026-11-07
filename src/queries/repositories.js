@@ -54,6 +54,15 @@ export function useLinkRepositories() {
   );
 }
 
+/** Fetches every repository, then rereads all of them, as branches may have moved. */
+export function useFetchAllRepositories() {
+  return useInvalidatingMutation(
+    repositoriesApi.fetchAll,
+    queryKeys.repositoryList(),
+    queryKeys.allRepositories(),
+  );
+}
+
 export function useUnlinkRepository() {
   return useRepositoryListMutation(repositoriesApi.unlink);
 }

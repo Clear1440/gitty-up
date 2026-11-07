@@ -5,6 +5,7 @@ export const repositoriesApi = {
   get: (repositoryId) => http.get(`/repositories/${repositoryId}`),
   link: (path) => http.post('/repositories', { path }),
   linkMany: ({ paths, groupName }) => http.post('/repositories/bulk', { paths, groupName }),
+  fetchAll: () => http.post('/repositories/fetch'),
   unlink: (repositoryId) => http.delete(`/repositories/${repositoryId}`),
   addStub: (url) => http.post('/repositories/stubs', { url }),
   clone: (repositoryId, parentPath) =>
