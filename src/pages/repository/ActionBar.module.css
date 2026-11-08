@@ -47,6 +47,15 @@
   white-space: nowrap;
 }
 
+/*
+ * Ant Design gives each button in a split pair its own z-index, which traps the count's
+ * z-index inside its button, under the dropdown half beside it. Lifting the whole button
+ * above its partner lets the count sit over both.
+ */
+.actionBar :global(.ant-btn).withCount {
+  z-index: 3;
+}
+
 /* Overlaid rather than inline, so a count appearing never shifts the toolbar. */
 .actionCount {
   position: absolute;

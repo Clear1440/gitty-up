@@ -12,6 +12,7 @@ import {
 } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { App, Button, Divider, Dropdown, Space, Tooltip } from 'antd';
+import clsx from 'clsx';
 import { useNavigate } from 'react-router';
 import { AheadBehind } from '../../components/AheadBehind.jsx';
 import { paths } from '../../paths.js';
@@ -29,7 +30,11 @@ import styles from './ActionBar.module.css';
 function ActionButton({ label, hint, count = 0, ...buttonProps }) {
   return (
     <Tooltip title={hint ?? label}>
-      <Button aria-label={label} {...buttonProps}>
+      <Button
+        aria-label={label}
+        {...buttonProps}
+        className={clsx(buttonProps.className, count > 0 && styles.withCount)}
+      >
         <span className={styles.actionLabel}>{label}</span>
         {count > 0 && <span className={styles.actionCount}>{count}</span>}
       </Button>
