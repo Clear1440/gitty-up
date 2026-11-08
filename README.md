@@ -128,6 +128,9 @@ as a single repository. Use **Open as mono repo** on the group's heading.
 - Checkout and new branches are all or nothing. Other actions run in every repository and say
   which ones failed.
 - Amend, undoing a commit and pull request labels stay with each repository's own tab.
+- Merge, merge into, rebase and stashes are not offered either, as they would quietly change
+  several repositories at once. Open a repository on its own to use them. If a repository was
+  left mid-merge elsewhere, the banner can still abort or continue it.
 
 `server/git/monoService.js` does this. It matches `gitService.js` function for function, so the
 routes and most of the client work with a mono repo without knowing it is one.
@@ -144,6 +147,7 @@ output. The file is JSON:
   "scripts": [
     { "name": "Build", "path": "tools/build.ps1", "args": ["-Release"], "description": "Release build" },
     { "name": "Lint", "command": "npm run lint" },
+    { "name": "Tidy", "shell": "bash", "command": ["git fetch --prune", "git branch --merged | grep -v main"] },
     "tools/deploy.sh"
   ]
 }
@@ -159,7 +163,11 @@ output. The file is JSON:
   relative to the repository instead. Files run by extension: `.js` with node, `.ps1` with
   PowerShell, `.sh` with bash (Git for Windows' bash on Windows), `.py` with Python, `.cmd` and
   `.bat` with cmd, and anything else directly.
-- A `command` runs through the system shell, as if typed into a terminal.
+- A `command` is a terminal command, or a list of them to run in order. It stops at the first
+  one that fails. `shell` picks what runs it: `bash`, `sh`, `powershell`, `pwsh` or `cmd`.
+  Without one it runs in the system shell (cmd on Windows, sh elsewhere). On Windows, `bash` and
+  `sh` use the bash that comes with Git for Windows. Any `args` are quoted and added to the end
+  of the last command.
 - Scripts get `GITTY_REPO_PATH` and `GITTY_SCRIPT_NAME` in their environment, and stop after 10
   minutes.
 

@@ -52,8 +52,8 @@ describe('loadGittyConfig', () => {
 
     await write(path.join(repo, '.gitty'), { scripts: { Test: { command: 'npm test' } } });
     const fromMap = await loadGittyConfig(repo);
-    expect(fromMap.scripts.map(({ name, command }) => ({ name, command }))).toEqual([
-      { name: 'Test', command: 'npm test' },
+    expect(fromMap.scripts.map(({ name, commands }) => ({ name, commands }))).toEqual([
+      { name: 'Test', commands: ['npm test'] },
     ]);
   });
 
@@ -80,7 +80,30 @@ describe('loadGittyConfig', () => {
     expect(scripts.map(({ name }) => name)).toEqual(['Format', 'Release', 'Lint']);
     // Paths in a shared config are relative to that config.
     expect(scripts[0].path).toBe(path.join(shared, 'format.js'));
-    expect(scripts.find(({ name }) => name === 'Lint').command).toBe('local-lint');
+    expect(scripts.find(({ name }) => name === 'Lint').commands).toEqual(['local-lint']);
+  });
+
+  it('reads terminal commands with a shell, as one line or several', async () => {
+    await write(path.join(repo, '.gitty'), {
+      scripts: [
+        { name: 'Log', shell: 'bash', command: ['git fetch', 'git log -1'] },
+        { name: 'Shell', command: 'echo hi' },
+        { name: 'Odd', shell: 'fish', command: 'echo' },
+        { name: 'File', shell: 'bash', path: 'x.sh' },
+        { name: 'Bad', command: ['ok', 3] },
+      ],
+    });
+    const { scripts, errors } = await loadGittyConfig(repo);
+
+    expect(scripts.map(describeScript).map(({ name, runs }) => ({ name, runs }))).toEqual([
+      { name: 'Log', runs: 'bash: git fetch ; git log -1' },
+      { name: 'Shell', runs: 'echo hi' },
+    ]);
+    expect(scripts[0].commands).toEqual(['git fetch', 'git log -1']);
+    expect(errors).toHaveLength(3);
+    expect(errors[0]).toMatch(/"shell" must be one of bash, sh, powershell, pwsh, cmd/);
+    expect(errors[1]).toMatch(/only applies to a "command"/);
+    expect(errors[2]).toMatch(/only strings/);
   });
 
   it('reports a missing shared config, a loop and bad JSON without losing the rest', async () => {

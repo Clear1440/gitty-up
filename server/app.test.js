@@ -1709,6 +1709,55 @@ describe('scripts from .gitty', () => {
     expect(fail.body.exitCode).toBe(3);
   });
 
+  it('runs terminal commands in bash, passing args and stopping at the first failure', async () => {
+    await fs.writeFile(
+      path.join(repo.work, '.gitty'),
+      JSON.stringify({
+        scripts: [
+          {
+            name: 'Bash',
+            shell: 'bash',
+            command: ['git rev-parse --abbrev-ref HEAD', 'echo "got:" "$GITTY_SCRIPT_NAME"'],
+            args: ["it's here"],
+          },
+          { name: 'Stops', shell: 'bash', command: ['echo first', 'false', 'echo never'] },
+        ],
+      }),
+    );
+    const run = async (name) =>
+      (await request('POST', `${repo.api}/scripts/run`, { name })).body;
+
+    const bash = await run('Bash');
+    expect(bash.exitCode).toBe(0);
+    expect(bash.output.trim().split('\n')).toEqual(['main', "got: Bash it's here"]);
+
+    const stops = await run('Stops');
+    expect(stops.exitCode).toBe(1);
+    expect(stops.output.trim()).toBe('first');
+  });
+
+  it.runIf(process.platform === 'win32')('runs terminal commands in PowerShell', async () => {
+    await fs.writeFile(
+      path.join(repo.work, '.gitty'),
+      JSON.stringify({
+        scripts: [
+          { name: 'Ps', shell: 'powershell', command: ['$x = "a b"', 'Write-Output "$x"'], args: ["c'd"] },
+          { name: 'PsFail', shell: 'powershell', command: ['git not-a-command', 'Write-Output never'] },
+        ],
+      }),
+    );
+    const run = async (name) =>
+      (await request('POST', `${repo.api}/scripts/run`, { name })).body;
+
+    const ps = await run('Ps');
+    expect(ps.exitCode).toBe(0);
+    expect(ps.output.trim().split(/\r?\n/)).toEqual(['a b', "c'd"]);
+
+    const fail = await run('PsFail');
+    expect(fail.exitCode).not.toBe(0);
+    expect(fail.output).not.toContain('never');
+  });
+
   it('refuses a script the .gitty file does not list', async () => {
     await fs.writeFile(path.join(repo.work, '.gitty'), JSON.stringify({ scripts: {} }));
     const { status } = await request('POST', `${repo.api}/scripts/run`, { name: 'rm -rf /' });
