@@ -151,8 +151,15 @@ React pages -> src/queries (cache, hooks) -> src/api (HTTP) -> server/routes -> 
 | `layouts/`              | The app shell and tab bar                                          |
 | `tabs/`                 | Open tab state, saved to `localStorage`                            |
 | `styles/`               | Design tokens, global styles and the Ant Design theme              |
+| `utils/`                | Shared helper classes, such as `TextHelper` and `ListHelper`       |
 
 Routes are declared in `src/router.jsx`, and `src/paths.js` builds URLs to them.
+
+Code used in more than one place lives in a static helper class named for what it works on, such
+as `ListHelper.toggle()` or `StatusHelper.countChangedFiles()`. General ones are in `src/utils/`,
+and ones about a repository's status or commits are in `src/pages/repository/`. Older function
+exports, such as `readStored`, still work and point at the helpers. They are marked
+`@deprecated`, so new code uses the helper instead.
 
 ESLint rejects `fetch` anywhere outside `src/api/client.js`, so the API layer stays the single
 path to the network.
@@ -188,7 +195,12 @@ Use tokens in stylesheets rather than raw colors or sizes, so the look stays eas
 | `git/gitService.js`  | One function per git operation                              |
 | `git/parsers.js`     | Turns git's machine-readable output into objects            |
 | `git/runGit.js`      | Runs git without a shell, with timeouts                     |
+| `git/GitRefHelper.js` | Branch, remote and commit names as git spells them         |
 | `store/`             | The list of linked repositories and their groups            |
+| `utils/`             | Shared helper classes, such as `ValidationHelper`           |
+| `errors.js`          | `ApiError`, whose static methods make every error code sent |
+
+The client and server each have their own helpers, as they are built and shipped separately.
 
 ## Security
 

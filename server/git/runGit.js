@@ -1,9 +1,12 @@
 import { execFile } from 'node:child_process';
-import { gitFailure } from '../errors.js';
+import { ApiError } from '../errors.js';
 
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 const LOCAL_TIMEOUT_MS = 60_000;
 export const NETWORK_TIMEOUT_MS = 10 * 60_000;
+
+/** How many git commands to run at once when working across many repositories. */
+export const GIT_CONCURRENCY = 8;
 
 const GIT_ENV = {
   // There is no terminal to answer on, so fail fast instead of hanging.
@@ -63,12 +66,12 @@ export function runGitOnPaths(cwd, args, options) {
 
 function toGitFailure(error, args, stdout, stderr) {
   if (error.code === 'ENOENT') {
-    return gitFailure('Git is not installed or not on the PATH.');
+    return ApiError.gitFailure('Git is not installed or not on the PATH.');
   }
   if (error.killed) {
-    return gitFailure(`git ${args[0]} timed out.`);
+    return ApiError.gitFailure(`git ${args[0]} timed out.`);
   }
   // Merge conflicts report on stdout, most other failures on stderr.
   const output = [stderr, stdout].map((text) => text.trim()).filter(Boolean);
-  return gitFailure(output[0] ?? `git ${args[0]} failed.`, output.join('\n'));
+  return ApiError.gitFailure(output[0] ?? `git ${args[0]} failed.`, output.join('\n'));
 }

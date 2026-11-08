@@ -2,9 +2,9 @@ import { DeleteOutlined, EditOutlined, MoreOutlined, RightOutlined } from '@ant-
 import { App, Button, Dropdown } from 'antd';
 import clsx from 'clsx';
 import { useState } from 'react';
-import { monoRepositoryId } from '../../paths.js';
 import { useDeleteGroup, useRenameGroup } from '../../queries/repositories.js';
 import { useTabs } from '../../tabs/TabsContext.jsx';
+import { MonoIdHelper } from '../../utils/MonoIdHelper.js';
 import { GroupNameDialog } from './GroupNameDialog.jsx';
 import { OpenMonoButton } from './OpenMonoButton.jsx';
 import { RepositoryRow } from './RepositoryRow.jsx';
@@ -26,7 +26,7 @@ function GroupMenu({ group }) {
       onOk: async () => {
         try {
           await remove.mutateAsync(group.id);
-          closeTab(monoRepositoryId(group.id));
+          closeTab(MonoIdHelper.fromGroupId(group.id));
         } catch (error) {
           notification.error({ title: 'Could not delete the group', description: error.message });
         }

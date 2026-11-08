@@ -7,6 +7,7 @@ import {
 import { Button, Space, Tooltip } from 'antd';
 import clsx from 'clsx';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { TextHelper } from '../../../utils/TextHelper.js';
 import { detectEol, initialLines, joinLines, merge3, splitLines } from './merge3.js';
 import styles from './ConflictPage.module.css';
 
@@ -48,6 +49,30 @@ function prepare(conflict) {
 
 /** Each chunk of the working file: its lines, null while a conflict is open, and how it got them. */
 const startingState = (chunk) => ({ lines: initialLines(chunk), picks: [], edited: false });
+
+/**
+ * A chunk's state after the user acts on it. `take` uses one side's lines in place of
+ * what is there, and `addBelow` adds a side's lines under them: both get the side as
+ * `value`. `edit` gets the typed text, and `reset` puts the chunk back as it started.
+ */
+function applyAction(type, chunk, state, value) {
+  switch (type) {
+    case 'take':
+      return { lines: chunk[value], picks: [value], edited: false };
+    case 'addBelow':
+      return {
+        lines: [...(state.lines ?? []), ...chunk[value]],
+        picks: [...state.picks, value],
+        edited: state.edited,
+      };
+    case 'edit':
+      return { ...state, lines: value === '' ? [] : value.split('\n'), edited: true };
+    case 'reset':
+      return startingState(chunk);
+    default:
+      return state;
+  }
+}
 
 const Lines = memo(function Lines({ lines, start }) {
   return lines.map((line, index) => (
@@ -258,26 +283,14 @@ export function ConflictEditor({ conflict, isBusy, onSave, onCancel }) {
   const scrollerRef = useRef(null);
   const lastJump = useRef(-1);
 
+  /** Changes one chunk of the working file. See `applyAction` for what each `type` does. */
   const act = useCallback(
     (type, index, value) => {
-      setStates((current) => {
-        const next = [...current];
-        const chunk = chunks[index];
-        const state = current[index];
-        if (type === 'take') next[index] = { lines: chunk[value], picks: [value], edited: false };
-        if (type === 'addBelow') {
-          next[index] = {
-            lines: [...(state.lines ?? []), ...chunk[value]],
-            picks: [...state.picks, value],
-            edited: state.edited,
-          };
-        }
-        if (type === 'edit') {
-          next[index] = { ...state, lines: value === '' ? [] : value.split('\n'), edited: true };
-        }
-        if (type === 'reset') next[index] = startingState(chunk);
-        return next;
-      });
+      setStates((current) =>
+        current.map((state, position) =>
+          position === index ? applyAction(type, chunks[index], state, value) : state,
+        ),
+      );
     },
     [chunks],
   );
@@ -296,26 +309,24 @@ export function ConflictEditor({ conflict, isBusy, onSave, onCancel }) {
   const conflictIndexes = chunks.flatMap((chunk, index) => (chunk.kind === 'conflict' ? index : []));
   const openIndexes = conflictIndexes.filter((index) => states[index].lines === null);
 
-  const jumpTo = useCallback((index) => {
+  /** Scrolls a chunk to the middle of the view, and remembers it for "next conflict". */
+  const scrollToChunk = useCallback((index, behavior) => {
     lastJump.current = index;
     scrollerRef.current
       ?.querySelector(`[data-chunk="${index}"]`)
-      ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      ?.scrollIntoView({ block: 'center', behavior });
   }, []);
 
   const jumpToNextOpen = () => {
     const next = openIndexes.find((index) => index > lastJump.current) ?? openIndexes[0];
-    if (next !== undefined) jumpTo(next);
+    if (next !== undefined) scrollToChunk(next, 'smooth');
   };
 
   // Start at the first conflict rather than the top of a long file.
   useEffect(() => {
     const first = chunks.findIndex((chunk) => chunk.kind === 'conflict');
-    if (first > 0) {
-      lastJump.current = first;
-      scrollerRef.current?.querySelector(`[data-chunk="${first}"]`)?.scrollIntoView({ block: 'center' });
-    }
-  }, [chunks]);
+    if (first > 0) scrollToChunk(first);
+  }, [chunks, scrollToChunk]);
 
   const save = () => {
     const lines = states.flatMap((state) => state.lines ?? []);
@@ -352,7 +363,7 @@ export function ConflictEditor({ conflict, isBusy, onSave, onCancel }) {
               onClick={jumpToNextOpen}
             >
               {openCount > 0
-                ? `${openCount} of ${conflictIndexes.length} ${conflictIndexes.length === 1 ? 'conflict' : 'conflicts'} left`
+                ? `${openCount} of ${TextHelper.countOf(conflictIndexes.length, 'conflict')} left`
                 : 'All conflicts resolved'}
             </Button>
           ) : (

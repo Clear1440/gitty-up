@@ -1,6 +1,7 @@
 import { Checkbox, Flex } from 'antd';
 import { useState } from 'react';
 import { ActionDialog } from '../../../components/ActionDialog.jsx';
+import { TextHelper } from '../../../utils/TextHelper.js';
 import { useRepositoryContext } from '../RepositoryContext.js';
 
 /** Confirms deleting `names`, the local branches a fetch found gone from the remote. */
@@ -10,7 +11,7 @@ export function PruneBranchesDialog({ names, onClose }) {
 
   return (
     <ActionDialog
-      title={names.length === 1 ? 'Delete 1 local branch?' : `Delete ${names.length} local branches?`}
+      title={`Delete ${TextHelper.countOf(names.length, 'local branch', 'local branches')}?`}
       okText="Delete branches"
       danger
       onSubmit={() => run('pruneBranches', { force })}

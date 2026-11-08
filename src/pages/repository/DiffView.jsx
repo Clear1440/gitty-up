@@ -1,14 +1,15 @@
 import { Alert, Button, Empty, Spin } from 'antd';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useDiff } from '../../queries/git.js';
+import { ListHelper } from '../../utils/ListHelper.js';
+import { SetHelper } from '../../utils/SetHelper.js';
+import { TextHelper } from '../../utils/TextHelper.js';
 import { DiffContent, DiffViewToggle, useDiffViewMode } from './diff/DiffContent.jsx';
 import { parseDiff, selectableIds } from './diff/diffRows.js';
 import { useRepositoryContext } from './RepositoryContext.js';
 import styles from './DiffView.module.css';
 
 const NO_SELECTION = new Set();
-
-const describeLines = (count) => (count === 1 ? '1 line' : `${count} lines`);
 
 export function DiffView({ file }) {
   const { repository, run, isBusy } = useRepositoryContext();
@@ -24,19 +25,17 @@ export function DiffView({ file }) {
   const selected = selection.hash === hash ? selection.ids : NO_SELECTION;
   const rangeStart = useRef(null);
 
+  /** Selects or clears a line. `extendRange` (shift) selects every line since the last one. */
   const toggleLine = useCallback(
     (id, extendRange) => {
       setSelection((current) => {
-        const ids = new Set(current.hash === hash ? current.ids : []);
+        const previous = current.hash === hash ? current.ids : NO_SELECTION;
         const from = orderedIds.indexOf(rangeStart.current);
         if (extendRange && from !== -1) {
-          const to = orderedIds.indexOf(id);
-          const range = orderedIds.slice(Math.min(from, to), Math.max(from, to) + 1);
-          range.forEach((rangeId) => ids.add(rangeId));
-        } else if (!ids.delete(id)) {
-          ids.add(id);
+          const range = ListHelper.sliceBetween(orderedIds, from, orderedIds.indexOf(id));
+          return { hash, ids: SetHelper.addAll(previous, range) };
         }
-        return { hash, ids };
+        return { hash, ids: SetHelper.toggle(previous, id) };
       });
       rangeStart.current = id;
     },
@@ -89,7 +88,7 @@ export function DiffView({ file }) {
                 disabled={isBusy}
                 onClick={() => applyLines([...selected])}
               >
-                {verb} {describeLines(selected.size)}
+                {verb} {TextHelper.countOf(selected.size, 'line')}
               </Button>
             </div>
           )}

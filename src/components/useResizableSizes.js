@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { readStored, writeStored } from '../utils/storage.js';
+import { StorageHelper } from '../utils/StorageHelper.js';
 
 const KEYBOARD_STEP = 16;
 
@@ -45,10 +45,12 @@ export function keyboardStep(key, edge) {
  */
 export function useResizableSizes(containerRef, group, limits) {
   const storageKey = `gitty-up.sizes.${group}`;
-  const [sizes, setSizes] = useState(() => sanitizeSizes(readStored(storageKey, {}), limits));
+  const [sizes, setSizes] = useState(() =>
+    sanitizeSizes(StorageHelper.read(storageKey, {}), limits),
+  );
 
   useEffect(() => {
-    writeStored(storageKey, sizes);
+    StorageHelper.write(storageKey, sizes);
   }, [storageKey, sizes]);
 
   const variable = (name) => `--${group}-${name}`;

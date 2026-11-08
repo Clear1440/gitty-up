@@ -1,9 +1,9 @@
-import { formatFullTime, formatRelativeTime } from '../utils/time.js';
+import { TimeHelper } from '../utils/TimeHelper.js';
 
 export function RelativeTime({ date, className }) {
   return (
-    <time className={className} dateTime={date} title={formatFullTime(date)}>
-      {formatRelativeTime(date)}
+    <time className={className} dateTime={date} title={TimeHelper.formatFull(date)}>
+      {TimeHelper.formatRelative(date)}
     </time>
   );
 }

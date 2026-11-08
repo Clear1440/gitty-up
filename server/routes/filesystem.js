@@ -2,7 +2,9 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { Router } from 'express';
-import { badRequest } from '../errors.js';
+import { ApiError } from '../errors.js';
+import { FileSystemHelper } from '../utils/FileSystemHelper.js';
+import { ValidationHelper } from '../utils/ValidationHelper.js';
 
 const WINDOWS_DRIVE_LETTERS = 'CDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -13,67 +15,43 @@ const MAX_SCANNED_FOLDERS = 20_000;
 /** Folders of installed packages, which can hold repositories nobody would want listed. */
 const SKIPPED_FOLDERS = new Set(['node_modules', 'bower_components', 'vendor']);
 
-async function isAccessible(target) {
-  try {
-    await fs.access(target);
-    return true;
-  } catch {
-    return false;
-  }
-}
+const isVisibleFolder = (entry) => entry.isDirectory() && !entry.name.startsWith('.');
 
 async function listRoots() {
   if (process.platform !== 'win32') return ['/'];
   const drives = [...WINDOWS_DRIVE_LETTERS].map((letter) => `${letter}:\\`);
-  const available = await Promise.all(drives.map(isAccessible));
+  const available = await Promise.all(drives.map(FileSystemHelper.exists));
   return drives.filter((_, index) => available[index]);
 }
 
-function requireFolderPath(folderPath) {
-  if (typeof folderPath !== 'string' || !folderPath.trim()) {
-    throw badRequest('"path" is required.');
-  }
-  return folderPath;
-}
-
-async function assertReadable(directory) {
+/** A folder's entries, or a 400 if the folder can't be read. */
+async function readEntries(directory) {
   try {
-    await fs.readdir(directory);
+    return await fs.readdir(directory, { withFileTypes: true });
   } catch {
-    throw badRequest(`Cannot read ${directory}.`);
+    throw ApiError.badRequest(`Cannot read ${directory}.`);
   }
 }
 
 async function listDirectories(directory) {
-  let entries;
-  try {
-    entries = await fs.readdir(directory, { withFileTypes: true });
-  } catch {
-    throw badRequest(`Cannot read ${directory}.`);
-  }
+  const entries = await readEntries(directory);
   const visible = entries
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+    .filter(isVisibleFolder)
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
   return Promise.all(
     visible.map(async ({ name }) => {
       const fullPath = path.join(directory, name);
-      return {
-        name,
-        path: fullPath,
-        isRepository: await isAccessible(path.join(fullPath, '.git')),
-      };
+      return { name, path: fullPath, isRepository: await FileSystemHelper.isRepository(fullPath) };
     }),
   );
 }
 
+/** The folders a scan goes into next. Unreadable ones are skipped rather than failing it. */
 async function readSubfolders(directory) {
   const entries = await fs.readdir(directory, { withFileTypes: true }).catch(() => []);
   return entries
-    .filter(
-      (entry) =>
-        entry.isDirectory() && !entry.name.startsWith('.') && !SKIPPED_FOLDERS.has(entry.name),
-    )
+    .filter((entry) => isVisibleFolder(entry) && !SKIPPED_FOLDERS.has(entry.name))
     .map((entry) => path.join(directory, entry.name));
 }
 
@@ -91,9 +69,7 @@ async function findRepositories(root) {
     scannedCount += level.length;
     if (scannedCount > MAX_SCANNED_FOLDERS) return { found, truncated: true };
 
-    const isRepository = await Promise.all(
-      level.map((directory) => isAccessible(path.join(directory, '.git'))),
-    );
+    const isRepository = await Promise.all(level.map(FileSystemHelper.isRepository));
     found.push(...level.filter((_, index) => isRepository[index]));
     level = (await Promise.all(level.map(readSubfolders))).flat();
   }
@@ -116,8 +92,9 @@ export function createFilesystemRouter() {
   });
 
   router.get('/repositories', async (request, response) => {
-    const root = path.resolve(requireFolderPath(request.query.path));
-    await assertReadable(root);
+    const root = path.resolve(ValidationHelper.requireString(request.query.path, 'path'));
+    // Fails with a clear message now, rather than finding nothing later.
+    await readEntries(root);
     const { found, truncated } = await findRepositories(root);
     response.json({
       path: root,

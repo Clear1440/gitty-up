@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { ActionDialog } from '../../../components/ActionDialog.jsx';
 import { useBranches } from '../../../queries/git.js';
 import { useRepositoryContext } from '../RepositoryContext.js';
+import { StatusHelper } from '../StatusHelper.js';
 import { BranchSelect } from './BranchSelect.jsx';
 import { findBehindBranches } from './findBehindBranches.js';
 import { MergeBlockedAlert } from './MergeBlockedAlert.jsx';
@@ -19,7 +20,7 @@ export function MergeDialog({ branch: initialBranch, mode: initialMode = 'merge'
   const [branch, setBranch] = useState(initialBranch);
   const [noFastForward, setNoFastForward] = useState(false);
 
-  const current = status.branch ?? 'HEAD';
+  const current = StatusHelper.currentBranchName(status);
   const isMerge = mode === 'merge';
   const behind = isMerge ? findBehindBranches(branches?.local ?? [], [status.branch, branch]) : [];
 

@@ -1,6 +1,7 @@
 import { App } from 'antd';
 import { useEffect, useRef } from 'react';
 import { gitApi } from '../../api';
+import { KeyboardHelper } from '../../utils/KeyboardHelper.js';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { restoreCommitMessage } from './useCommitDraft.js';
 
@@ -8,11 +9,14 @@ const EDITABLE = 'input, textarea, select, [contenteditable="true"]';
 
 /** Whether a key press means undo for the app, rather than for the field being typed in. */
 export function isUndoCommitKey(event) {
-  const { key, ctrlKey, metaKey, shiftKey, altKey, repeat, target } = event;
-  if (key.toLowerCase() !== 'z' || !(ctrlKey || metaKey) || shiftKey || altKey || repeat) {
-    return false;
-  }
-  return !target.closest?.(EDITABLE);
+  const { key, shiftKey, altKey, repeat, target } = event;
+  const isUndo =
+    key.toLowerCase() === 'z' &&
+    KeyboardHelper.hasCommandKey(event) &&
+    !shiftKey &&
+    !altKey &&
+    !repeat;
+  return isUndo && !target.closest?.(EDITABLE);
 }
 
 /**

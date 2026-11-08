@@ -1,6 +1,10 @@
-import { ApiError, badRequest, gitFailure } from '../errors.js';
-import { mapWithLimit } from '../utils/mapWithLimit.js';
+import { ApiError } from '../errors.js';
+import { AsyncHelper } from '../utils/AsyncHelper.js';
+import { DateHelper } from '../utils/DateHelper.js';
+import { TextHelper } from '../utils/TextHelper.js';
+import { GitRefHelper } from './GitRefHelper.js';
 import * as git from './gitService.js';
+import { MonoIdHelper } from './MonoIdHelper.js';
 import {
   assignPrefixes,
   interleaveCommits,
@@ -8,6 +12,7 @@ import {
   mergeStatuses,
   toMonoCommit,
 } from './monoMerge.js';
+import { GIT_CONCURRENCY } from './runGit.js';
 
 /**
  * A mono repo makes a group of repositories look like one repository. Every function
@@ -19,42 +24,34 @@ import {
  * and one that moves to this branch joins. Files appear under a folder per member.
  */
 
-const ID_PREFIX = 'mono-';
-const GIT_CONCURRENCY = 8;
-
 const COMMIT_HASH = /^([0-9a-f]+)-([0-9a-f]+)$/;
 
-export const isMonoId = (id) => id.startsWith(ID_PREFIX);
-export const groupIdOf = (monoId) => monoId.slice(ID_PREFIX.length);
+/** @deprecated Use MonoIdHelper.isMonoId. */
+export const isMonoId = MonoIdHelper.isMonoId;
 
-function listNames(names) {
-  if (names.length < 2) return names.join('');
-  return `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
-}
+/** @deprecated Use MonoIdHelper.toGroupId. */
+export const groupIdOf = MonoIdHelper.toGroupId;
 
-const namesOf = (members) => listNames(members.map(({ name }) => name));
+const namesOf = (members) => TextHelper.joinWithAnd(members.map(({ name }) => name));
 
 /** Reads a group as a mono repo on `group.monoBranch`, or null if it was never opened. */
 export async function resolveMono(store, group) {
   if (!group.monoBranch) return null;
 
   const linked = (await store.list()).filter(({ groupId }) => groupId === group.id);
-  const repositories = await mapWithLimit(
-    assignPrefixes(linked),
-    GIT_CONCURRENCY,
-    async (repository) => {
-      // A stub has no folder, and git would otherwise run in the server's own.
-      if (!repository.path) return { ...repository, branch: null, missing: true };
-      try {
-        return { ...repository, branch: await git.getCurrentBranch(repository.path) };
-      } catch {
-        return { ...repository, branch: null, missing: true };
-      }
-    },
-  );
+  const repositories = await readEach(assignPrefixes(linked), async (repository) => {
+    const missing = { ...repository, branch: null, missing: true };
+    // A stub has no folder, and git would otherwise run in the server's own.
+    if (!repository.path) return missing;
+    try {
+      return { ...repository, branch: await git.getCurrentBranch(repository.path) };
+    } catch {
+      return missing;
+    }
+  });
 
   return {
-    id: `${ID_PREFIX}${group.id}`,
+    id: MonoIdHelper.fromGroupId(group.id),
     name: group.name,
     branch: group.monoBranch,
     repositories,
@@ -66,20 +63,31 @@ export async function resolveMono(store, group) {
 
 /** What a mono repo is called in place of a repository entry. */
 export function describeMono({ id, name, branch, members }) {
-  return { id, name, branch, path: null, isMono: true, available: members.length > 0, summary: null };
+  return {
+    id,
+    name,
+    branch,
+    path: null,
+    isMono: true,
+    available: members.length > 0,
+    summary: null,
+  };
 }
 
 /** Points a group at `branch`, which at least one of its repositories must be on. */
 export async function openMono(store, group, branch) {
   const mono = await resolveMono(store, { ...group, monoBranch: branch });
   if (mono.members.length === 0) {
-    throw badRequest(`No repository in ${group.name} has ${branch} checked out.`);
+    throw ApiError.badRequest(`No repository in ${group.name} has ${branch} checked out.`);
   }
   await store.setMonoBranch(group.id, branch);
   return describeMono(mono);
 }
 
-const readEach = (members, read) => mapWithLimit(members, GIT_CONCURRENCY, read);
+/** Runs `read` on every member, a few at a time, with results in the members' order. */
+function readEach(members, read) {
+  return AsyncHelper.mapWithLimit(members, GIT_CONCURRENCY, read);
+}
 
 function readStatuses(members) {
   return readEach(members, async (member) => ({
@@ -95,7 +103,7 @@ function readStatuses(members) {
  * for one repository. PARTIAL means some members did finish, so it is not a plain failure.
  */
 async function forEachMember(members, action, { doneIn = 'Done in', nextStep = '' } = {}) {
-  const results = await mapWithLimit(members, GIT_CONCURRENCY, async (member) => {
+  const results = await readEach(members, async (member) => {
     try {
       return { member, value: await action(member) };
     } catch (error) {
@@ -115,10 +123,10 @@ async function forEachMember(members, action, { doneIn = 'Done in', nextStep = '
       .join('\n');
     const details = failures.map(({ error }) => error.details).filter(Boolean).join('\n');
     if (failures.every(({ error }) => error.code === 'CONFLICTS')) {
-      throw new ApiError(409, 'CONFLICTS', message, details);
+      throw ApiError.conflicts(message, details);
     }
-    if (succeeded.length > 0) throw new ApiError(409, 'PARTIAL', message, details);
-    throw gitFailure(message, details);
+    if (succeeded.length > 0) throw ApiError.partial(message, details);
+    throw ApiError.gitFailure(message, details);
   }
   return results.map(({ value }) => value);
 }
@@ -135,7 +143,7 @@ async function allOrNone(members, action, undo, describeFailure) {
       done.push(member);
     } catch (error) {
       await Promise.allSettled(done.map(undo));
-      throw gitFailure(`${describeFailure(member)} ${error.message}`, error.details);
+      throw ApiError.gitFailure(`${describeFailure(member)} ${error.message}`, error.details);
     }
   }
 }
@@ -144,7 +152,9 @@ function findMember(mono, monoPath) {
   const separator = monoPath.indexOf('/');
   const prefix = monoPath.slice(0, separator);
   const member = mono.members.find((candidate) => candidate.prefix === prefix);
-  if (separator === -1 || !member) throw badRequest(`${monoPath} is not in this mono repo.`);
+  if (separator === -1 || !member) {
+    throw ApiError.badRequest(`${monoPath} is not in this mono repo.`);
+  }
   return { member, path: monoPath.slice(separator + 1) };
 }
 
@@ -164,7 +174,7 @@ function onPaths(mono, paths, action) {
 function resolveCommit(mono, monoHash) {
   const [, id, hash] = COMMIT_HASH.exec(monoHash) ?? [];
   const member = mono.repositories.find((repository) => repository.id === id);
-  if (!member || member.missing) throw badRequest(`Invalid commit: ${monoHash}`);
+  if (!member || member.missing) throw ApiError.badRequest(`Invalid commit: ${monoHash}`);
   return { member, hash };
 }
 
@@ -196,9 +206,10 @@ export async function getBranches(mono) {
 
 export async function getRemoteOptions(mono) {
   const options = await readEach(mono.members, ({ path }) => git.getRemoteOptions(path));
+  // Only remotes every member has, as one push goes to the same remote name in each.
   const [first, ...rest] = options.map(({ remotes }) => remotes);
   const remotes = (first ?? []).filter((remote) => rest.every((list) => list.includes(remote)));
-  return { remotes, defaultRemote: remotes.includes('origin') ? 'origin' : (remotes[0] ?? null) };
+  return { remotes, defaultRemote: GitRefHelper.pickDefaultRemote(remotes) };
 }
 
 /** Labels on commits can't say which repository a pull request belongs to, so none show. */
@@ -215,8 +226,8 @@ export async function getCommits(mono, { ref, limit = 100, skip = 0 } = {}) {
   const branches = await getBranches(mono);
   const revisions = [
     'HEAD',
-    ...branches.local.map(({ name }) => `refs/heads/${name}`),
-    ...branches.remote.map(({ name }) => `refs/remotes/${name}`),
+    ...branches.local.map(({ name }) => GitRefHelper.toLocalRef(name)),
+    ...branches.remote.map(({ name }) => GitRefHelper.toRemoteRef(name)),
   ];
 
   const lists = await readEach(mono.members, async (member) => {
@@ -251,8 +262,9 @@ export function stageLines(mono, { filePath, ...options }) {
 
 export async function getConflict(mono, { filePath, ...options }) {
   const { member, path } = findMember(mono, filePath);
+  const conflict = await git.getConflict(member.path, { ...options, filePath: path });
   // The client knows the file by its mono path, so it gets that back.
-  return { ...(await git.getConflict(member.path, { ...options, filePath: path })), path: filePath };
+  return { ...conflict, path: filePath };
 }
 
 export function resolveConflict(mono, { filePath, ...options }) {
@@ -268,7 +280,9 @@ export async function pull(mono, options) {
   const results = await readStatuses(mono.members);
   // A branch that was never pushed has nothing to pull, which is no reason to fail.
   const tracking = results.filter(({ status }) => status.upstream).map(({ member }) => member);
-  if (tracking.length === 0) throw gitFailure('None of these branches are on a remote yet.');
+  if (tracking.length === 0) {
+    throw ApiError.gitFailure('None of these branches are on a remote yet.');
+  }
   await forEachMember(tracking, ({ path }) => git.pull(path, options));
 }
 
@@ -357,7 +371,7 @@ export async function rebase(mono, options) {
 async function membersInOperation(mono) {
   const results = await readStatuses(mono.members);
   const active = results.filter(({ status }) => status.operation).map(({ member }) => member);
-  if (active.length === 0) throw gitFailure('There is no merge or rebase in progress.');
+  if (active.length === 0) throw ApiError.gitFailure('There is no merge or rebase in progress.');
   return active;
 }
 
@@ -387,13 +401,13 @@ export async function discard(mono, { paths }) {
  * the failed members keep their staged changes, so committing again picks up just those.
  */
 export async function commit(mono, { message, amend = false, stageAll = false }) {
-  if (amend) throw badRequest('Amending is not available across repositories.');
+  if (amend) throw ApiError.badRequest('Amending is not available across repositories.');
 
   const results = await readStatuses(mono.members);
   const conflicted = results.filter(({ status }) => status.conflicted.length > 0);
   if (conflicted.length > 0) {
     const names = namesOf(conflicted.map(({ member }) => member));
-    throw gitFailure(`Resolve the conflicts in ${names} before committing.`);
+    throw ApiError.gitFailure(`Resolve the conflicts in ${names} before committing.`);
   }
 
   const targets = results.filter(
@@ -402,10 +416,10 @@ export async function commit(mono, { message, amend = false, stageAll = false })
       status.operation === 'merge' ||
       (stageAll && status.unstaged.length > 0),
   );
-  if (targets.length === 0) throw gitFailure('There is nothing to commit.');
+  if (targets.length === 0) throw ApiError.gitFailure('There is nothing to commit.');
 
   const needsMessage = targets.some(({ status }) => status.operation !== 'merge');
-  if (!message?.trim() && needsMessage) throw badRequest('A commit message is required.');
+  if (!message?.trim() && needsMessage) throw ApiError.badRequest('A commit message is required.');
 
   await forEachMember(
     targets.map(({ member }) => member),
@@ -423,19 +437,19 @@ export async function getLastCommit() {
 }
 
 export async function checkoutCommit() {
-  throw badRequest('Open the repository on its own to check out a commit.');
+  throw ApiError.badRequest('Open the repository on its own to check out a commit.');
 }
 
 export async function cherryPick() {
-  throw badRequest('Open the repository on its own to cherry-pick a commit.');
+  throw ApiError.badRequest('Open the repository on its own to cherry-pick a commit.');
 }
 
 export async function resetToCommit() {
-  throw badRequest('Open the repository on its own to reset to a commit.');
+  throw ApiError.badRequest('Open the repository on its own to reset to a commit.');
 }
 
 export async function undoCommit() {
-  throw badRequest('Open the repository on its own to undo a commit.');
+  throw ApiError.badRequest('Open the repository on its own to undo a commit.');
 }
 
 export async function getStashes(mono) {
@@ -447,13 +461,13 @@ export async function getStashes(mono) {
       repository: member.name,
     }));
   });
-  return lists.flat().sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+  return lists.flat().sort((a, b) => DateHelper.newestFirst(a.date, b.date));
 }
 
 function resolveStash(mono, monoRef) {
   const separator = monoRef?.indexOf(':') ?? -1;
   const member = mono.members.find(({ id }) => id === monoRef?.slice(0, separator));
-  if (separator === -1 || !member) throw badRequest(`Invalid stash: ${monoRef}`);
+  if (separator === -1 || !member) throw ApiError.badRequest(`Invalid stash: ${monoRef}`);
   return { member, ref: monoRef.slice(separator + 1) };
 }
 
@@ -462,7 +476,7 @@ export async function stashSave(mono, options) {
   const changed = results
     .filter(({ status }) => status.staged.length + status.unstaged.length > 0)
     .map(({ member }) => member);
-  if (changed.length === 0) throw gitFailure('There are no changes to stash.');
+  if (changed.length === 0) throw ApiError.gitFailure('There are no changes to stash.');
   await forEachMember(changed, ({ path }) => git.stashSave(path, options), {
     doneIn: 'Stashed in',
   });
@@ -476,7 +490,7 @@ export async function stashApply(mono, { ref: monoRef }) {
 /** Restores a stash and removes it. Without `ref`, uses the newest of any member's. */
 export async function stashPop(mono, { ref: monoRef } = {}) {
   const newest = monoRef ?? (await getStashes(mono))[0]?.ref;
-  if (!newest) throw gitFailure('There are no stashes to restore.');
+  if (!newest) throw ApiError.gitFailure('There are no stashes to restore.');
   const { member, ref } = resolveStash(mono, newest);
   await git.stashPop(member.path, { ref });
 }

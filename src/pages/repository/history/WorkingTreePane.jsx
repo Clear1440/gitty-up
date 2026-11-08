@@ -9,6 +9,8 @@ import { Button, Empty, Popconfirm, Tooltip } from 'antd';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { paths } from '../../../paths.js';
+import { TextHelper } from '../../../utils/TextHelper.js';
+import { CommitHelper } from '../CommitHelper.js';
 import { CommitPanel } from '../CommitPanel.jsx';
 import { DiffView } from '../DiffView.jsx';
 import { FileSection } from '../FileSection.jsx';
@@ -145,6 +147,10 @@ export function WorkingTreePane({ onClose, resizeHandle }) {
   const { status } = useRepositoryContext();
   const [choice, setChoice] = useState(null);
   const selected = findSelectedFile(status, choice);
+  const place = status.branch
+    ? `On ${status.branch}`
+    : `Detached at ${CommitHelper.shortHash(status.headHash)}`;
+  const memberCount = status.mono?.members.length ?? 0;
 
   return (
     <aside className={styles.pane} aria-label="Uncommitted changes">
@@ -159,8 +165,8 @@ export function WorkingTreePane({ onClose, resizeHandle }) {
       <header className={styles.header}>
         <h3 className={styles.subject}>Uncommitted changes</h3>
         <p className={styles.meta}>
-          {status.branch ? `On ${status.branch}` : `Detached at ${status.headHash?.slice(0, 7)}`}
-          {status.mono && ` across ${status.mono.members.length} repositories`}
+          {place}
+          {status.mono && ` across ${TextHelper.countOf(memberCount, 'repository', 'repositories')}`}
         </p>
       </header>
       {selected ? (

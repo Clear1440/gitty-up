@@ -3,12 +3,14 @@ import { App, Button, Radio, Tooltip } from 'antd';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ActionDialog } from '../../components/ActionDialog.jsx';
-import { monoRepositoryId, paths } from '../../paths.js';
+import { paths } from '../../paths.js';
 import { useOpenMono, useRepositories } from '../../queries/repositories.js';
+import { MonoIdHelper } from '../../utils/MonoIdHelper.js';
+import { TextHelper } from '../../utils/TextHelper.js';
 import { describeLeftOut, findMonoBranches } from './monoBranches.js';
 import styles from './OpenMonoButton.module.css';
 
-const describeCount = (count) => (count === 1 ? '1 repository' : `${count} repositories`);
+const describeCount = (count) => TextHelper.countOf(count, 'repository', 'repositories');
 
 function ChooseBranchDialog({ group, repositories, choices, onOpen, onClose }) {
   const [branch, setBranch] = useState(choices[0].branch);
@@ -73,7 +75,7 @@ export function OpenMonoButton({ group }) {
   const open = async (branch) => {
     try {
       await openMono.mutateAsync({ groupId: group.id, branch });
-      navigate(paths.repository(monoRepositoryId(group.id)));
+      navigate(paths.repository(MonoIdHelper.fromGroupId(group.id)));
       return true;
     } catch (error) {
       notification.error({ title: 'Could not open the mono repo', description: error.message });

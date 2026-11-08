@@ -1,6 +1,5 @@
 import { DownOutlined, FolderOutlined, RightOutlined } from '@ant-design/icons';
-import { useState } from 'react';
-import { readStored, writeStored } from '../../utils/storage.js';
+import { useStoredState } from '../../utils/useStoredState.js';
 import { BranchRow } from './BranchRow.jsx';
 import rowStyles from './BranchRow.module.css';
 import styles from './BranchSidebar.module.css';
@@ -10,15 +9,8 @@ import styles from './BranchSidebar.module.css';
  * they never touched have no entry, so they keep following `opensByDefault`.
  */
 export function useFolderChoices(repositoryId) {
-  const storageKey = `gitty-up.branch-folders.${repositoryId}`;
-  const [choices, setChoices] = useState(() => readStored(storageKey, {}));
-
-  const setFolderOpen = (key, open) => {
-    const next = { ...choices, [key]: open };
-    setChoices(next);
-    writeStored(storageKey, next);
-  };
-
+  const [choices, setChoices] = useStoredState(`gitty-up.branch-folders.${repositoryId}`, {});
+  const setFolderOpen = (key, open) => setChoices({ ...choices, [key]: open });
   return [choices, setFolderOpen];
 }
 

@@ -1,61 +1,32 @@
 import fs from 'node:fs/promises';
 import { Router } from 'express';
-import { badRequest, notFound } from '../errors.js';
+import { ApiError } from '../errors.js';
 import * as git from '../git/gitService.js';
+import { MonoIdHelper } from '../git/MonoIdHelper.js';
 import * as mono from '../git/monoService.js';
 import { parseRemoteUrl } from '../git/remoteUrl.js';
-import { mapWithLimit } from '../utils/mapWithLimit.js';
+import { GIT_CONCURRENCY } from '../git/runGit.js';
+import { AsyncHelper } from '../utils/AsyncHelper.js';
+import { ValidationHelper } from '../utils/ValidationHelper.js';
 
 const DEFAULT_COMMIT_PAGE_SIZE = 100;
 const MAX_COMMIT_PAGE_SIZE = 500;
-/** How many repositories to run git on at once. */
-const GIT_CONCURRENCY = 8;
 
-function requireString(value, name) {
-  if (typeof value !== 'string' || !value.trim()) {
-    throw badRequest(`"${name}" is required.`);
-  }
-  return value;
-}
-
-function requirePaths(paths) {
-  const isValid =
-    Array.isArray(paths) && paths.length > 0 && paths.every((path) => typeof path === 'string');
-  if (!isValid) throw badRequest('"paths" must be a non-empty list of file paths.');
-  return paths;
-}
-
-function optionalString(value, name) {
-  if (value === undefined || value === null) return undefined;
-  return requireString(value, name).trim();
-}
-
-const optionalPaths = (paths) => (paths === undefined ? undefined : requirePaths(paths));
-
-function requireLines(lines) {
-  const isValid = Array.isArray(lines) && lines.length > 0 && lines.every(Number.isInteger);
-  if (!isValid) throw badRequest('"lines" must be a non-empty list of line numbers.');
-  return lines;
-}
-
-function toCount(value, fallback, max = Number.MAX_SAFE_INTEGER) {
-  const count = Number.parseInt(value, 10);
-  return Number.isNaN(count) || count < 0 ? fallback : Math.min(count, max);
-}
-
+/** Adds what the repositories page shows about a repository: its branch, changes and so on. */
 async function withSummary(repository) {
-  if (!repository.path) return { ...repository, available: false, summary: null };
+  const unavailable = { ...repository, available: false, summary: null };
+  if (!repository.path) return unavailable;
   try {
     return { ...repository, available: true, summary: await git.getSummary(repository.path) };
   } catch {
     // The folder may have been moved or deleted. Keep it listed so it can be unlinked.
-    return { ...repository, available: false, summary: null };
+    return unavailable;
   }
 }
 
 async function assertDirectory(folderPath) {
   const stats = await fs.stat(folderPath).catch(() => null);
-  if (!stats?.isDirectory()) throw badRequest(`${folderPath} is not a folder.`);
+  if (!stats?.isDirectory()) throw ApiError.badRequest(`${folderPath} is not a folder.`);
 }
 
 async function resolveFolder(folderPath) {
@@ -65,11 +36,11 @@ async function resolveFolder(folderPath) {
 
 /** Resolves each folder on its own, so one bad folder cannot fail the rest. */
 async function resolveFolders(folderPaths) {
-  const results = await mapWithLimit(folderPaths, GIT_CONCURRENCY, async (folderPath) => {
+  const results = await AsyncHelper.mapWithLimit(folderPaths, GIT_CONCURRENCY, async (folder) => {
     try {
-      return { workingTree: await resolveFolder(folderPath.trim()) };
+      return { workingTree: await resolveFolder(folder.trim()) };
     } catch (error) {
-      return { failure: { path: folderPath, message: error.message } };
+      return { failure: { path: folder, message: error.message } };
     }
   });
   return {
@@ -80,7 +51,7 @@ async function resolveFolders(folderPaths) {
 
 function requireStub(repository) {
   if (repository.path || repository.isMono) {
-    throw badRequest(`${repository.name} is already on this machine.`);
+    throw ApiError.badRequest(`${repository.name} is already on this machine.`);
   }
   return repository;
 }
@@ -88,15 +59,15 @@ function requireStub(repository) {
 /** A stub has no folder. Without this guard git would run in the server's own folder. */
 function requireWorkingCopy(request, _response, next) {
   if (!request.repository.path && !request.repository.isMono) {
-    throw badRequest(`${request.repository.name} has not been cloned or located yet.`);
+    throw ApiError.badRequest(`${request.repository.name} has not been cloned or located yet.`);
   }
   next();
 }
 
 /**
- * Registers a POST route that runs a git action and replies 204 on success. `run` is
- * given the service and target from the repositoryId param, as either kind of repository
- * has its own.
+ * Registers a POST route that runs a git action and replies 204 on success. `run` gets
+ * the service and target that the repositoryId param chose: gitService and a folder for
+ * a repository, or monoService and the mono repo for a group.
  */
 function action(router, route, run) {
   router.post(route, async (request, response) => {
@@ -135,8 +106,8 @@ function createGitRouter() {
         // Without a ref, history covers every branch.
         ref: ref || undefined,
         allBranches: !ref,
-        limit: toCount(limit, DEFAULT_COMMIT_PAGE_SIZE, MAX_COMMIT_PAGE_SIZE),
-        skip: toCount(skip, 0),
+        limit: ValidationHelper.toCount(limit, DEFAULT_COMMIT_PAGE_SIZE, MAX_COMMIT_PAGE_SIZE),
+        skip: ValidationHelper.toCount(skip, 0),
       }),
     );
   });
@@ -149,7 +120,7 @@ function createGitRouter() {
     const { path: filePath, originalPath, fullFile } = request.query;
     const diff = await request.service.getCommitDiff(request.target, {
       hash: request.params.hash,
-      filePath: requireString(filePath, 'path'),
+      filePath: ValidationHelper.requireString(filePath, 'path'),
       originalPath: originalPath || undefined,
       fullFile: fullFile === 'true',
     });
@@ -163,7 +134,7 @@ function createGitRouter() {
   router.get('/diff', async (request, response) => {
     const { path: filePath, staged, untracked, fullFile } = request.query;
     const diff = await request.service.getDiff(request.target, {
-      filePath: requireString(filePath, 'path'),
+      filePath: ValidationHelper.requireString(filePath, 'path'),
       staged: staged === 'true',
       untracked: untracked === 'true',
       fullFile: fullFile === 'true',
@@ -172,7 +143,7 @@ function createGitRouter() {
   });
 
   router.get('/conflict', async (request, response) => {
-    const filePath = requireString(request.query.path, 'path');
+    const filePath = ValidationHelper.requireString(request.query.path, 'path');
     response.json(await request.service.getConflict(request.target, { filePath }));
   });
 
@@ -195,87 +166,99 @@ function createGitRouter() {
     response.json(await request.service.pruneGoneBranches(request.target, { force }));
   });
 
-  action(router, '/branches', (service, path, { name, startPoint, switchTo }) =>
-    service.createBranch(path, {
-      name: requireString(name, 'name'),
+  // Syncing
+  action(router, '/fetch', (service, target) => service.fetchAll(target));
+  action(router, '/pull', (service, target, { mode }) => service.pull(target, { mode }));
+  action(router, '/push', (service, target, { force, remote, upstreamName }) =>
+    service.push(target, { force: force === true, remote, upstreamName }),
+  );
+
+  // Branches and commits
+  action(router, '/branches', (service, target, { name, startPoint, switchTo }) =>
+    service.createBranch(target, {
+      name: ValidationHelper.requireString(name, 'name'),
       startPoint: startPoint || undefined,
       switchTo: switchTo !== false,
     }),
   );
-  action(router, '/fetch', (service, path) => service.fetchAll(path));
-  action(router, '/pull', (service, path, { mode }) => service.pull(path, { mode }));
-  action(router, '/push', (service, path, { force, remote, upstreamName }) =>
-    service.push(path, { force: force === true, remote, upstreamName }),
+  action(router, '/checkout', (service, target, { branch, remote }) =>
+    service.checkout(target, {
+      branch: ValidationHelper.requireString(branch, 'branch'),
+      remote: remote === true,
+    }),
   );
-  action(router, '/checkout-commit', (service, path, { hash }) =>
-    service.checkoutCommit(path, { hash: requireString(hash, 'hash') }),
+  action(router, '/checkout-commit', (service, target, { hash }) =>
+    service.checkoutCommit(target, { hash: ValidationHelper.requireString(hash, 'hash') }),
   );
-  action(router, '/cherry-pick', (service, path, { hash }) =>
-    service.cherryPick(path, { hash: requireString(hash, 'hash') }),
+  action(router, '/cherry-pick', (service, target, { hash }) =>
+    service.cherryPick(target, { hash: ValidationHelper.requireString(hash, 'hash') }),
   );
-  action(router, '/reset', (service, path, { hash, mode }) =>
-    service.resetToCommit(path, { hash: requireString(hash, 'hash'), mode }),
+  action(router, '/reset', (service, target, { hash, mode }) =>
+    service.resetToCommit(target, { hash: ValidationHelper.requireString(hash, 'hash'), mode }),
   );
-  action(router, '/checkout', (service, path, { branch, remote }) =>
-    service.checkout(path, { branch: requireString(branch, 'branch'), remote: remote === true }),
-  );
-  action(router, '/merge', (service, path, { branch, noFastForward }) =>
-    service.merge(path, {
-      branch: requireString(branch, 'branch'),
+  action(router, '/merge', (service, target, { branch, noFastForward }) =>
+    service.merge(target, {
+      branch: ValidationHelper.requireString(branch, 'branch'),
       noFastForward: noFastForward === true,
     }),
   );
-  action(router, '/merge-into', (service, path, { target, noFastForward }) =>
-    service.mergeInto(path, {
-      target: requireString(target, 'target'),
+  action(router, '/merge-into', (service, target, { target: into, noFastForward }) =>
+    service.mergeInto(target, {
+      target: ValidationHelper.requireString(into, 'target'),
       noFastForward: noFastForward === true,
     }),
   );
-  action(router, '/rebase', (service, path, { branch }) =>
-    service.rebase(path, { branch: requireString(branch, 'branch') }),
+  action(router, '/rebase', (service, target, { branch }) =>
+    service.rebase(target, { branch: ValidationHelper.requireString(branch, 'branch') }),
   );
-  action(router, '/operation/abort', (service, path) => service.abortOperation(path));
-  action(router, '/operation/continue', (service, path) => service.continueOperation(path));
-  action(router, '/stage', (service, path, { paths }) =>
-    service.stage(path, { paths: optionalPaths(paths) }),
+  action(router, '/operation/abort', (service, target) => service.abortOperation(target));
+  action(router, '/operation/continue', (service, target) => service.continueOperation(target));
+
+  // Working tree
+  action(router, '/stage', (service, target, { paths }) =>
+    service.stage(target, { paths: ValidationHelper.optionalPaths(paths) }),
   );
-  action(router, '/unstage', (service, path, { paths }) =>
-    service.unstage(path, { paths: optionalPaths(paths) }),
+  action(router, '/unstage', (service, target, { paths }) =>
+    service.unstage(target, { paths: ValidationHelper.optionalPaths(paths) }),
   );
-  action(router, '/stage-lines', (service, repoPath, body) =>
-    service.stageLines(repoPath, {
-      filePath: requireString(body.path, 'path'),
+  action(router, '/stage-lines', (service, target, body) =>
+    service.stageLines(target, {
+      filePath: ValidationHelper.requireString(body.path, 'path'),
       staged: body.staged === true,
       untracked: body.untracked === true,
       fullFile: body.fullFile === true,
-      hash: requireString(body.hash, 'hash'),
-      lines: requireLines(body.lines),
+      hash: ValidationHelper.requireString(body.hash, 'hash'),
+      lines: ValidationHelper.requireLines(body.lines),
     }),
   );
-  action(router, '/resolve-conflict', (service, repoPath, { path, content, side, remove }) =>
-    service.resolveConflict(repoPath, {
-      filePath: requireString(path, 'path'),
+  action(router, '/resolve-conflict', (service, target, { path, content, side, remove }) =>
+    service.resolveConflict(target, {
+      filePath: ValidationHelper.requireString(path, 'path'),
       content,
       side: side ?? undefined,
       remove: remove === true,
     }),
   );
-  action(router, '/discard',(service, path, { paths }) =>
-    service.discard(path, { paths: requirePaths(paths) }),
+  action(router, '/discard', (service, target, { paths }) =>
+    service.discard(target, { paths: ValidationHelper.requirePaths(paths) }),
   );
-  action(router, '/commit', (service, path, { message, amend, stageAll }) =>
-    service.commit(path, { message, amend: amend === true, stageAll: stageAll === true }),
+  action(router, '/commit', (service, target, { message, amend, stageAll }) =>
+    service.commit(target, { message, amend: amend === true, stageAll: stageAll === true }),
   );
-  action(router, '/undo-commit', (service, path, { hash, allowPushed }) =>
-    service.undoCommit(path, {
-      hash: requireString(hash, 'hash'),
+  action(router, '/undo-commit', (service, target, { hash, allowPushed }) =>
+    service.undoCommit(target, {
+      hash: ValidationHelper.requireString(hash, 'hash'),
       allowPushed: allowPushed === true,
     }),
   );
-  action(router, '/stash', (service, path, { message }) => service.stashSave(path, { message }));
-  action(router, '/stash/apply', (service, path, { ref }) => service.stashApply(path, { ref }));
-  action(router, '/stash/pop', (service, path, { ref }) => service.stashPop(path, { ref }));
-  action(router, '/stash/drop', (service, path, { ref }) => service.stashDrop(path, { ref }));
+
+  // Stashes
+  action(router, '/stash', (service, target, { message }) =>
+    service.stashSave(target, { message }),
+  );
+  action(router, '/stash/apply', (service, target, { ref }) => service.stashApply(target, { ref }));
+  action(router, '/stash/pop', (service, target, { ref }) => service.stashPop(target, { ref }));
+  action(router, '/stash/drop', (service, target, { ref }) => service.stashDrop(target, { ref }));
 
   return router;
 }
@@ -285,7 +268,7 @@ function createGroupsRouter(store) {
 
   router.param('groupId', async (request, _response, next, id) => {
     if (await store.getGroup(id)) next();
-    else next(notFound('That group does not exist.'));
+    else next(ApiError.notFound('That group does not exist.'));
   });
 
   router.get('/', async (_request, response) => {
@@ -293,17 +276,17 @@ function createGroupsRouter(store) {
   });
 
   router.post('/', async (request, response) => {
-    const name = requireString(request.body?.name, 'name').trim();
+    const name = ValidationHelper.requireTrimmedString(request.body?.name, 'name');
     response.status(201).json(await store.addGroup(name));
   });
 
   router.patch('/:groupId', async (request, response) => {
-    const name = requireString(request.body?.name, 'name').trim();
+    const name = ValidationHelper.requireTrimmedString(request.body?.name, 'name');
     response.json(await store.renameGroup(request.params.groupId, name));
   });
 
   router.post('/:groupId/mono', async (request, response) => {
-    const branch = requireString(request.body?.branch, 'branch').trim();
+    const branch = ValidationHelper.requireTrimmedString(request.body?.branch, 'branch');
     const group = await store.getGroup(request.params.groupId);
     response.json(await mono.openMono(store, group, branch));
   });
@@ -319,12 +302,13 @@ function createGroupsRouter(store) {
 export function createRepositoriesRouter(store) {
   const router = Router();
 
+  /** Sets which service handles the request, and what it works on: a folder or a mono repo. */
   router.param('repositoryId', async (request, _response, next, id) => {
-    if (mono.isMonoId(id)) {
-      const group = await store.getGroup(mono.groupIdOf(id));
+    if (MonoIdHelper.isMonoId(id)) {
+      const group = await store.getGroup(MonoIdHelper.toGroupId(id));
       const target = group && (await mono.resolveMono(store, group));
       if (!target) {
-        next(notFound('That group has not been opened as a mono repo.'));
+        next(ApiError.notFound('That group has not been opened as a mono repo.'));
         return;
       }
       request.repository = mono.describeMono(target);
@@ -336,7 +320,7 @@ export function createRepositoriesRouter(store) {
 
     const repository = await store.get(id);
     if (!repository) {
-      next(notFound('That repository is not linked.'));
+      next(ApiError.notFound('That repository is not linked.'));
       return;
     }
     request.repository = repository;
@@ -346,32 +330,37 @@ export function createRepositoriesRouter(store) {
   });
 
   router.get('/', async (_request, response) => {
-    response.json(await mapWithLimit(await store.list(), GIT_CONCURRENCY, withSummary));
+    const repositories = await store.list();
+    response.json(await AsyncHelper.mapWithLimit(repositories, GIT_CONCURRENCY, withSummary));
   });
 
   router.post('/', async (request, response) => {
-    const workingTree = await resolveFolder(requireString(request.body?.path, 'path').trim());
+    const folder = ValidationHelper.requireTrimmedString(request.body?.path, 'path');
+    const workingTree = await resolveFolder(folder);
     response.status(201).json(await withSummary(await store.add(workingTree)));
   });
 
   router.post('/bulk', async (request, response) => {
-    const groupName = optionalString(request.body?.groupName, 'groupName');
-    const { workingTrees, failures } = await resolveFolders(requirePaths(request.body?.paths));
+    const groupName = ValidationHelper.optionalString(request.body?.groupName, 'groupName');
+    const folders = ValidationHelper.requirePaths(request.body?.paths);
+    const { workingTrees, failures } = await resolveFolders(folders);
     await store.addMany(workingTrees, { groupName });
+    // Two of the folders can be inside the same working tree, which is linked once.
     response.status(201).json({ linkedCount: new Set(workingTrees).size, failures });
   });
 
   /** Fetches every linked folder. One failing remote cannot stop the rest. */
   router.post('/fetch', async (_request, response) => {
     const repositories = (await store.list()).filter((repository) => repository.path);
-    const results = await mapWithLimit(repositories, GIT_CONCURRENCY, async ({ id, name, path }) => {
+    const fetchOne = async ({ id, name, path }) => {
       try {
         await git.fetchAll(path);
         return null;
       } catch (error) {
         return { id, name, message: error.message };
       }
-    });
+    };
+    const results = await AsyncHelper.mapWithLimit(repositories, GIT_CONCURRENCY, fetchOne);
     const failures = results.filter(Boolean);
     response.json({ fetchedCount: repositories.length - failures.length, failures });
   });
@@ -379,7 +368,7 @@ export function createRepositoriesRouter(store) {
   router.use('/groups', createGroupsRouter(store));
 
   router.post('/stubs', async (request, response) => {
-    const remote = parseRemoteUrl(requireString(request.body?.url, 'url'));
+    const remote = parseRemoteUrl(ValidationHelper.requireString(request.body?.url, 'url'));
     response.status(201).json(await withSummary(await store.addStub(remote)));
   });
 
@@ -396,7 +385,7 @@ export function createRepositoriesRouter(store) {
   router.put('/:repositoryId/group', async (request, response) => {
     const groupId = request.body?.groupId ?? null;
     if (groupId !== null && !(await store.getGroup(groupId))) {
-      throw notFound('That group does not exist.');
+      throw ApiError.notFound('That group does not exist.');
     }
     await store.setGroup(request.repository.id, groupId);
     response.status(204).end();
@@ -404,7 +393,10 @@ export function createRepositoriesRouter(store) {
 
   router.post('/:repositoryId/clone', async (request, response) => {
     const { id, name, remoteUrl } = requireStub(request.repository);
-    const parentPath = requireString(request.body?.parentPath, 'parentPath').trim();
+    const parentPath = ValidationHelper.requireTrimmedString(
+      request.body?.parentPath,
+      'parentPath',
+    );
     await assertDirectory(parentPath);
     const workingTree = await git.clone(remoteUrl, parentPath, name);
     response.status(201).json(await withSummary(await store.resolveStub(id, workingTree)));
@@ -412,7 +404,8 @@ export function createRepositoriesRouter(store) {
 
   router.post('/:repositoryId/locate', async (request, response) => {
     const { id } = requireStub(request.repository);
-    const workingTree = await resolveFolder(requireString(request.body?.path, 'path').trim());
+    const folder = ValidationHelper.requireTrimmedString(request.body?.path, 'path');
+    const workingTree = await resolveFolder(folder);
     response.json(await withSummary(await store.resolveStub(id, workingTree)));
   });
 

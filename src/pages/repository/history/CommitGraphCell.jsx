@@ -1,8 +1,8 @@
-import { readPixels } from '../../../styles/readToken.js';
+import { CssTokenHelper } from '../../../styles/CssTokenHelper.js';
 import styles from './CommitGraphCell.module.css';
 
-const ROW_HEIGHT = readPixels('--size-commit-row');
-const COLUMN_WIDTH = readPixels('--size-graph-column');
+const ROW_HEIGHT = CssTokenHelper.readPixels('--size-commit-row');
+const COLUMN_WIDTH = CssTokenHelper.readPixels('--size-graph-column');
 const ROW_MIDDLE = ROW_HEIGHT / 2;
 const MAX_VISIBLE_COLUMNS = 14;
 const NODE_RADIUS = 4.5;
@@ -39,6 +39,7 @@ function segmentPath({ kind, from, to }) {
 export function CommitGraphCell({ row, columnCount, isHead, isMerge, isUncommitted }) {
   const width = Math.min(columnCount, MAX_VISIBLE_COLUMNS) * COLUMN_WIDTH;
   const nodeColor = graphColor(row.color);
+  const nodeX = columnX(row.column);
 
   return (
     <svg width={width} height={ROW_HEIGHT} aria-hidden style={{ flex: 'none', overflow: 'visible' }}>
@@ -58,7 +59,7 @@ export function CommitGraphCell({ row, columnCount, isHead, isMerge, isUncommitt
         <>
           <circle
             className={styles.headPulse}
-            cx={columnX(row.column)}
+            cx={nodeX}
             cy={ROW_MIDDLE}
             r={NODE_RADIUS + 3}
             fill="none"
@@ -66,7 +67,7 @@ export function CommitGraphCell({ row, columnCount, isHead, isMerge, isUncommitt
             strokeWidth={2}
           />
           <circle
-            cx={columnX(row.column)}
+            cx={nodeX}
             cy={ROW_MIDDLE}
             r={NODE_RADIUS + 3}
             fill="none"
@@ -76,7 +77,7 @@ export function CommitGraphCell({ row, columnCount, isHead, isMerge, isUncommitt
         </>
       )}
       <circle
-        cx={columnX(row.column)}
+        cx={nodeX}
         cy={ROW_MIDDLE}
         r={NODE_RADIUS}
         // Merges are hollow, so they stand out from ordinary commits.
@@ -97,7 +98,7 @@ export function CommitGraphCell({ row, columnCount, isHead, isMerge, isUncommitt
         />
       ))}
       <circle
-        cx={columnX(row.column)}
+        cx={nodeX}
         cy={ROW_MIDDLE}
         r={NODE_HIT_RADIUS}
         fill="transparent"

@@ -1,8 +1,7 @@
-/** Reads a value from tokens.css, for code that cannot use CSS directly. */
-export function readToken(name) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-}
+import { CssTokenHelper } from './CssTokenHelper.js';
 
-export function readPixels(name) {
-  return Number.parseInt(readToken(name), 10);
-}
+/** @deprecated Use CssTokenHelper.read. */
+export const readToken = CssTokenHelper.read;
+
+/** @deprecated Use CssTokenHelper.readPixels. */
+export const readPixels = CssTokenHelper.readPixels;

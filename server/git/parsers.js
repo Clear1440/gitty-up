@@ -1,5 +1,7 @@
 import { avatarUrl } from './avatar.js';
+import { GitRefHelper } from './GitRefHelper.js';
 
+/** What git's one-letter change codes stand for, in status and diff output alike. */
 const STATUS_NAMES = {
   A: 'added',
   C: 'copied',
@@ -107,12 +109,6 @@ function parseTracking(track) {
   };
 }
 
-/** Splits "origin/feature/x" into its remote and the branch's name on that remote. */
-function splitRemoteName(name, remoteNames) {
-  const remote = remoteNames.find((candidate) => name.startsWith(`${candidate}/`));
-  return { remote: remote ?? null, localName: remote ? name.slice(remote.length + 1) : name };
-}
-
 /** Parses `git for-each-ref` output produced with BRANCH_FORMAT. */
 export function parseBranches(output, remoteNames) {
   const branches = { local: [], remote: [] };
@@ -124,17 +120,18 @@ export function parseBranches(output, remoteNames) {
     if (symref) continue;
 
     const lastCommit = { shortHash, date, author, subject };
-    if (ref.startsWith('refs/heads/')) {
+    if (GitRefHelper.isLocalRef(ref)) {
       branches.local.push({
-        name: ref.slice('refs/heads/'.length),
+        name: GitRefHelper.fromLocalRef(ref),
         isCurrent: head === '*',
         upstream: upstream || null,
         ...parseTracking(track),
         lastCommit,
       });
     } else {
-      const name = ref.slice('refs/remotes/'.length);
-      branches.remote.push({ name, ...splitRemoteName(name, remoteNames), lastCommit });
+      const name = GitRefHelper.fromRemoteRef(ref);
+      const { remote, localName } = GitRefHelper.splitRemoteName(name, remoteNames);
+      branches.remote.push({ name, remote, localName, lastCommit });
     }
   }
   return branches;
@@ -173,14 +170,12 @@ export const COMMIT_FORMAT = `${['%H', '%h', '%P', '%an', '%ae', '%aI', '%D', '%
 export const COMMIT_LOG_FLAGS = ['--decorate=full', `--format=${COMMIT_FORMAT}`];
 
 function parseBranchRef(ref, remoteNames) {
-  if (ref.startsWith('refs/heads/')) {
-    return { type: 'branch', name: ref.slice('refs/heads/'.length) };
+  if (GitRefHelper.isRemoteRef(ref)) {
+    const name = GitRefHelper.fromRemoteRef(ref);
+    return { type: 'remote', name, ...GitRefHelper.splitRemoteName(name, remoteNames) };
   }
-  if (ref.startsWith('refs/remotes/')) {
-    const name = ref.slice('refs/remotes/'.length);
-    return { type: 'remote', name, ...splitRemoteName(name, remoteNames) };
-  }
-  return { type: 'branch', name: ref };
+  // Anything else names a local branch, with or without its refs/heads/ prefix.
+  return { type: 'branch', name: GitRefHelper.fromLocalRef(ref) };
 }
 
 function parseDecoration(decoration, remoteNames) {
@@ -229,15 +224,6 @@ export function parseCommits(output, remoteNames = []) {
     });
 }
 
-const CHANGE_STATUSES = {
-  A: 'added',
-  C: 'copied',
-  D: 'deleted',
-  M: 'modified',
-  R: 'renamed',
-  T: 'typechange',
-};
-
 /** Parses `git diff-tree --name-status -z` output. */
 export function parseNameStatus(output) {
   const fields = output.split('\0');
@@ -249,7 +235,7 @@ export function parseNameStatus(output) {
     const hasOriginal = code === 'R' || code === 'C';
     const originalPath = hasOriginal ? fields[index + 1] : undefined;
     const path = fields[index + (hasOriginal ? 2 : 1)];
-    files.push({ path, status: CHANGE_STATUSES[code] ?? 'modified', originalPath });
+    files.push({ path, status: STATUS_NAMES[code] ?? 'modified', originalPath });
     index += hasOriginal ? 3 : 2;
   }
 

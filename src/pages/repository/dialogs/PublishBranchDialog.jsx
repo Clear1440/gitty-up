@@ -19,6 +19,16 @@ export function PublishBranchDialog({ onClose }) {
   const remote = chosenRemote ?? previousRemote ?? data?.defaultRemote;
   const hasNoRemote = Boolean(data) && remotes.length === 0;
 
+  let explanation;
+  if (repository.isMono) {
+    explanation =
+      'Not every repository here has this branch on a remote yet. Publishing pushes all of them.';
+  } else if (upstreamGone) {
+    explanation = 'The remote copy of this branch no longer exists. Create it again?';
+  } else {
+    explanation = "This branch isn't on a remote yet. Create it there?";
+  }
+
   return (
     <ActionDialog
       title={`Publish ${branch}?`}
@@ -39,14 +49,7 @@ export function PublishBranchDialog({ onClose }) {
         />
       ) : (
         <Flex vertical gap={12}>
-          <Typography.Text>
-            {repository.isMono && 'Not every repository here has this branch on a remote yet. '}
-            {!repository.isMono &&
-              (upstreamGone
-                ? `The remote copy of this branch no longer exists. Create it again?`
-                : `This branch isn't on a remote yet. Create it there?`)}
-            {repository.isMono && 'Publishing pushes all of them.'}
-          </Typography.Text>
+          <Typography.Text>{explanation}</Typography.Text>
           {remotes.length > 1 && (
             <Select
               aria-label="Remote"

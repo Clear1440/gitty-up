@@ -2,19 +2,15 @@ import { Alert, App, Checkbox, Input, Spin } from 'antd';
 import { useState } from 'react';
 import { ActionDialog } from '../../components/ActionDialog.jsx';
 import { useLinkRepositories, useRepositoryScan } from '../../queries/repositories.js';
+import { SetHelper } from '../../utils/SetHelper.js';
+import { TextHelper } from '../../utils/TextHelper.js';
 import { FolderPicker, useFolderPicker } from './FolderPicker.jsx';
 import styles from './LinkRepositoryDialog.module.css';
 
 /** Used when the scanned folder has no name of its own, as with a drive's root. */
 const FALLBACK_GROUP_NAME = 'Imported';
 
-const countLabel = (count) => `${count} ${count === 1 ? 'repository' : 'repositories'}`;
-
-function toggled(set, value) {
-  const next = new Set(set);
-  if (!next.delete(value)) next.add(value);
-  return next;
-}
+const countLabel = (count) => TextHelper.countOf(count, 'repository', 'repositories');
 
 function ScanResults({ scan, excluded, onToggle }) {
   if (scan.isPending) {
@@ -114,14 +110,14 @@ export function BulkImportDialog({ onClose }) {
         onChange={link.reset}
         selection={{
           selected,
-          onToggle: (path) => setSelected((current) => toggled(current, path)),
+          onToggle: (path) => setSelected((current) => SetHelper.toggle(current, path)),
         }}
         list={
           includeAll ? (
             <ScanResults
               scan={scan}
               excluded={excluded}
-              onToggle={(path) => setExcluded((current) => toggled(current, path))}
+              onToggle={(path) => setExcluded((current) => SetHelper.toggle(current, path))}
             />
           ) : undefined
         }

@@ -17,10 +17,11 @@ import { AheadBehind } from '../../components/AheadBehind.jsx';
 import { paths } from '../../paths.js';
 import { useStashes } from '../../queries/git.js';
 import { queryKeys } from '../../queries/queryKeys.js';
-import { countChangedFiles } from './countChangedFiles.js';
+import { CommitHelper } from './CommitHelper.js';
 import { MonoMembers } from './MonoMembers.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
-import { needsPublishing, usePush } from './usePush.js';
+import { StatusHelper } from './StatusHelper.js';
+import { usePush } from './usePush.js';
 import { useUndoCommitShortcut } from './useUndoCommitShortcut.js';
 import styles from './ActionBar.module.css';
 
@@ -59,7 +60,7 @@ function CurrentBranch({ status }) {
         <div className={styles.currentBranchDetails}>
           <BranchesOutlined />
           <span className={styles.currentBranchName}>
-            {status.branch ?? `detached at ${status.headHash?.slice(0, 7)}`}
+            {status.branch ?? `detached at ${CommitHelper.shortHash(status.headHash)}`}
           </span>
           <AheadBehind ahead={status.ahead} behind={status.behind} />
         </div>
@@ -78,8 +79,9 @@ export function ActionBar() {
   const push = usePush();
   useUndoCommitShortcut();
 
-  const changedFileCount = countChangedFiles(status);
+  const changedFileCount = StatusHelper.countChangedFiles(status);
   const midOperation = Boolean(status.operation);
+  const needsPublishing = StatusHelper.needsPublishing(status);
 
   // The time makes every press a new request, even with the commit box already open.
   const openCommitMessage = () => {
@@ -101,7 +103,7 @@ export function ActionBar() {
 
   const confirmForcePush = () => {
     // With nothing on the remote there is nothing to overwrite.
-    if (needsPublishing(status)) {
+    if (needsPublishing) {
       push();
       return;
     }
@@ -131,7 +133,6 @@ export function ActionBar() {
     { key: 'force', label: 'Force push…', danger: true, onClick: confirmForcePush },
   ];
 
-
   return (
     <nav className={styles.actionBar} aria-label="Git actions">
       <SplitActionButton
@@ -155,7 +156,7 @@ export function ActionBar() {
       />
       <SplitActionButton
         label="Push"
-        hint={needsPublishing(status) ? 'Publish this branch' : `Push to ${status.upstream}`}
+        hint={needsPublishing ? 'Publish this branch' : `Push to ${status.upstream}`}
         icon={<CloudUploadOutlined />}
         count={status.ahead}
         loading={pendingAction === 'push'}

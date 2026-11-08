@@ -1,7 +1,7 @@
 import {
-  FolderAddOutlined,
   CloseOutlined,
   ExportOutlined,
+  FolderAddOutlined,
   FolderOutlined,
   ImportOutlined,
   SearchOutlined,
@@ -16,7 +16,9 @@ import {
   useRepositories,
   useRepositoryGroups,
 } from '../../queries/repositories.js';
-import { readStored, writeStored } from '../../utils/storage.js';
+import { ListHelper } from '../../utils/ListHelper.js';
+import { TextHelper } from '../../utils/TextHelper.js';
+import { useStoredState } from '../../utils/useStoredState.js';
 import { BulkImportDialog } from './BulkImportDialog.jsx';
 import { GroupNameDialog } from './GroupNameDialog.jsx';
 import styles from './HomePage.module.css';
@@ -29,21 +31,14 @@ import { RepositorySelectionContext, useRepositorySelection } from './useReposit
 const COLLAPSED_STORAGE_KEY = 'gitty-up.collapsedGroups';
 const NO_GROUPS = [];
 
+/** Which sections are folded away, remembered between sessions. */
 function useCollapsedSections() {
-  const [collapsed, setCollapsed] = useState(() => readStored(COLLAPSED_STORAGE_KEY, []));
-
-  const toggle = (sectionId) => {
-    const next = collapsed.includes(sectionId)
-      ? collapsed.filter((id) => id !== sectionId)
-      : [...collapsed, sectionId];
-    setCollapsed(next);
-    writeStored(COLLAPSED_STORAGE_KEY, next);
-  };
-
+  const [collapsed, setCollapsed] = useStoredState(COLLAPSED_STORAGE_KEY, []);
+  const toggle = (sectionId) => setCollapsed(ListHelper.toggle(collapsed, sectionId));
   return { collapsed, toggle };
 }
 
-const repositoryCount = (count) => (count === 1 ? '1 repository' : `${count} repositories`);
+const repositoryCount = (count) => TextHelper.countOf(count, 'repository', 'repositories');
 
 /** Fetches every linked repository, so ahead and behind counts catch up with the remotes. */
 function RefreshAllButton() {

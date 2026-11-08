@@ -4,14 +4,14 @@ import { Button, Checkbox, Input, Tooltip } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router';
 import { queryKeys } from '../../queries/queryKeys.js';
+import { KeyboardHelper } from '../../utils/KeyboardHelper.js';
+import { ListHelper } from '../../utils/ListHelper.js';
+import { TextHelper } from '../../utils/TextHelper.js';
 import styles from './CommitPanel.module.css';
 import { useRepositoryContext } from './RepositoryContext.js';
+import { StatusHelper } from './StatusHelper.js';
 import { useCommitDraft } from './useCommitDraft.js';
 import { usePush } from './usePush.js';
-
-const describeFiles = (count) => (count === 1 ? '1 file' : `${count} files`);
-
-const describeRepositories = (count) => (count === 1 ? '1 repository' : `${count} repositories`);
 
 /** Says why committing is not possible right now, or returns null when it is. */
 function findBlocker({ status, fileCount, hasMessage, amend }) {
@@ -53,9 +53,11 @@ export function CommitPanel({ onClean }) {
   // With nothing staged, the likely intent is to commit everything.
   const stageAll = unstagedCount > 0 && (stageAllChoice ?? (status.staged.length === 0 && !amend));
   const filesToCommit = [...status.staged, ...(stageAll ? status.unstaged : [])];
-  const fileCount = new Set(filesToCommit.map((file) => file.path)).size;
+  const fileCount = ListHelper.countUnique(filesToCommit, (file) => file.path);
   // Only mono repo files say which repository they are in.
-  const repositories = [...new Set(filesToCommit.map((file) => file.repository))].filter(Boolean);
+  const repositories = ListHelper.unique(
+    filesToCommit.map((file) => file.repository).filter(Boolean),
+  );
 
   const hasMessage = Boolean(message.trim());
   const blocker = findBlocker({ status, fileCount, hasMessage, amend });
@@ -64,7 +66,8 @@ export function CommitPanel({ onClean }) {
     amend ? 'Amend' : 'Commit',
     pushAfterCommit && '& push',
     status.branch && `to ${status.branch}`,
-    repositories.length > 0 && `in ${describeRepositories(repositories.length)}`,
+    repositories.length > 0 &&
+      `in ${TextHelper.countOf(repositories.length, 'repository', 'repositories')}`,
   ]
     .filter(Boolean)
     .join(' ');
@@ -90,16 +93,17 @@ export function CommitPanel({ onClean }) {
       }
 
       // run() waits for the refetch, so unlike `status` this is what the commit left.
-      const { staged, unstaged, conflicted } = queryClient.getQueryData(
-        queryKeys.status(repository.id),
-      );
-      if (staged.length + unstaged.length + conflicted.length === 0) onClean();
+      const statusAfter = queryClient.getQueryData(queryKeys.status(repository.id));
+      if (StatusHelper.isClean(statusAfter)) onClean();
     }
   };
 
   const handleKeyDown = (event) => {
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) commit();
+    if (KeyboardHelper.isSubmitShortcut(event)) commit();
   };
+
+  // What will be committed: how many files, and in a mono repo which repositories.
+  const summary = [TextHelper.countOf(fileCount, 'file'), ...repositories].join(' · ');
 
   return (
     <section className={styles.panel} aria-label="Commit">
@@ -128,9 +132,7 @@ export function CommitPanel({ onClean }) {
       </div>
       {/* It opens over the checkboxes above, so it must never catch a click meant for them. */}
       <Tooltip
-        title={
-          blocker ?? [describeFiles(fileCount), ...repositories].join(repositories.length ? ' · ' : '')
-        }
+        title={blocker ?? summary}
         classNames={{ root: styles.commitTooltip }}
         mouseLeaveDelay={0}
       >
