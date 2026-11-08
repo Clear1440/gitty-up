@@ -84,11 +84,16 @@ export function BranchSidebar({ resizeHandle }) {
       label: `Remote (${remote.length})`,
       children: renderBranches(remote, 'remote'),
     },
-    {
-      key: 'stashes',
-      label: `Stashes (${stashes.length})`,
-      children: <StashList stashes={stashes} />,
-    },
+    // Stashes stay with each repository's own tab in a mono repo.
+    ...(repository.isMono
+      ? []
+      : [
+          {
+            key: 'stashes',
+            label: `Stashes (${stashes.length})`,
+            children: <StashList stashes={stashes} />,
+          },
+        ]),
   ];
 
   return (

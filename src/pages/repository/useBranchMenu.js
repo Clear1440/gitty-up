@@ -12,6 +12,8 @@ export function useBranchMenu(branch, kind) {
   const { repository, status, run, openDialog, isBusy } = useRepositoryContext();
 
   const isRemote = kind === 'remote';
+  // Across a mono repo, merging or rebasing would rewrite several repositories at once.
+  const canMerge = !repository.isMono;
   const blocked = StatusHelper.isBlocked(status, isBusy);
   const currentName = StatusHelper.currentBranchName(status);
 
@@ -31,7 +33,7 @@ export function useBranchMenu(branch, kind) {
       disabled: branch.isCurrent || blocked,
       onClick: checkout,
     },
-    ...(branch.isCurrent
+    ...(branch.isCurrent || !canMerge
       ? []
       : [
           {
@@ -42,7 +44,7 @@ export function useBranchMenu(branch, kind) {
           },
         ]),
     // A remote branch can't be committed to, and a detached HEAD has no branch to merge.
-    ...(branch.isCurrent || isRemote || !status.branch
+    ...(branch.isCurrent || isRemote || !status.branch || !canMerge
       ? []
       : [
           {
@@ -52,12 +54,16 @@ export function useBranchMenu(branch, kind) {
             onClick: () => openDialog('mergeInto', { target: branch.name }),
           },
         ]),
-    {
-      key: 'rebase',
-      label: `Rebase ${currentName} onto this`,
-      disabled: branch.isCurrent || blocked,
-      onClick: () => openDialog('merge', { branch: branch.name, mode: 'rebase' }),
-    },
+    ...(canMerge
+      ? [
+          {
+            key: 'rebase',
+            label: `Rebase ${currentName} onto this`,
+            disabled: branch.isCurrent || blocked,
+            onClick: () => openDialog('merge', { branch: branch.name, mode: 'rebase' }),
+          },
+        ]
+      : []),
     {
       key: 'new',
       label: 'New branch from here…',

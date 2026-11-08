@@ -1,6 +1,5 @@
 import { ApiError } from '../errors.js';
 import { AsyncHelper } from '../utils/AsyncHelper.js';
-import { DateHelper } from '../utils/DateHelper.js';
 import { TextHelper } from '../utils/TextHelper.js';
 import { GitRefHelper } from './GitRefHelper.js';
 import * as git from './gitService.js';
@@ -344,28 +343,20 @@ export async function pruneGoneBranches(mono, { force = false } = {}) {
   return { deleted: [...deleted].filter((name) => !kept.has(name)), kept: [...kept] };
 }
 
-export async function merge(mono, options) {
-  await forEachMember(mono.members, ({ path }) => git.merge(path, options), {
-    doneIn: 'Merged in',
-  });
+/**
+ * Merging and rebasing are kept to each repository on its own. Across a mono repo they
+ * would rewrite several repositories at once, and could leave some mid-merge.
+ */
+export async function merge() {
+  throw ApiError.badRequest('Open the repository on its own to merge.');
 }
 
-/** Leaves `target` checked out, so the mono repo follows it for as long as any member did. */
-export async function mergeInto(mono, options) {
-  try {
-    await forEachMember(mono.members, ({ path }) => git.mergeInto(path, options), {
-      doneIn: 'Merged in',
-    });
-  } finally {
-    const current = await readEach(mono.members, ({ path }) => git.getCurrentBranch(path));
-    if (current.includes(options.target)) await mono.setBranch(options.target);
-  }
+export async function mergeInto() {
+  throw ApiError.badRequest('Open the repository on its own to merge.');
 }
 
-export async function rebase(mono, options) {
-  await forEachMember(mono.members, ({ path }) => git.rebase(path, options), {
-    doneIn: 'Rebased in',
-  });
+export async function rebase() {
+  throw ApiError.badRequest('Open the repository on its own to rebase.');
 }
 
 async function membersInOperation(mono) {
@@ -452,50 +443,26 @@ export async function undoCommit() {
   throw ApiError.badRequest('Open the repository on its own to undo a commit.');
 }
 
-export async function getStashes(mono) {
-  const lists = await readEach(mono.members, async (member) => {
-    const stashes = await git.getStashes(member.path);
-    return stashes.map((stash) => ({
-      ...stash,
-      ref: `${member.id}:${stash.ref}`,
-      repository: member.name,
-    }));
-  });
-  return lists.flat().sort((a, b) => DateHelper.newestFirst(a.date, b.date));
+/**
+ * Stashes are kept to each repository on its own. Across a mono repo, a stash or pop
+ * touches several repositories at once, and it is easy to restore one into the wrong place.
+ */
+export async function getStashes() {
+  return [];
 }
 
-function resolveStash(mono, monoRef) {
-  const separator = monoRef?.indexOf(':') ?? -1;
-  const member = mono.members.find(({ id }) => id === monoRef?.slice(0, separator));
-  if (separator === -1 || !member) throw ApiError.badRequest(`Invalid stash: ${monoRef}`);
-  return { member, ref: monoRef.slice(separator + 1) };
+export async function stashSave() {
+  throw ApiError.badRequest('Open the repository on its own to stash changes.');
 }
 
-export async function stashSave(mono, options) {
-  const results = await readStatuses(mono.members);
-  const changed = results
-    .filter(({ status }) => status.staged.length + status.unstaged.length > 0)
-    .map(({ member }) => member);
-  if (changed.length === 0) throw ApiError.gitFailure('There are no changes to stash.');
-  await forEachMember(changed, ({ path }) => git.stashSave(path, options), {
-    doneIn: 'Stashed in',
-  });
+export async function stashApply() {
+  throw ApiError.badRequest('Open the repository on its own to apply a stash.');
 }
 
-export async function stashApply(mono, { ref: monoRef }) {
-  const { member, ref } = resolveStash(mono, monoRef);
-  await git.stashApply(member.path, { ref });
+export async function stashPop() {
+  throw ApiError.badRequest('Open the repository on its own to restore a stash.');
 }
 
-/** Restores a stash and removes it. Without `ref`, uses the newest of any member's. */
-export async function stashPop(mono, { ref: monoRef } = {}) {
-  const newest = monoRef ?? (await getStashes(mono))[0]?.ref;
-  if (!newest) throw ApiError.gitFailure('There are no stashes to restore.');
-  const { member, ref } = resolveStash(mono, newest);
-  await git.stashPop(member.path, { ref });
-}
-
-export async function stashDrop(mono, { ref: monoRef }) {
-  const { member, ref } = resolveStash(mono, monoRef);
-  await git.stashDrop(member.path, { ref });
+export async function stashDrop() {
+  throw ApiError.badRequest('Open the repository on its own to drop a stash.');
 }

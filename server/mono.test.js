@@ -457,47 +457,52 @@ describe('branch actions', () => {
     expect((await getStatus()).upstream).toBe('origin/fresh');
   });
 
-  it('merges everywhere and reports a conflict through the banner', async () => {
-    for (const { work } of [mono.api, mono.web, mono.docs]) git(work, 'branch', 'other');
-    git(mono.web.work, 'switch', 'other');
+  it('aborts a merge a member was left in, as the banner offers', async () => {
+    git(mono.web.work, 'switch', '--create', 'other');
     await writeAndCommit(mono.web.work, 'readme.txt', 'theirs\n', 'Theirs');
     git(mono.web.work, 'switch', 'main');
     await writeAndCommit(mono.web.work, 'readme.txt', 'ours\n', 'Ours');
+    expect(() => git(mono.web.work, 'merge', 'other')).toThrow();
+    expect((await getStatus()).operation).toBe('merge');
 
-    const { body } = await request('POST', `${mono.route}/merge`, { branch: 'other' });
-
-    expect(body.error.code).toBe('CONFLICTS');
-    const status = await getStatus();
-    expect(status.operation).toBe('merge');
-    expect(status.conflicted.map(({ path: file }) => file)).toEqual(['web/readme.txt']);
-
-    await request('POST', `${mono.route}/operation/abort`);
+    expect((await request('POST', `${mono.route}/operation/abort`)).status).toBe(204);
     expect((await getStatus()).operation).toBe(null);
   });
 });
 
-describe('stashes', () => {
-  it('stashes each changed member, and restores one at a time by its own ref', async () => {
-    await fs.writeFile(path.join(mono.api.work, 'readme.txt'), 'api\n');
-    await fs.writeFile(path.join(mono.web.work, 'readme.txt'), 'web\n');
-    await request('POST', `${mono.route}/stash`, { message: 'Later' });
+describe('merging and stashing', () => {
+  it('refuses to merge, merge into or rebase, and changes nothing', async () => {
+    for (const { work } of [mono.api, mono.web, mono.docs]) git(work, 'branch', 'other');
+    await writeAndCommit(mono.api.work, 'a.txt', 'a\n', 'Ahead');
+    const heads = () => [mono.api, mono.web, mono.docs].map(({ work }) => git(work, 'rev-parse', 'HEAD'));
+    const before = heads();
 
-    const { body: stashes } = await request('GET', `${mono.route}/stashes`);
-    expect(stashes.map(({ repository }) => repository).sort()).toEqual(['api', 'web']);
-    expect((await getStatus()).unstaged).toEqual([]);
-
-    const web = stashes.find(({ repository }) => repository === 'web');
-    await request('POST', `${mono.route}/stash/pop`, { ref: web.ref });
-    const { unstaged } = await getStatus();
-    expect(unstaged.map(({ path: file }) => file)).toEqual(['web/readme.txt']);
+    const attempts = [
+      ['/merge', { branch: 'other' }],
+      ['/merge-into', { target: 'other' }],
+      ['/rebase', { branch: 'other' }],
+    ];
+    for (const [route, body] of attempts) {
+      const { status } = await request('POST', `${mono.route}${route}`, body);
+      expect(status).toBe(400);
+    }
+    expect(heads()).toEqual(before);
+    expect(git(mono.api.work, 'rev-parse', 'other')).not.toBe(before[0]);
   });
 
-  it('pops the newest stash when none is named', async () => {
+  it('refuses every stash action and lists no stashes', async () => {
     await fs.writeFile(path.join(mono.api.work, 'readme.txt'), 'api\n');
-    await request('POST', `${mono.route}/stash`, {});
-    const { status } = await request('POST', `${mono.route}/stash/pop`, {});
-    expect(status).toBe(204);
-    expect((await getStatus()).unstaged).toHaveLength(1);
+    git(mono.api.work, 'stash', 'push', '--message', 'Own tab');
+    await fs.writeFile(path.join(mono.web.work, 'readme.txt'), 'web\n');
+
+    expect((await request('GET', `${mono.route}/stashes`)).body).toEqual([]);
+    for (const route of ['/stash', '/stash/pop', '/stash/apply', '/stash/drop']) {
+      const { status } = await request('POST', `${mono.route}${route}`, { ref: 'stash@{0}' });
+      expect(status).toBe(400);
+    }
+    expect(git(mono.api.work, 'stash', 'list')).toContain('Own tab');
+    const { unstaged } = await getStatus();
+    expect(unstaged.map(({ path: file }) => file)).toContain('web/readme.txt');
   });
 });
 

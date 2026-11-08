@@ -11,6 +11,9 @@ const REMOTE_TIMEOUT_MS = 5_000;
 const REMOTE_CACHE_MS = 60_000;
 const MAX_REMOTE_BYTES = 1024 * 1024;
 
+/** Shells a `command` can ask for. Without one, it runs in the system shell. */
+export const SHELLS = ['bash', 'sh', 'powershell', 'pwsh', 'cmd'];
+
 const remoteCache = new Map();
 
 const isUrl = (location) => /^https?:\/\//i.test(location);
@@ -71,12 +74,18 @@ function toScript(entry, { location, repoPath, fallbackName }) {
   }
 
   const hasPath = typeof spec.path === 'string' && spec.path.trim();
-  const hasCommand = typeof spec.command === 'string' && spec.command.trim();
-  if (Boolean(hasPath) === Boolean(hasCommand)) {
+  const commands = toCommands(spec.command);
+  if (Boolean(hasPath) === Boolean(commands)) {
     throw new Error('Each script needs either a "path" or a "command", not both.');
   }
   if (spec.args !== undefined && !(Array.isArray(spec.args) && spec.args.every((arg) => typeof arg === 'string'))) {
     throw new Error('A script\'s "args" must be a list of strings.');
+  }
+  if (spec.shell !== undefined) {
+    if (!commands) throw new Error('A "shell" only applies to a "command".');
+    if (!SHELLS.includes(spec.shell)) {
+      throw new Error(`"shell" must be one of ${SHELLS.join(', ')}.`);
+    }
   }
 
   const base = isUrl(location) ? path.join(repoPath, GITTY_FILE) : location;
@@ -84,16 +93,31 @@ function toScript(entry, { location, repoPath, fallbackName }) {
   const name =
     (typeof spec.name === 'string' && spec.name.trim()) ||
     fallbackName ||
-    (scriptPath ? path.basename(scriptPath) : spec.command.trim());
+    (scriptPath ? path.basename(scriptPath) : commands[0]);
 
   return {
     name,
     description: typeof spec.description === 'string' ? spec.description : undefined,
     path: scriptPath,
-    command: hasCommand ? spec.command.trim() : undefined,
+    commands: commands ?? undefined,
+    shell: spec.shell,
     args: spec.args ?? [],
     source: location,
   };
+}
+
+/** A command as a list of lines to run in order, or null when there is none. */
+function toCommands(command) {
+  if (typeof command === 'string') return command.trim() ? [command.trim()] : null;
+  if (Array.isArray(command)) {
+    if (!command.every((line) => typeof line === 'string')) {
+      throw new Error('A "command" list must hold only strings.');
+    }
+    const lines = command.map((line) => line.trim()).filter(Boolean);
+    return lines.length > 0 ? lines : null;
+  }
+  if (command !== undefined) throw new Error('A "command" must be a string or a list of strings.');
+  return null;
 }
 
 /** A config's scripts as a list, whether it wrote them as a list or as a name-to-script map. */
@@ -183,11 +207,12 @@ export async function loadGittyConfig(repoPath) {
 }
 
 /** What the client is shown of a script: enough to list it and say what it runs. */
-export function describeScript({ name, description, path: scriptPath, command, args, source }) {
+export function describeScript({ name, description, path: scriptPath, commands, shell, args, source }) {
+  const runs = [commands ? commands.join(' ; ') : scriptPath, ...args].join(' ');
   return {
     name,
     description,
-    runs: [command ?? scriptPath, ...args].join(' '),
+    runs: shell ? `${shell}: ${runs}` : runs,
     source,
   };
 }

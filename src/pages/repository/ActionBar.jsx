@@ -181,35 +181,36 @@ export function ActionBar() {
         disabled={isBusy}
         onClick={() => openDialog('createBranch')}
       />
-      <ActionButton
-        label="Merge"
-        hint="Merge or rebase with another branch"
-        icon={<MergeOutlined />}
-        disabled={isBusy || midOperation}
-        onClick={() => openDialog('merge')}
-      />
-      <ActionButton
-        label="Stash"
-        hint="Set your changes aside"
-        icon={<InboxOutlined />}
-        count={changedFileCount}
-        loading={pendingAction === 'stash'}
-        disabled={isBusy || midOperation || changedFileCount === 0}
-        onClick={() => openDialog('stash')}
-      />
-      <ActionButton
-        label="Pop"
-        hint={
-          status.mono
-            ? 'Restore the newest stash. Each repository has its own, so press once per stash.'
-            : 'Restore the latest stash and remove it'
-        }
-        icon={<ExportOutlined />}
-        count={stashes.length}
-        loading={pendingAction === 'stashPop'}
-        disabled={isBusy || midOperation || stashes.length === 0}
-        onClick={() => run('stashPop')}
-      />
+      {/* Across a mono repo these would quietly change several repositories at once. */}
+      {!repository.isMono && (
+        <>
+          <ActionButton
+            label="Merge"
+            hint="Merge or rebase with another branch"
+            icon={<MergeOutlined />}
+            disabled={isBusy || midOperation}
+            onClick={() => openDialog('merge')}
+          />
+          <ActionButton
+            label="Stash"
+            hint="Set your changes aside"
+            icon={<InboxOutlined />}
+            count={changedFileCount}
+            loading={pendingAction === 'stash'}
+            disabled={isBusy || midOperation || changedFileCount === 0}
+            onClick={() => openDialog('stash')}
+          />
+          <ActionButton
+            label="Pop"
+            hint="Restore the latest stash and remove it"
+            icon={<ExportOutlined />}
+            count={stashes.length}
+            loading={pendingAction === 'stashPop'}
+            disabled={isBusy || midOperation || stashes.length === 0}
+            onClick={() => run('stashPop')}
+          />
+        </>
+      )}
 
       <div className={styles.trailing}>
         <ScriptsMenu />
