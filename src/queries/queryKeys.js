@@ -24,6 +24,7 @@ export const queryKeys = {
   pullRequests: (id) => [ROOT, 'pull-requests', id],
   directories: (path) => ['directories', path ?? null],
   repositoryScan: (path) => ['repository-scan', path],
+  settings: () => ['settings'],
 };
 
 export const mutationKeys = {

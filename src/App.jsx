@@ -1,11 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { App as AntApp, ConfigProvider } from 'antd';
+import { App as AntApp } from 'antd';
 import { RouterProvider } from 'react-router/dom';
+import { AppearanceProvider } from './appearance/AppearanceContext.jsx';
 import { router } from './router.jsx';
-import { createAntdTheme } from './styles/antdTheme.js';
 import { TabsProvider } from './tabs/TabsContext.jsx';
-
-const antdTheme = createAntdTheme();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,14 +20,14 @@ const queryClient = new QueryClient({
 
 export function App() {
   return (
-    <ConfigProvider theme={antdTheme} modal={{ mask: { blur: false } }}>
-      <AntApp>
-        <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={queryClient}>
+      <AppearanceProvider>
+        <AntApp>
           <TabsProvider>
             <RouterProvider router={router} />
           </TabsProvider>
-        </QueryClientProvider>
-      </AntApp>
-    </ConfigProvider>
+        </AntApp>
+      </AppearanceProvider>
+    </QueryClientProvider>
   );
 }

@@ -35,7 +35,9 @@ npm start
 These environment variables change the defaults:
 
 - `GITTY_UP_PORT`: the server port (default `4317`)
-- `GITTY_UP_DATA_DIR`: where the list of linked repositories is kept (default `~/.gitty-up`)
+- `GITTY_UP_DATA_DIR`: where settings and the list of linked repositories are kept (default
+  `~/.gitty-up`). The list can be moved elsewhere from the settings page; `settings.json` stays
+  here and records where it went.
 - `GITTY_UP_HOST`: the address the server binds to (default `127.0.0.1`). Requests must still be
   addressed to `localhost`, so this only matters inside a container.
 
@@ -175,15 +177,18 @@ To add a git action:
 
 | To change                                   | Edit                                       |
 | ------------------------------------------- | ------------------------------------------ |
-| Colors, fonts, sizes, spacing, corners      | `src/styles/tokens.css`                    |
+| Colors of a color scheme (light and dark)   | `src/styles/themes.js`                     |
+| Fonts, sizes, spacing, corners              | `src/styles/tokens.css`                    |
 | One component's look                        | The `.module.css` file next to it          |
 | How Ant Design components use the tokens    | `src/styles/antdTheme.js`                  |
 | Ant Design details with no theme token      | `src/styles/antd-overrides.css`            |
 | App-wide element defaults                   | `src/styles/base.css`                      |
 
-`tokens.css` is the single source of truth. `antdTheme.js` reads it when the app starts, so one
-edit restyles our components and Ant Design's together. Keep token colors in hex, because Ant
-Design derives its hover and active shades from them.
+`tokens.css` and `themes.js` are the single source of truth. Each scheme in `themes.js` sets every
+`--color-*` token for dark and light mode; the settings page picks one, and `antdTheme.js` builds
+Ant Design's theme from the same palette, so one edit restyles our components and Ant Design's
+together. Keep palette colors in hex, because Ant Design derives its hover and active shades from
+them. A new scheme needs every key the others have.
 
 Use tokens in stylesheets rather than raw colors or sizes, so the look stays easy to change.
 

@@ -1,5 +1,5 @@
-import { ClusterOutlined, HomeFilled } from '@ant-design/icons';
-import { Tabs } from 'antd';
+import { ClusterOutlined, HomeFilled, SettingFilled, SettingOutlined } from '@ant-design/icons';
+import { Button, Tabs, Tooltip } from 'antd';
 import clsx from 'clsx';
 import { cloneElement, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -12,6 +12,9 @@ import { MonoIdHelper } from '../utils/MonoIdHelper.js';
 import styles from './TabBar.module.css';
 
 const HOME_TAB = 'home';
+/** Shown only while the settings page is open, and never saved with the other tabs. */
+const SETTINGS_TAB = 'settings';
+const FIXED_TABS = new Set([HOME_TAB, SETTINGS_TAB]);
 
 /** A private type, so a dragged tab cannot drop as text into a field. */
 const DRAG_TYPE = 'application/x-gitty-up-tab';
@@ -23,9 +26,15 @@ const HOME_ITEM = {
   closable: false,
 };
 
+const SETTINGS_ITEM = {
+  key: SETTINGS_TAB,
+  label: 'Settings',
+  icon: <SettingFilled />,
+};
+
 /**
- * Drag state for reordering. Home is left out on purpose: it can neither be
- * dragged nor dropped on, so it always stays first.
+ * Drag state for reordering. Home and settings are left out on purpose: they can
+ * neither be dragged nor dropped on, so home always stays first.
  */
 function useTabDrag(onMove) {
   const [dragged, setDragged] = useState(null);
@@ -38,7 +47,7 @@ function useTabDrag(onMove) {
 
   const wrapTab = (node) => {
     const repositoryId = node.key;
-    if (repositoryId === HOME_TAB) return node;
+    if (FIXED_TABS.has(repositoryId)) return node;
 
     const isDropTarget = drop?.targetId === repositoryId;
     return cloneElement(node, {
@@ -80,7 +89,7 @@ function useTabDrag(onMove) {
   return wrapTab;
 }
 
-export function TabBar({ activeRepositoryId }) {
+export function TabBar({ activeRepositoryId, isSettings = false }) {
   const navigate = useNavigate();
   const { tabs, closeTab, moveTab } = useTabs();
   const { data: repositories } = useRepositories();
@@ -89,7 +98,7 @@ export function TabBar({ activeRepositoryId }) {
   // The next repository can take a moment to load, and its page only appears once it
   // has. Showing the clicked tab as active straight away makes the click feel instant.
   const [switching, setSwitching] = useState(null);
-  const activeKey = activeRepositoryId ?? HOME_TAB;
+  const activeKey = isSettings ? SETTINGS_TAB : (activeRepositoryId ?? HOME_TAB);
   if (switching && switching.from !== activeKey) setSwitching(null);
 
   const nameOf = (repositoryId) => {
@@ -110,15 +119,24 @@ export function TabBar({ activeRepositoryId }) {
       label: nameOf(tab.repositoryId) ?? '…',
       icon: MonoIdHelper.isMonoId(tab.repositoryId) ? <ClusterOutlined /> : undefined,
     })),
+    ...(isSettings ? [SETTINGS_ITEM] : []),
   ];
 
   const handleChange = (key) => {
+    if (key === SETTINGS_TAB) {
+      navigate(paths.settings());
+      return;
+    }
     const tab = tabs.find(({ repositoryId }) => repositoryId === key);
     setSwitching({ from: activeKey, to: key });
     navigate(tab ? tab.path : paths.home());
   };
 
   const handleClose = (repositoryId) => {
+    if (repositoryId === SETTINGS_TAB) {
+      navigate(paths.home());
+      return;
+    }
     if (repositoryId === activeRepositoryId) {
       const neighbour = findNeighbourTab(openTabs, repositoryId);
       navigate(neighbour ? neighbour.path : paths.home());
@@ -135,7 +153,20 @@ export function TabBar({ activeRepositoryId }) {
         size="small"
         activeKey={switching?.to ?? activeKey}
         items={items}
-        tabBarExtraContent={{ left: <Logo /> }}
+        tabBarExtraContent={{
+          left: <Logo />,
+          right: (
+            <Tooltip title="Settings" placement="bottomRight">
+              <Button
+                type="text"
+                aria-label="Settings"
+                aria-pressed={isSettings}
+                icon={isSettings ? <SettingFilled /> : <SettingOutlined />}
+                onClick={() => navigate(paths.settings())}
+              />
+            </Tooltip>
+          ),
+        }}
         renderTabBar={(tabBarProps, DefaultTabBar) => (
           <DefaultTabBar {...tabBarProps}>{wrapTab}</DefaultTabBar>
         )}

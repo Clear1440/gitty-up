@@ -45,7 +45,18 @@ export class RepositoryStore {
   #data = null;
 
   constructor(dataDir) {
-    this.#filePath = path.join(dataDir, FILE_NAME);
+    this.#filePath = RepositoryStore.fileIn(dataDir);
+  }
+
+  /** Where the store keeps its file in a given data folder. */
+  static fileIn(dataDir) {
+    return path.join(dataDir, FILE_NAME);
+  }
+
+  /** Reads and writes in another folder from now on. Nothing is copied over. */
+  useDataDir(dataDir) {
+    this.#filePath = RepositoryStore.fileIn(dataDir);
+    this.#data = null;
   }
 
   async list() {

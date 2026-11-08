@@ -42,6 +42,7 @@ function useWarmOpenTabs(activeRepositoryId) {
 export function AppLayout() {
   const { pathname, search } = useLocation();
   const repositoryId = useMatch('/repositories/:repositoryId/*')?.params.repositoryId ?? null;
+  const isSettings = Boolean(useMatch('/settings'));
   const { rememberTab } = useTabs();
   useWarmOpenTabs(repositoryId);
   useAutoFetch(repositoryId);
@@ -53,7 +54,7 @@ export function AppLayout() {
 
   return (
     <div className={styles.shell}>
-      <TabBar activeRepositoryId={repositoryId} />
+      <TabBar activeRepositoryId={repositoryId} isSettings={isSettings} />
       <main className={styles.page}>
         {/* Only seen on a first load. Later navigations keep the previous page up. */}
         <Suspense fallback={<Spin className="centered" size="large" />}>

@@ -5,10 +5,11 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { localOnly } from './middleware/localOnly.js';
 import { createFilesystemRouter } from './routes/filesystem.js';
 import { createRepositoriesRouter } from './routes/repositories.js';
+import { createSettingsRouter } from './routes/settings.js';
 
 const CLIENT_DIR = path.resolve(import.meta.dirname, '../dist');
 
-export function createApp({ store }) {
+export function createApp({ store, settings }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(localOnly);
@@ -17,6 +18,7 @@ export function createApp({ store }) {
 
   app.use('/api/repositories', createRepositoriesRouter(store));
   app.use('/api/filesystem', createFilesystemRouter());
+  app.use('/api/settings', createSettingsRouter({ settings, store }));
   app.use('/api', notFoundHandler);
 
   // In production the server also hosts the built client.

@@ -110,7 +110,7 @@
 }
 
 .middle:focus-within {
-  background-color: #ffffff08;
+  background-color: var(--color-focus-tint);
 }
 
 .line {

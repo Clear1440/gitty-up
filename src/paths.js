@@ -18,6 +18,7 @@ const historyWith = (repositoryId, params) =>
 /** Builds the app's URLs, so route shapes live in one place. */
 export const paths = {
   home: () => '/',
+  settings: () => '/settings',
   repository: (repositoryId) => `/repositories/${repositoryId}`,
   history: (repositoryId, ref) =>
     ref ? historyWith(repositoryId, { ref }) : `/repositories/${repositoryId}/history`,

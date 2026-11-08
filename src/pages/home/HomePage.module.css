@@ -109,7 +109,7 @@
   border: 1px solid var(--color-primary);
   border-radius: var(--radius-lg);
   background: var(--color-surface-selected);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+  box-shadow: var(--shadow-popup);
   font-size: var(--font-size-sm);
   transform: translateX(-50%);
 }

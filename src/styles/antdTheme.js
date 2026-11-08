@@ -1,35 +1,42 @@
 import { theme } from 'antd';
 import { CssTokenHelper } from './CssTokenHelper.js';
+import { isDarkAppearance, paletteOf } from './themes.js';
 
 /**
- * Builds the Ant Design theme from tokens.css, so that file stays the single source
- * of truth. Call it after the stylesheets have loaded.
+ * Builds the Ant Design theme for an appearance, from its palette in themes.js and the
+ * other tokens in tokens.css, so those files stay the single source of truth.
+ * Call it after the stylesheets have loaded.
  */
-export function createAntdTheme() {
-  const text = CssTokenHelper.read('--color-text');
-  const textMuted = CssTokenHelper.read('--color-text-muted');
-  const textDisabled = CssTokenHelper.read('--color-text-disabled');
-  const surfaceRaised = CssTokenHelper.read('--color-surface-raised');
-  const surfaceHover = CssTokenHelper.read('--color-surface-hover');
-  const surfaceSelected = CssTokenHelper.read('--color-surface-selected');
-  const onPrimary = CssTokenHelper.read('--color-on-primary');
+export function createAntdTheme(appearance) {
+  const isDark = isDarkAppearance(appearance);
+  const palette = paletteOf(appearance);
+  const color = (name) => palette[name.replace(/^--color-/, '')];
+  const shadow = `0 8px 24px ${palette.shadow}`;
+
+  const text = color('--color-text');
+  const textMuted = color('--color-text-muted');
+  const textDisabled = color('--color-text-disabled');
+  const surfaceRaised = color('--color-surface-raised');
+  const surfaceHover = color('--color-surface-hover');
+  const surfaceSelected = color('--color-surface-selected');
+  const onPrimary = color('--color-on-primary');
 
   return {
-    algorithm: theme.darkAlgorithm,
+    algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm,
     token: {
-      colorPrimary: CssTokenHelper.read('--color-primary'),
-      colorInfo: CssTokenHelper.read('--color-primary'),
-      colorLink: CssTokenHelper.read('--color-primary-strong'),
-      colorSuccess: CssTokenHelper.read('--color-success'),
-      colorWarning: CssTokenHelper.read('--color-warning'),
-      colorError: CssTokenHelper.read('--color-danger'),
+      colorPrimary: color('--color-primary'),
+      colorInfo: color('--color-primary'),
+      colorLink: color('--color-primary-strong'),
+      colorSuccess: color('--color-success'),
+      colorWarning: color('--color-warning'),
+      colorError: color('--color-danger'),
 
-      colorBgBase: CssTokenHelper.read('--color-bg'),
-      colorBgLayout: CssTokenHelper.read('--color-bg'),
-      colorBgContainer: CssTokenHelper.read('--color-surface'),
+      colorBgBase: color('--color-bg'),
+      colorBgLayout: color('--color-bg'),
+      colorBgContainer: color('--color-surface'),
       colorBgElevated: surfaceRaised,
-      colorBorder: CssTokenHelper.read('--color-border-strong'),
-      colorBorderSecondary: CssTokenHelper.read('--color-border'),
+      colorBorder: color('--color-border-strong'),
+      colorBorderSecondary: color('--color-border'),
 
       // Ant fades text with opacity by default. Solid colors read more clearly.
       colorTextBase: text,
@@ -48,8 +55,8 @@ export function createAntdTheme() {
       controlItemBgActive: surfaceSelected,
       controlItemBgActiveHover: surfaceSelected,
 
-      boxShadow: CssTokenHelper.read('--shadow-popup'),
-      boxShadowSecondary: CssTokenHelper.read('--shadow-popup'),
+      boxShadow: shadow,
+      boxShadowSecondary: shadow,
 
       borderRadiusSM: CssTokenHelper.readPixels('--radius-sm'),
       borderRadius: CssTokenHelper.readPixels('--radius-md'),
@@ -61,11 +68,11 @@ export function createAntdTheme() {
     },
     components: {
       Button: {
-        // The dark algorithm would otherwise dim the primary color from tokens.css.
-        colorPrimary: CssTokenHelper.read('--color-primary'),
-        colorPrimaryHover: CssTokenHelper.read('--color-primary-strong'),
-        colorPrimaryActive: CssTokenHelper.read('--color-primary'),
-        // White on this blue is hard to read, so filled buttons use dark text.
+        // The dark algorithm would otherwise dim the primary color from the palette.
+        colorPrimary: color('--color-primary'),
+        colorPrimaryHover: color('--color-primary-strong'),
+        colorPrimaryActive: color('--color-primary'),
+        // Each palette picks the text color that reads best on its primary color.
         primaryColor: onPrimary,
         dangerColor: onPrimary,
         primaryShadow: 'none',
@@ -73,7 +80,7 @@ export function createAntdTheme() {
         dangerShadow: 'none',
       },
       Segmented: {
-        trackBg: CssTokenHelper.read('--color-bg'),
+        trackBg: color('--color-bg'),
         itemSelectedBg: surfaceSelected,
         itemSelectedColor: text,
         itemColor: textMuted,

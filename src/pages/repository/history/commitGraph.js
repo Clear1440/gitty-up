@@ -1,4 +1,4 @@
-/** How many colors the tree cycles through: --color-graph-1 and up in tokens.css. */
+/** How many colors the tree cycles through: --color-graph-1 and up, from themes.js. */
 export const GRAPH_COLOR_COUNT = 6;
 
 const TRUNK_BRANCH = /^(main|master|trunk|develop)$/;

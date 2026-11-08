@@ -6,6 +6,7 @@ import { NotFoundPage } from './pages/NotFoundPage.jsx';
 import { ConflictPage } from './pages/repository/conflict/ConflictPage.jsx';
 import { HistoryPage } from './pages/repository/HistoryPage.jsx';
 import { RepositoryLayout } from './pages/repository/RepositoryLayout.jsx';
+import { SettingsPage } from './pages/settings/SettingsPage.jsx';
 import { UNCOMMITTED, paths } from './paths.js';
 
 export const router = createBrowserRouter([
@@ -30,6 +31,7 @@ export const router = createBrowserRouter([
           },
         ],
       },
+      { path: 'settings', element: <SettingsPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },

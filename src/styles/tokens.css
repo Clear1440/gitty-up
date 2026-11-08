@@ -1,42 +1,16 @@
 /*
- * Design tokens: the one place to change how the app looks.
+ * Design tokens: the one place to change how the app looks, along with the color
+ * schemes in src/styles/themes.js.
  *
  * Every stylesheet reads these, and src/styles/antdTheme.js feeds them to Ant Design,
  * so editing a value here restyles both our components and Ant's.
- * Keep colors in hex: Ant Design derives its hover and active shades from them.
  */
 :root {
-  color-scheme: dark;
-
-  /* Surfaces, from the back of the app to the front */
-  --color-bg: #0f1218;
-  --color-surface: #161a22;
-  --color-surface-raised: #1e232d;
-  --color-surface-hover: #242a36;
-  --color-surface-selected: #263450;
-
-  /* Lines */
-  --color-border: #2a303c;
-  --color-border-strong: #454e60;
-
-  /* Text */
-  --color-text: #eef1f7;
-  --color-text-muted: #aeb7c9;
-  --color-text-disabled: #8891a4;
-
-  /* Brand */
-  --color-primary: #6ea1ff;
-  --color-primary-strong: #9cc0ff;
-  --color-primary-subtle: #1e3358;
-  --color-on-primary: #0b1020;
-  --color-accent: #c3b1ff;
-  --color-accent-subtle: #2e2854;
-
-  /* Meaning */
-  --color-success: #62d9b5;
-  --color-warning: #f4c56f;
-  --color-warning-subtle: #3a2f17;
-  --color-danger: #ff8197;
+  /*
+   * Colors come from the chosen color scheme: src/styles/themes.js sets every other
+   * --color-* token on this element (surfaces, lines, text, brand, meaning, diff rows,
+   * graph branches), for both dark and light mode. The ones here are built from those.
+   */
 
   /* File status letters */
   --color-file-added: var(--color-success);
@@ -44,18 +18,8 @@
   --color-file-deleted: var(--color-danger);
   --color-file-renamed: var(--color-primary-strong);
 
-  /* Diff rows */
-  --color-diff-added-bg: #15332b;
-  --color-diff-deleted-bg: #3c1f29;
-  --color-diff-hunk-bg: #1d2233;
-
-  /* Git tree branches, cycled in order. Add more by raising GRAPH_COLOR_COUNT too. */
-  --color-graph-1: #6ea1ff;
-  --color-graph-2: #c3b1ff;
-  --color-graph-3: #62d9b5;
-  --color-graph-4: #f4c56f;
-  --color-graph-5: #ff8197;
-  --color-graph-6: #5fd0e8;
+  /* A faint wash over a focused area, light or dark. */
+  --color-focus-tint: color-mix(in srgb, var(--color-text) 4%, transparent);
 
   /* Type */
   --font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -85,7 +49,7 @@
   --radius-lg: 8px;
 
   /* Depth, used only by layers that float above the page */
-  --shadow-popup: 0 8px 24px #00000099;
+  --shadow-popup: 0 8px 24px var(--color-shadow);
 
   /* Layout */
   --size-tab-bar: 44px;
