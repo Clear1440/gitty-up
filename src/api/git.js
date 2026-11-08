@@ -14,6 +14,8 @@ export const gitApi = {
   getLastCommit: (id) => http.get(route(id, '/last-commit')),
   getPullRequests: (id) => http.get(route(id, '/pull-requests')),
   getStashes: (id) => http.get(route(id, '/stashes')),
+  getScripts: (id) => http.get(route(id, '/scripts')),
+  runScript: (id, { name }) => http.post(route(id, '/scripts/run'), { name }),
   getDiff: (id, { path, staged, untracked, fullFile }) =>
     http.get(route(id, '/diff'), { path, staged, untracked, fullFile }),
   getConflict: (id, { path }) => http.get(route(id, '/conflict'), { path }),

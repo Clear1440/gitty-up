@@ -1,0 +1,81 @@
+.label {
+  overflow: hidden;
+  max-width: 220px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.caret {
+  font-size: 10px;
+}
+
+.warningIcon {
+  color: var(--color-warning);
+}
+
+.menu {
+  max-width: 420px;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 2px 0;
+}
+
+.itemName {
+  font-weight: var(--font-weight-semibold);
+}
+
+.itemDetail {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.itemRuns {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.errors {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 12px;
+  white-space: normal;
+}
+
+.notification {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.resultMeta {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.output {
+  overflow: auto;
+  max-height: 280px;
+  margin: 0;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

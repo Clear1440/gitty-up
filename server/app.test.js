@@ -1676,3 +1676,42 @@ describe('acting on a commit', () => {
     expect((await post('/reset', { hash: head(), mode: 'mixed' })).status).toBe(400);
   });
 });
+
+describe('scripts from .gitty', () => {
+  it('lists nothing without a .gitty file', async () => {
+    const { status, body } = await request('GET', `${repo.api}/scripts`);
+    expect(status).toBe(200);
+    expect(body.found).toBe(false);
+  });
+
+  it('lists and runs the scripts a .gitty file names, in the repository folder', async () => {
+    await fs.writeFile(path.join(repo.work, 'where.js'), 'console.log(process.cwd());\n');
+    await fs.writeFile(
+      path.join(repo.work, '.gitty'),
+      JSON.stringify({
+        scripts: [
+          { name: 'Where', path: 'where.js', description: 'Prints the folder' },
+          { name: 'Fail', command: 'node -e "process.exit(3)"' },
+        ],
+      }),
+    );
+
+    const listed = await request('GET', `${repo.api}/scripts`);
+    expect(listed.body.found).toBe(true);
+    expect(listed.body.scripts.map(({ name }) => name)).toEqual(['Where', 'Fail']);
+
+    const where = await request('POST', `${repo.api}/scripts/run`, { name: 'Where' });
+    expect(where.status).toBe(200);
+    expect(where.body.exitCode).toBe(0);
+    expect(await fs.realpath(where.body.output.trim())).toBe(await fs.realpath(repo.work));
+
+    const fail = await request('POST', `${repo.api}/scripts/run`, { name: 'Fail' });
+    expect(fail.body.exitCode).toBe(3);
+  });
+
+  it('refuses a script the .gitty file does not list', async () => {
+    await fs.writeFile(path.join(repo.work, '.gitty'), JSON.stringify({ scripts: {} }));
+    const { status } = await request('POST', `${repo.api}/scripts/run`, { name: 'rm -rf /' });
+    expect(status).toBe(404);
+  });
+});

@@ -89,6 +89,14 @@ export function useStashes(repositoryId) {
   return useQuery(stashesQuery(repositoryId));
 }
 
+/** What the repository's .gitty file offers to run. `found` is false when it has none. */
+export function useScripts(repositoryId) {
+  return useQuery({
+    queryKey: queryKeys.scripts(repositoryId),
+    queryFn: () => gitApi.getScripts(repositoryId),
+  });
+}
+
 /**
  * Every version of a conflicted file. Read once: refetching while someone is resolving
  * it would reset their work, and resolving it ends the conflict anyway.

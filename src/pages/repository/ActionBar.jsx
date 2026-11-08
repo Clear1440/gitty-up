@@ -20,6 +20,7 @@ import { queryKeys } from '../../queries/queryKeys.js';
 import { CommitHelper } from './CommitHelper.js';
 import { MonoMembers } from './MonoMembers.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
+import { ScriptsMenu } from './ScriptsMenu.jsx';
 import { StatusHelper } from './StatusHelper.js';
 import { usePush } from './usePush.js';
 import { useUndoCommitShortcut } from './useUndoCommitShortcut.js';
@@ -210,8 +211,11 @@ export function ActionBar() {
         onClick={() => run('stashPop')}
       />
 
-      {/* Last, so its changing width can never move a button under the cursor. */}
-      <CurrentBranch status={status} />
+      <div className={styles.trailing}>
+        <ScriptsMenu />
+        {/* Last, so its changing width can never move a button under the cursor. */}
+        <CurrentBranch status={status} />
+      </div>
     </nav>
   );
 }

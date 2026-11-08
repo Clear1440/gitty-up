@@ -6,6 +6,8 @@ import { MonoIdHelper } from '../git/MonoIdHelper.js';
 import * as mono from '../git/monoService.js';
 import { parseRemoteUrl } from '../git/remoteUrl.js';
 import { GIT_CONCURRENCY } from '../git/runGit.js';
+import { describeScript, loadGittyConfig } from '../scripts/gittyConfig.js';
+import { runScript } from '../scripts/runScript.js';
 import { AsyncHelper } from '../utils/AsyncHelper.js';
 import { ValidationHelper } from '../utils/ValidationHelper.js';
 
@@ -125,6 +127,28 @@ function createGitRouter() {
       fullFile: fullFile === 'true',
     });
     response.json({ diff });
+  });
+
+  // Scripts from the repository's .gitty file. A mono repo spans many folders, so has none.
+  router.get('/scripts', async (request, response) => {
+    if (request.repository.isMono) {
+      response.json({ found: false, scripts: [], errors: [] });
+      return;
+    }
+    const { found, scripts, errors } = await loadGittyConfig(request.target);
+    response.json({ found, scripts: scripts.map(describeScript), errors });
+  });
+
+  router.post('/scripts/run', async (request, response) => {
+    if (request.repository.isMono) {
+      throw ApiError.badRequest('Scripts are not available in a mono repo.');
+    }
+    const name = ValidationHelper.requireString(request.body?.name, 'name');
+    // Read afresh, so only what .gitty lists right now can run.
+    const { scripts } = await loadGittyConfig(request.target);
+    const script = scripts.find((candidate) => candidate.name === name);
+    if (!script) throw ApiError.notFound(`.gitty has no script named "${name}".`);
+    response.json(await runScript(request.target, script));
   });
 
   router.get('/stashes', async (request, response) => {

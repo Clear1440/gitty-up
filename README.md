@@ -132,6 +132,40 @@ as a single repository. Use **Open as mono repo** on the group's heading.
 `server/git/monoService.js` does this. It matches `gitService.js` function for function, so the
 routes and most of the client work with a mono repo without knowing it is one.
 
+## Scripts (`.gitty`)
+
+A repository with a `.gitty` file at its top level gets an **Available scripts** dropdown in its
+tab, beside the current branch. Picking a script runs it in the repository's folder and shows its
+output. The file is JSON:
+
+```json
+{
+  "extends": ["../team-config/.gitty", "https://example.com/shared.gitty"],
+  "scripts": [
+    { "name": "Build", "path": "tools/build.ps1", "args": ["-Release"], "description": "Release build" },
+    { "name": "Lint", "command": "npm run lint" },
+    "tools/deploy.sh"
+  ]
+}
+```
+
+- `extends` is one or more shared `.gitty` files to inherit scripts from: a path relative to this
+  file, an absolute path, or an `http(s)` URL. Shared files can extend others. A script here
+  replaces an inherited one with the same name.
+- `scripts` is a list, or an object mapping names to scripts. Each script is a path to a file, or
+  an object with a `name` and either a `path` or a `command`, plus optional `args` and
+  `description`.
+- A `path` is relative to the file that lists it. For a shared file fetched over HTTP, it is
+  relative to the repository instead. Files run by extension: `.js` with node, `.ps1` with
+  PowerShell, `.sh` with bash (Git for Windows' bash on Windows), `.py` with Python, `.cmd` and
+  `.bat` with cmd, and anything else directly.
+- A `command` runs through the system shell, as if typed into a terminal.
+- Scripts get `GITTY_REPO_PATH` and `GITTY_SCRIPT_NAME` in their environment, and stop after 10
+  minutes.
+
+Problems in the file, such as a shared file that cannot be loaded, show at the bottom of the
+dropdown. Mono repo tabs do not offer scripts. `server/scripts/` does this.
+
 ## How it fits together
 
 A browser cannot run git, so a small local server does that and the React app talks to it over
@@ -216,5 +250,8 @@ The server can run git on any folder and has no login, so it must stay private t
   visit could send requests to it.
 - Git runs without a shell, and refs starting with `-` are refused, so input cannot become a
   command or an option.
+- Scripts from a `.gitty` file are the exception: they run whatever the file says, with your
+  permissions, so only run scripts from repositories and shared files you trust. Only scripts the
+  file lists can run, and it is reread before each one.
 
 Revisit all of this before exposing the server to other users.
