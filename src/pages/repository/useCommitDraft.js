@@ -1,5 +1,5 @@
 import { useCallback, useSyncExternalStore } from 'react';
-import { readStored, writeStored } from '../../utils/storage.js';
+import { StorageHelper } from '../../utils/StorageHelper.js';
 
 const storageKey = (repositoryId) => `gitty-up.commit-draft.${repositoryId}`;
 
@@ -14,14 +14,14 @@ function subscribe(listener) {
 
 function readDraft(repositoryId) {
   if (!drafts.has(repositoryId)) {
-    drafts.set(repositoryId, readStored(storageKey(repositoryId), ''));
+    drafts.set(repositoryId, StorageHelper.read(storageKey(repositoryId), ''));
   }
   return drafts.get(repositoryId);
 }
 
 function writeDraft(repositoryId, draft) {
   drafts.set(repositoryId, draft);
-  writeStored(storageKey(repositoryId), draft);
+  StorageHelper.write(storageKey(repositoryId), draft);
   listeners.forEach((listener) => listener());
 }
 

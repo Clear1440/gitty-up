@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router';
 import { paths } from '../../paths.js';
 import { useRepositoryContext } from './RepositoryContext.js';
+import { StatusHelper } from './StatusHelper.js';
 
 /**
  * What can be done with a branch, wherever it is shown. `kind` is 'local' or 'remote',
@@ -11,8 +12,8 @@ export function useBranchMenu(branch, kind) {
   const { repository, status, run, openDialog, isBusy } = useRepositoryContext();
 
   const isRemote = kind === 'remote';
-  const blocked = isBusy || Boolean(status.operation);
-  const currentName = status.branch ?? 'HEAD';
+  const blocked = StatusHelper.isBlocked(status, isBusy);
+  const currentName = StatusHelper.currentBranchName(status);
 
   const checkout = () => {
     if (!branch.isCurrent && !blocked) run('checkout', { branch: branch.name, remote: isRemote });

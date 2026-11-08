@@ -4,10 +4,11 @@ import clsx from 'clsx';
 import { cloneElement, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Logo } from '../components/Logo.jsx';
-import { isMonoRepositoryId, monoGroupId, paths } from '../paths.js';
+import { paths } from '../paths.js';
 import { useRepositories, useRepositoryGroups } from '../queries/repositories.js';
 import { useTabs } from '../tabs/TabsContext.jsx';
 import { findNeighbourTab } from '../tabs/tabsModel.js';
+import { MonoIdHelper } from '../utils/MonoIdHelper.js';
 import styles from './TabBar.module.css';
 
 const HOME_TAB = 'home';
@@ -92,8 +93,9 @@ export function TabBar({ activeRepositoryId }) {
   if (switching && switching.from !== activeKey) setSwitching(null);
 
   const nameOf = (repositoryId) => {
-    if (isMonoRepositoryId(repositoryId)) {
-      return groups?.find((group) => group.id === monoGroupId(repositoryId))?.name;
+    if (MonoIdHelper.isMonoId(repositoryId)) {
+      const groupId = MonoIdHelper.toGroupId(repositoryId);
+      return groups?.find((group) => group.id === groupId)?.name;
     }
     return repositories?.find((repository) => repository.id === repositoryId)?.name;
   };
@@ -106,7 +108,7 @@ export function TabBar({ activeRepositoryId }) {
     ...openTabs.map((tab) => ({
       key: tab.repositoryId,
       label: nameOf(tab.repositoryId) ?? '…',
-      icon: isMonoRepositoryId(tab.repositoryId) ? <ClusterOutlined /> : undefined,
+      icon: MonoIdHelper.isMonoId(tab.repositoryId) ? <ClusterOutlined /> : undefined,
     })),
   ];
 

@@ -2,12 +2,13 @@ import { InboxOutlined, MoreOutlined } from '@ant-design/icons';
 import { App, Button, Dropdown } from 'antd';
 import { RelativeTime } from '../../components/RelativeTime.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
+import { StatusHelper } from './StatusHelper.js';
 import styles from './StashList.module.css';
 
 function StashRow({ stash }) {
   const { status, run, isBusy } = useRepositoryContext();
   const { modal } = App.useApp();
-  const blocked = isBusy || Boolean(status.operation);
+  const blocked = StatusHelper.isBlocked(status, isBusy);
 
   const confirmDrop = () => {
     modal.confirm({

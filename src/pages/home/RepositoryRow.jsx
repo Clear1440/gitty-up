@@ -1,8 +1,8 @@
 import {
   BranchesOutlined,
+  CloseOutlined,
   CloudDownloadOutlined,
   DisconnectOutlined,
-  CloseOutlined,
   EditOutlined,
   ExportOutlined,
   FolderOpenOutlined,
@@ -23,6 +23,7 @@ import {
   useUnlinkRepository,
 } from '../../queries/repositories.js';
 import { useTabs } from '../../tabs/TabsContext.jsx';
+import { KeyboardHelper } from '../../utils/KeyboardHelper.js';
 import { GroupNameDialog } from './GroupNameDialog.jsx';
 import styles from './RepositoryRow.module.css';
 import { CloneRepositoryDialog, LocateRepositoryDialog } from './StubDialogs.jsx';
@@ -124,7 +125,7 @@ export function RepositoryRow({ repository, groups }) {
   };
 
   const handleClick = (event) => {
-    const toggle = event.ctrlKey || event.metaKey;
+    const toggle = KeyboardHelper.hasCommandKey(event);
     if (toggle || event.shiftKey) {
       event.preventDefault();
       selection.click(repository.id, { toggle, range: event.shiftKey });

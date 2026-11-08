@@ -1,35 +1,35 @@
 import { theme } from 'antd';
-import { readPixels, readToken } from './readToken.js';
+import { CssTokenHelper } from './CssTokenHelper.js';
 
 /**
  * Builds the Ant Design theme from tokens.css, so that file stays the single source
  * of truth. Call it after the stylesheets have loaded.
  */
 export function createAntdTheme() {
-  const text = readToken('--color-text');
-  const textMuted = readToken('--color-text-muted');
-  const textDisabled = readToken('--color-text-disabled');
-  const surfaceRaised = readToken('--color-surface-raised');
-  const surfaceHover = readToken('--color-surface-hover');
-  const surfaceSelected = readToken('--color-surface-selected');
-  const onPrimary = readToken('--color-on-primary');
+  const text = CssTokenHelper.read('--color-text');
+  const textMuted = CssTokenHelper.read('--color-text-muted');
+  const textDisabled = CssTokenHelper.read('--color-text-disabled');
+  const surfaceRaised = CssTokenHelper.read('--color-surface-raised');
+  const surfaceHover = CssTokenHelper.read('--color-surface-hover');
+  const surfaceSelected = CssTokenHelper.read('--color-surface-selected');
+  const onPrimary = CssTokenHelper.read('--color-on-primary');
 
   return {
     algorithm: theme.darkAlgorithm,
     token: {
-      colorPrimary: readToken('--color-primary'),
-      colorInfo: readToken('--color-primary'),
-      colorLink: readToken('--color-primary-strong'),
-      colorSuccess: readToken('--color-success'),
-      colorWarning: readToken('--color-warning'),
-      colorError: readToken('--color-danger'),
+      colorPrimary: CssTokenHelper.read('--color-primary'),
+      colorInfo: CssTokenHelper.read('--color-primary'),
+      colorLink: CssTokenHelper.read('--color-primary-strong'),
+      colorSuccess: CssTokenHelper.read('--color-success'),
+      colorWarning: CssTokenHelper.read('--color-warning'),
+      colorError: CssTokenHelper.read('--color-danger'),
 
-      colorBgBase: readToken('--color-bg'),
-      colorBgLayout: readToken('--color-bg'),
-      colorBgContainer: readToken('--color-surface'),
+      colorBgBase: CssTokenHelper.read('--color-bg'),
+      colorBgLayout: CssTokenHelper.read('--color-bg'),
+      colorBgContainer: CssTokenHelper.read('--color-surface'),
       colorBgElevated: surfaceRaised,
-      colorBorder: readToken('--color-border-strong'),
-      colorBorderSecondary: readToken('--color-border'),
+      colorBorder: CssTokenHelper.read('--color-border-strong'),
+      colorBorderSecondary: CssTokenHelper.read('--color-border'),
 
       // Ant fades text with opacity by default. Solid colors read more clearly.
       colorTextBase: text,
@@ -48,23 +48,23 @@ export function createAntdTheme() {
       controlItemBgActive: surfaceSelected,
       controlItemBgActiveHover: surfaceSelected,
 
-      boxShadow: readToken('--shadow-popup'),
-      boxShadowSecondary: readToken('--shadow-popup'),
+      boxShadow: CssTokenHelper.read('--shadow-popup'),
+      boxShadowSecondary: CssTokenHelper.read('--shadow-popup'),
 
-      borderRadiusSM: readPixels('--radius-sm'),
-      borderRadius: readPixels('--radius-md'),
-      borderRadiusLG: readPixels('--radius-lg'),
+      borderRadiusSM: CssTokenHelper.readPixels('--radius-sm'),
+      borderRadius: CssTokenHelper.readPixels('--radius-md'),
+      borderRadiusLG: CssTokenHelper.readPixels('--radius-lg'),
 
-      fontFamily: readToken('--font-sans'),
-      fontFamilyCode: readToken('--font-mono'),
-      fontSize: readPixels('--font-size-md'),
+      fontFamily: CssTokenHelper.read('--font-sans'),
+      fontFamilyCode: CssTokenHelper.read('--font-mono'),
+      fontSize: CssTokenHelper.readPixels('--font-size-md'),
     },
     components: {
       Button: {
         // The dark algorithm would otherwise dim the primary color from tokens.css.
-        colorPrimary: readToken('--color-primary'),
-        colorPrimaryHover: readToken('--color-primary-strong'),
-        colorPrimaryActive: readToken('--color-primary'),
+        colorPrimary: CssTokenHelper.read('--color-primary'),
+        colorPrimaryHover: CssTokenHelper.read('--color-primary-strong'),
+        colorPrimaryActive: CssTokenHelper.read('--color-primary'),
         // White on this blue is hard to read, so filled buttons use dark text.
         primaryColor: onPrimary,
         dangerColor: onPrimary,
@@ -73,7 +73,7 @@ export function createAntdTheme() {
         dangerShadow: 'none',
       },
       Segmented: {
-        trackBg: readToken('--color-bg'),
+        trackBg: CssTokenHelper.read('--color-bg'),
         itemSelectedBg: surfaceSelected,
         itemSelectedColor: text,
         itemColor: textMuted,

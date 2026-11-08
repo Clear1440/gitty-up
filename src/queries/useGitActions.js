@@ -2,7 +2,8 @@ import { useMutation, useMutationState, useQueryClient } from '@tanstack/react-q
 import { App } from 'antd';
 import { useCallback } from 'react';
 import { gitApi } from '../api';
-import { isMonoRepositoryId } from '../paths.js';
+import { MonoIdHelper } from '../utils/MonoIdHelper.js';
+import { TextHelper } from '../utils/TextHelper.js';
 import { mutationKeys, queryKeys } from './queryKeys.js';
 
 /** A mono repo reports on each of its repositories, a line apiece. */
@@ -44,7 +45,7 @@ const GIT_ACTIONS = {
     title: 'Prune branches',
     success: (_input, { deleted, kept }) =>
       [
-        `Deleted ${deleted.length} ${deleted.length === 1 ? 'branch' : 'branches'}.`,
+        `Deleted ${TextHelper.countOf(deleted.length, 'branch', 'branches')}.`,
         kept.length > 0 && `Kept ${kept.join(', ')}.`,
       ]
         .filter(Boolean)
@@ -153,7 +154,7 @@ export function useGitActions(repositoryId) {
       Promise.all([
         queryClient.invalidateQueries({
           // A mono repo's actions land in its members, which have tabs of their own.
-          queryKey: isMonoRepositoryId(repositoryId)
+          queryKey: MonoIdHelper.isMonoId(repositoryId)
             ? queryKeys.allRepositories()
             : queryKeys.repository(repositoryId),
         }),

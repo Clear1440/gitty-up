@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { readStored, writeStored } from '../utils/storage.js';
+import { StorageHelper } from '../utils/StorageHelper.js';
 import { moveTab, openTab, removeTab, rememberTab } from './tabsModel.js';
 
 const STORAGE_KEY = 'gitty-up.tabs';
@@ -7,10 +7,10 @@ const STORAGE_KEY = 'gitty-up.tabs';
 const TabsContext = createContext(null);
 
 export function TabsProvider({ children }) {
-  const [tabs, setTabs] = useState(() => readStored(STORAGE_KEY, []));
+  const [tabs, setTabs] = useState(() => StorageHelper.read(STORAGE_KEY, []));
 
   useEffect(() => {
-    writeStored(STORAGE_KEY, tabs);
+    StorageHelper.write(STORAGE_KEY, tabs);
   }, [tabs]);
 
   // Stable across renders, so effects can depend on these safely.

@@ -1,5 +1,7 @@
 import { App } from 'antd';
+import { CommitHelper } from '../CommitHelper.js';
 import { useRepositoryContext } from '../RepositoryContext.js';
+import { StatusHelper } from '../StatusHelper.js';
 import { groupRefs } from './groupRefs.js';
 
 /**
@@ -14,10 +16,10 @@ export function useCommitMenu(commit) {
   // Each of a mono repo's commits belongs to one member, so these act on that repository.
   if (repository.isMono) return { items: null, checkout: () => {} };
 
-  const blocked = isBusy || Boolean(status.operation);
-  const isHead = commit.refs.some((ref) => ref.type === 'head');
-  const isMerge = commit.parents.length > 1;
-  const current = status.branch ?? 'HEAD';
+  const blocked = StatusHelper.isBlocked(status, isBusy);
+  const isHead = CommitHelper.isHead(commit);
+  const isMerge = CommitHelper.isMerge(commit);
+  const current = StatusHelper.currentBranchName(status);
   const localBranches = groupRefs(commit.refs).filter((group) => group.local);
   const branch = localBranches.length === 1 ? localBranches[0].name : null;
   const { hash, shortHash, subject } = commit;

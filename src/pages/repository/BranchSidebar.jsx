@@ -3,6 +3,7 @@ import { Button, Collapse, Dropdown, Input, Spin, Tooltip } from 'antd';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useBranches, useStashes } from '../../queries/git.js';
+import { TextHelper } from '../../utils/TextHelper.js';
 import { BRANCH_SORTS, buildBranchTree, sortBranches } from './branchTree.js';
 import { BranchTree, useFolderChoices } from './BranchTree.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
@@ -17,8 +18,7 @@ const SORT_ITEMS = BRANCH_SORTS.map(({ value, label, hint }) => ({
 }));
 
 function filterBranches(branches, filter) {
-  const text = filter.trim().toLowerCase();
-  return branches.filter((branch) => branch.name.toLowerCase().includes(text));
+  return branches.filter((branch) => TextHelper.includesIgnoringCase(branch.name, filter));
 }
 
 function SortMenu({ sort, onChange }) {

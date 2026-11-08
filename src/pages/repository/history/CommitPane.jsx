@@ -3,6 +3,7 @@ import { Alert, Button, Empty, Spin } from 'antd';
 import { useMemo, useState } from 'react';
 import { RelativeTime } from '../../../components/RelativeTime.jsx';
 import { useCommitDetails, useCommitDiff } from '../../../queries/git.js';
+import { CommitHelper } from '../CommitHelper.js';
 import { DiffContent, DiffViewToggle, useDiffViewMode } from '../diff/DiffContent.jsx';
 import { parseDiff } from '../diff/diffRows.js';
 import { FileSection } from '../FileSection.jsx';
@@ -86,7 +87,7 @@ export function CommitPane({ hash, onClose, resizeHandle }) {
               {commit.shortHash}
             </code>
           </p>
-          {commit.parents.length > 1 && (
+          {CommitHelper.isMerge(commit) && (
             <p className={styles.meta}>Merge commit, compared with its first parent.</p>
           )}
         </header>

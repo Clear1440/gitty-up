@@ -2,6 +2,7 @@ import path from 'node:path';
 import { app, BrowserWindow, dialog, shell } from 'electron';
 import { config } from '../server/config.js';
 import { startServer } from '../server/start.js';
+import { UrlHelper } from '../server/utils/UrlHelper.js';
 
 /** The app's own background, so the window doesn't flash white while it loads. */
 const BACKGROUND_COLOR = '#0f1218';
@@ -31,13 +32,12 @@ async function startLocalServer() {
   }
 }
 
+/** Whether a link points at a web page outside the app, to open in the default browser. */
 function isExternal(url, appOrigin) {
-  try {
-    const { origin, protocol } = new URL(url);
-    return origin !== appOrigin && (protocol === 'https:' || protocol === 'http:');
-  } catch {
-    return false;
-  }
+  const parsed = UrlHelper.tryParse(url);
+  if (!parsed) return false;
+  const isWeb = parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  return isWeb && parsed.origin !== appOrigin;
 }
 
 function createWindow(appUrl) {
@@ -59,7 +59,7 @@ function createWindow(appUrl) {
     return { action: 'deny' };
   });
   window.webContents.on('will-navigate', (event, url) => {
-    if (new URL(url).origin === appOrigin) return;
+    if (UrlHelper.tryParse(url)?.origin === appOrigin) return;
     event.preventDefault();
     if (isExternal(url, appOrigin)) shell.openExternal(url);
   });

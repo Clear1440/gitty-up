@@ -1,4 +1,5 @@
 import { Alert, Button, Popconfirm, Space } from 'antd';
+import { TextHelper } from '../../utils/TextHelper.js';
 import { useRepositoryContext } from './RepositoryContext.js';
 
 const LABELS = { merge: 'Merge', rebase: 'Rebase', 'cherry-pick': 'Cherry-pick' };
@@ -15,9 +16,11 @@ export function OperationBanner() {
 
   const label = LABELS[status.operation];
   const conflictCount = status.conflicted.length;
+  const files = TextHelper.pluralize(conflictCount, 'file');
+  const conflictedFiles = `${conflictCount} conflicted ${files}`;
   const title =
     conflictCount > 0
-      ? `${label} in progress: ${conflictCount} conflicted ${conflictCount === 1 ? 'file' : 'files'}. Resolve each one from Uncommitted changes.`
+      ? `${label} in progress: ${conflictedFiles}. Resolve each one from Uncommitted changes.`
       : `${label} in progress: all conflicts resolved.`;
 
   return (

@@ -8,9 +8,10 @@ import { ResizeHandle } from '../../components/ResizeHandle.jsx';
 import { useResizableSizes } from '../../components/useResizableSizes.js';
 import { UNCOMMITTED, paths } from '../../paths.js';
 import { useCommits, usePullRequests } from '../../queries/git.js';
+import { TextHelper } from '../../utils/TextHelper.js';
+import { CommitHelper } from './CommitHelper.js';
 import { layoutCommitGraph } from './history/commitGraph.js';
 import { CommitGraphCell, labelOffset } from './history/CommitGraphCell.jsx';
-import { countChangedFiles } from './countChangedFiles.js';
 import { CommitPane } from './history/CommitPane.jsx';
 import { GraphTooltipArea } from './history/GraphTooltipArea.jsx';
 import { findBranchTip, groupHasBranch, groupRefs } from './history/groupRefs.js';
@@ -18,6 +19,7 @@ import { RefBranchActions } from './history/RefBranchActions.jsx';
 import { useCommitMenu } from './history/useCommitMenu.js';
 import { WorkingTreePane } from './history/WorkingTreePane.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
+import { StatusHelper } from './StatusHelper.js';
 import styles from './HistoryPage.module.css';
 
 const REF_TAG_STYLES = { head: styles.refHead, branch: styles.refBranch, tag: styles.refTag };
@@ -133,7 +135,7 @@ function UncommittedRow({ graphRow, columnCount, fileCount, selected, onSelect }
       >
         Uncommitted changes
         {/* A paused merge can have nothing left to count. */}
-        {fileCount > 0 && ` (${fileCount === 1 ? '1 file' : `${fileCount} files`})`}
+        {fileCount > 0 && ` (${TextHelper.countOf(fileCount, 'file')})`}
       </button>
       <div />
       <div />
@@ -159,8 +161,8 @@ function CommitRow({ commit, graphRow, columnCount, selected, focus, pullRequest
         <CommitGraphCell
           row={graphRow}
           columnCount={columnCount}
-          isHead={commit.refs.some((ref) => ref.type === 'head')}
-          isMerge={commit.parents.length > 1}
+          isHead={CommitHelper.isHead(commit)}
+          isMerge={CommitHelper.isMerge(commit)}
         />
         {groups.length > 0 && (
           <div className={styles.refs} style={{ marginLeft: labelOffset(graphRow) }}>
@@ -232,7 +234,7 @@ export function HistoryPage() {
     !focusedHash &&
     hasNextPage &&
     (commits?.length ?? 0) < MAX_COMMITS_SEARCHED;
-  const fileCount = countChangedFiles(status);
+  const fileCount = StatusHelper.countChangedFiles(status);
   // Work in progress sits on the checked out branch, so other branches' histories omit it.
   // A paused merge counts even with no files left, as it still has to be committed.
   const showUncommitted =

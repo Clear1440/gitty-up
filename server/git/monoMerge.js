@@ -1,3 +1,5 @@
+import { DateHelper } from '../utils/DateHelper.js';
+
 /**
  * Pure helpers that fold what git says about each member of a mono repo into what one
  * repository would say. A member is `{ id, name, prefix, path }`.
@@ -55,10 +57,11 @@ export function mergeStatuses(branch, results) {
   };
 }
 
+/** The item with the latest date, by `readDate`, or null when there are none. */
 function latest(items, readDate) {
   return items.reduce((newest, item) => {
     if (!newest) return item;
-    return Date.parse(readDate(item)) > Date.parse(readDate(newest)) ? item : newest;
+    return DateHelper.isNewer(readDate(item), readDate(newest)) ? item : newest;
   }, null);
 }
 
@@ -142,7 +145,7 @@ export function interleaveCommits(lists) {
       const commit = list[positions[index]];
       if (!commit) return;
       const best = next === -1 ? null : lists[next][positions[next]];
-      if (!best || Date.parse(commit.date) > Date.parse(best.date)) next = index;
+      if (!best || DateHelper.isNewer(commit.date, best.date)) next = index;
     });
     if (next === -1) return merged;
 

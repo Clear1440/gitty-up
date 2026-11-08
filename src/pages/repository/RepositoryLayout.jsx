@@ -1,5 +1,5 @@
-import { Button, Result, Spin } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
+import { Button, Result, Spin } from 'antd';
 import clsx from 'clsx';
 import { use, useMemo, useRef, useState } from 'react';
 import { Link, Outlet, useMatch, useParams, useSearchParams } from 'react-router';
@@ -46,8 +46,15 @@ function RepositoryWorkspace({ repository }) {
   );
 
   if (!status) {
-    if (error) return <Result status="error" title="Could not read this repository" subTitle={error.message} extra={<BackHome />} />;
-    return <Spin className="centered" size="large" />;
+    if (!error) return <Spin className="centered" size="large" />;
+    return (
+      <Result
+        status="error"
+        title="Could not read this repository"
+        subTitle={error.message}
+        extra={<BackHome />}
+      />
+    );
   }
 
   return (
@@ -88,7 +95,14 @@ export function RepositoryLayout() {
 
   if (isPending) return <Spin className="centered" size="large" />;
   if (error) {
-    return <Result status="warning" title="Repository unavailable" subTitle={error.message} extra={<BackHome />} />;
+    return (
+      <Result
+        status="warning"
+        title="Repository unavailable"
+        subTitle={error.message}
+        extra={<BackHome />}
+      />
+    );
   }
   if (repository.isMono && !repository.available) {
     return (

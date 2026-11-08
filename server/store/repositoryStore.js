@@ -1,13 +1,16 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { HashHelper } from '../utils/HashHelper.js';
 
 const FILE_NAME = 'repositories.json';
+/** Repository and group ids are this many characters long. */
+const ID_LENGTH = 12;
 
 /** The same folder must always map to the same id, whatever its casing on Windows. */
 function repositoryId(repositoryPath) {
   const key = process.platform === 'win32' ? repositoryPath.toLowerCase() : repositoryPath;
-  return createHash('sha256').update(key).digest('hex').slice(0, 12);
+  return HashHelper.sha256(key).slice(0, ID_LENGTH);
 }
 
 function createEntry(repositoryPath) {
@@ -19,7 +22,7 @@ function createEntry(repositoryPath) {
   };
 }
 
-const createGroup = (name) => ({ id: randomUUID().slice(0, 12), name });
+const createGroup = (name) => ({ id: randomUUID().slice(0, ID_LENGTH), name });
 
 const findGroupByName = (groups, name) =>
   groups.find((group) => group.name.toLowerCase() === name.toLowerCase());

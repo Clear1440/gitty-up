@@ -1,12 +1,15 @@
+import { TimeHelper } from '../../utils/TimeHelper.js';
+
+/** Compares names as people read them: case aside, and feature-10 after feature-9. */
 const compareNames = (a, b) =>
   a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
 
-const timeOf = (date) => Date.parse(date) || 0;
-const commitTime = (branch) => timeOf(branch.lastCommit.date);
+const commitTime = (branch) => TimeHelper.toTimestamp(branch.lastCommit.date);
+const checkoutTime = (branch) => TimeHelper.toTimestamp(branch.lastCheckout);
 
 /** The last time anything happened on a branch. The checked out one is in use right now. */
 const activityTime = (branch) =>
-  branch.isCurrent ? Infinity : Math.max(commitTime(branch), timeOf(branch.lastCheckout));
+  branch.isCurrent ? Infinity : Math.max(commitTime(branch), checkoutTime(branch));
 
 export const DEFAULT_BRANCH_SORT = 'name-asc';
 

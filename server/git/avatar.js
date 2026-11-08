@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { HashHelper } from '../utils/HashHelper.js';
 
 // Twice the size it is drawn at, to stay sharp on high density screens.
 const AVATAR_PIXELS = 40;
@@ -23,6 +23,5 @@ export function avatarUrl(email) {
       : `https://github.com/${encodeURIComponent(login)}.png?size=${AVATAR_PIXELS}`;
   }
 
-  const hash = createHash('sha256').update(address).digest('hex');
-  return `https://gravatar.com/avatar/${hash}?s=${AVATAR_PIXELS}&d=404`;
+  return `https://gravatar.com/avatar/${HashHelper.sha256(address)}?s=${AVATAR_PIXELS}&d=404`;
 }

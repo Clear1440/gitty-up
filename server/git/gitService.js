@@ -1,7 +1,10 @@
-import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { ApiError, badRequest, gitFailure } from '../errors.js';
+import { ApiError } from '../errors.js';
+import { FileSystemHelper } from '../utils/FileSystemHelper.js';
+import { HashHelper } from '../utils/HashHelper.js';
+import { TextHelper } from '../utils/TextHelper.js';
+import { GitRefHelper } from './GitRefHelper.js';
 import {
   BRANCH_FORMAT,
   CHECKOUT_FORMAT,
@@ -47,7 +50,7 @@ const diffFlags = (fullFile) => [
 /** A ref that begins with "-" would be read by git as an option. */
 function assertRef(ref) {
   if (typeof ref !== 'string' || !ref.trim() || ref.startsWith('-')) {
-    throw badRequest(`Invalid git ref: ${ref}`);
+    throw ApiError.badRequest(`Invalid git ref: ${ref}`);
   }
 }
 
@@ -56,16 +59,7 @@ async function assertValidBranchName(repoPath, name) {
   try {
     await runGit(repoPath, ['check-ref-format', '--branch', name]);
   } catch {
-    throw badRequest(`"${name}" is not a valid branch name.`);
-  }
-}
-
-async function exists(filePath) {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
+    throw ApiError.badRequest(`"${name}" is not a valid branch name.`);
   }
 }
 
@@ -75,7 +69,7 @@ export async function resolveWorkingTree(folderPath) {
     const topLevel = await runGit(folderPath, ['rev-parse', '--show-toplevel']);
     return path.resolve(topLevel.trim());
   } catch {
-    throw badRequest(`${folderPath} is not inside a git working tree.`);
+    throw ApiError.badRequest(`${folderPath} is not inside a git working tree.`);
   }
 }
 
@@ -86,17 +80,37 @@ export async function clone(url, parentPath, folderName) {
   return resolveWorkingTree(target);
 }
 
+/** The repository's .git folder, where git keeps the state of a merge or rebase. */
+async function getGitDir(repoPath) {
+  return (await runGit(repoPath, ['rev-parse', '--absolute-git-dir'])).trim();
+}
+
+/** Whether `ref` names something that exists, such as a branch or HEAD's commit. */
+async function refExists(repoPath, ref) {
+  const output = await runGit(repoPath, ['rev-parse', '--verify', '--quiet', ref], {
+    allowedExitCodes: [0, 1],
+  });
+  return Boolean(output.trim());
+}
+
+/** A commit's full message: its subject, then any body. */
+async function readMessage(repoPath, hash) {
+  return (await runGit(repoPath, ['log', '-1', '--format=%B', hash, '--'])).trim();
+}
+
 async function getOperation(repoPath) {
-  const gitDir = (await runGit(repoPath, ['rev-parse', '--absolute-git-dir'])).trim();
+  const gitDir = await getGitDir(repoPath);
   for (const { operation, marker } of OPERATION_MARKERS) {
-    if (await exists(path.join(gitDir, marker))) return operation;
+    if (await FileSystemHelper.exists(path.join(gitDir, marker))) return operation;
   }
   return null;
 }
 
 async function requireOperation(repoPath) {
   const operation = await getOperation(repoPath);
-  if (!operation) throw gitFailure('There is no merge, rebase or cherry-pick in progress.');
+  if (!operation) {
+    throw ApiError.gitFailure('There is no merge, rebase or cherry-pick in progress.');
+  }
   return operation;
 }
 
@@ -116,10 +130,7 @@ export async function getCurrentBranch(repoPath) {
 /** Whether a local branch of exactly this name exists. */
 export async function hasLocalBranch(repoPath, name) {
   assertRef(name);
-  const output = await runGit(repoPath, ['rev-parse', '--verify', '--quiet', `refs/heads/${name}`], {
-    allowedExitCodes: [0, 1],
-  });
-  return Boolean(output.trim());
+  return refExists(repoPath, GitRefHelper.toLocalRef(name));
 }
 
 async function getRemotes(repoPath) {
@@ -127,17 +138,13 @@ async function getRemotes(repoPath) {
 }
 
 async function getDefaultRemote(repoPath) {
-  const remotes = await getRemotes(repoPath);
-  return remotes.includes('origin') ? 'origin' : (remotes[0] ?? null);
+  return GitRefHelper.pickDefaultRemote(await getRemotes(repoPath));
 }
 
 /** The remotes a branch can be published to, and the one to offer first. */
 export async function getRemoteOptions(repoPath) {
-  const [remotes, defaultRemote] = await Promise.all([
-    getRemotes(repoPath),
-    getDefaultRemote(repoPath),
-  ]);
-  return { remotes, defaultRemote };
+  const remotes = await getRemotes(repoPath);
+  return { remotes, defaultRemote: GitRefHelper.pickDefaultRemote(remotes) };
 }
 
 async function getRemoteUrl(repoPath) {
@@ -186,13 +193,6 @@ export async function getBranches(repoPath) {
   };
 }
 
-async function hasCommits(repoPath) {
-  const output = await runGit(repoPath, ['rev-parse', '--verify', '--quiet', 'HEAD'], {
-    allowedExitCodes: [0, 1],
-  });
-  return Boolean(output.trim());
-}
-
 /**
  * Lists commits, newest first, always with children before their parents, which the
  * client's git tree relies on. `allBranches` walks every branch and tag instead of `ref`,
@@ -203,7 +203,8 @@ export async function getCommits(
   { ref = 'HEAD', allBranches = false, revisions, limit = 100, skip = 0 } = {},
 ) {
   assertRef(ref);
-  if (!(await hasCommits(repoPath))) return [];
+  // A repository with no commits yet has no history, and git log would fail on it.
+  if (!(await refExists(repoPath, 'HEAD'))) return [];
   const walk = allBranches ? ['--branches', '--remotes', '--tags', 'HEAD'] : [ref];
   const [output, remotes] = await Promise.all([
     runGit(
@@ -231,14 +232,17 @@ export async function getSummary(repoPath) {
     getBranches(repoPath),
     getRemoteUrl(repoPath),
   ]);
-  const changedFiles = [...status.staged, ...status.unstaged, ...status.conflicted];
+  // A file both staged and unstaged counts once.
+  const changedPaths = [...status.staged, ...status.unstaged, ...status.conflicted].map(
+    (file) => file.path,
+  );
   return {
     branch: status.branch,
     detached: status.detached,
     upstream: status.upstream,
     ahead: status.ahead,
     behind: status.behind,
-    changeCount: new Set(changedFiles.map((file) => file.path)).size,
+    changeCount: new Set(changedPaths).size,
     branchCount: branches.local.length,
     lastCommit: commits[0] ?? null,
     remoteUrl,
@@ -261,19 +265,21 @@ export async function getDiff(
       allowedExitCodes: [0, 1],
     });
   }
-  return runGitOnPaths(repoPath, ['diff', ...flags, ...(staged ? ['--cached'] : []), '--', filePath]);
+  const area = staged ? ['--cached'] : [];
+  return runGitOnPaths(repoPath, ['diff', ...flags, ...area, '--', filePath]);
 }
 
 /** A hash from a request. It goes to git as an argument, so it must be nothing else. */
 function assertCommitHash(hash) {
-  if (!/^[0-9a-f]{7,64}$/i.test(hash)) throw badRequest(`Invalid commit: ${hash}`);
+  if (!/^[0-9a-f]{7,64}$/i.test(hash)) throw ApiError.badRequest(`Invalid commit: ${hash}`);
 }
 
 /**
  * The arguments that make `git diff-tree` show one commit's own changes. A merge is
  * compared with its first parent, which shows what it brought into that branch.
  */
-const commitRange = ({ hash, parents }) => (parents.length > 0 ? [parents[0], hash] : ['--root', hash]);
+const commitRange = ({ hash, parents }) =>
+  parents.length > 0 ? [parents[0], hash] : ['--root', hash];
 
 async function readCommit(repoPath, hash) {
   assertCommitHash(hash);
@@ -284,7 +290,7 @@ async function readCommit(repoPath, hash) {
 export async function getCommitDetails(repoPath, hash) {
   const commit = await readCommit(repoPath, hash);
   const [message, files] = await Promise.all([
-    runGit(repoPath, ['log', '-1', '--format=%B', hash, '--']),
+    readMessage(repoPath, hash),
     runGit(repoPath, [
       'diff-tree',
       '-r',
@@ -295,7 +301,7 @@ export async function getCommitDetails(repoPath, hash) {
       ...commitRange(commit),
     ]),
   ]);
-  return { ...commit, message: message.trim(), files: parseNameStatus(files) };
+  return { ...commit, message, files: parseNameStatus(files) };
 }
 
 export async function getCommitDiff(repoPath, { hash, filePath, originalPath, fullFile = false }) {
@@ -316,7 +322,7 @@ export async function getCommitDiff(repoPath, { hash, filePath, originalPath, fu
 
 /** Identifies one exact diff, so a selection can't land on lines that have since moved. */
 export function hashDiff(diff) {
-  return createHash('sha256').update(diff).digest('hex');
+  return HashHelper.sha256(diff);
 }
 
 /**
@@ -326,12 +332,12 @@ export function hashDiff(diff) {
 export async function stageLines(repoPath, { lines, hash, ...diffOptions }) {
   const diff = await getDiff(repoPath, diffOptions);
   if (hashDiff(diff) !== hash) {
-    throw gitFailure('This file has changed. Check the updated diff, then try again.');
+    throw ApiError.gitFailure('This file has changed. Check the updated diff, then try again.');
   }
 
   const reverse = diffOptions.staged === true;
   const patch = buildPatch(diff, lines, { reverse });
-  if (!patch) throw badRequest('Select at least one changed line.');
+  if (!patch) throw ApiError.badRequest('Select at least one changed line.');
 
   await runGit(
     repoPath,
@@ -351,13 +357,8 @@ async function reportingConflicts(
   } catch (error) {
     const { conflicted } = await getStatus(repoPath);
     if (conflicted.length === 0) throw error;
-    const files = conflicted.length === 1 ? '1 file' : `${conflicted.length} files`;
-    throw new ApiError(
-      409,
-      'CONFLICTS',
-      `Stopped with conflicts in ${files}. ${nextStep}`,
-      error.details,
-    );
+    const files = TextHelper.countOf(conflicted.length, 'file');
+    throw ApiError.conflicts(`Stopped with conflicts in ${files}. ${nextStep}`, error.details);
   }
 }
 
@@ -367,7 +368,7 @@ export async function fetchAll(repoPath) {
 
 export async function pull(repoPath, { mode = 'merge' } = {}) {
   const flag = PULL_MODE_FLAGS[mode];
-  if (!flag) throw badRequest(`Unknown pull mode: ${mode}`);
+  if (!flag) throw ApiError.badRequest(`Unknown pull mode: ${mode}`);
   await reportingConflicts(repoPath, () =>
     runGit(repoPath, ['pull', flag], { timeout: NETWORK_TIMEOUT_MS }),
   );
@@ -376,10 +377,10 @@ export async function pull(repoPath, { mode = 'merge' } = {}) {
 async function resolvePushRemote(repoPath, requested) {
   const { remotes, defaultRemote } = await getRemoteOptions(repoPath);
   if (requested !== undefined && !remotes.includes(requested)) {
-    throw badRequest(`Unknown remote: ${requested}`);
+    throw ApiError.badRequest(`Unknown remote: ${requested}`);
   }
   const remote = requested ?? defaultRemote;
-  if (!remote) throw gitFailure('This repository has no remote to push to.');
+  if (!remote) throw ApiError.gitFailure('This repository has no remote to push to.');
   return remote;
 }
 
@@ -389,17 +390,19 @@ async function resolvePushRemote(repoPath, requested) {
  */
 export async function push(repoPath, { force = false, remote, upstreamName } = {}) {
   const { branch, upstream } = await getStatus(repoPath);
-  if (!branch) throw gitFailure('Check out a branch before pushing.');
+  if (!branch) throw ApiError.gitFailure('Check out a branch before pushing.');
   if (upstreamName !== undefined) await assertValidBranchName(repoPath, upstreamName);
 
   const args = ['push', ...(force ? ['--force-with-lease'] : [])];
   if (!upstream || upstreamName !== undefined) {
     const target = await resolvePushRemote(repoPath, remote);
-    args.push('--set-upstream', target, `HEAD:refs/heads/${upstreamName ?? branch}`);
+    args.push('--set-upstream', target, `HEAD:${GitRefHelper.toLocalRef(upstreamName ?? branch)}`);
   } else {
     // By default git refuses to push to an upstream named differently from the branch.
     const merge = await runGit(repoPath, ['config', `branch.${branch}.merge`]);
-    if (merge.trim() !== `refs/heads/${branch}`) args.unshift('-c', 'push.default=upstream');
+    if (merge.trim() !== GitRefHelper.toLocalRef(branch)) {
+      args.unshift('-c', 'push.default=upstream');
+    }
   }
   await runGit(repoPath, args, { timeout: NETWORK_TIMEOUT_MS });
 }
@@ -413,7 +416,7 @@ export async function checkout(repoPath, { branch, remote = false }) {
 
   const branches = await getBranches(repoPath);
   const target = branches.remote.find((candidate) => candidate.name === branch);
-  if (!target) throw badRequest(`Unknown remote branch: ${branch}`);
+  if (!target) throw ApiError.badRequest(`Unknown remote branch: ${branch}`);
 
   const hasLocalCopy = branches.local.some((candidate) => candidate.name === target.localName);
   await runGit(
@@ -442,7 +445,10 @@ export async function deleteBranch(repoPath, { name, force = false, deleteRemote
   try {
     await deleteRemoteBranch(repoPath, { name: upstream });
   } catch (error) {
-    throw gitFailure(`Deleted ${name}, but could not delete ${upstream}. ${error.message}`, error.details);
+    throw ApiError.gitFailure(
+      `Deleted ${name}, but could not delete ${upstream}. ${error.message}`,
+      error.details,
+    );
   }
 }
 
@@ -450,7 +456,7 @@ async function findLiveUpstream(repoPath, name) {
   const { local } = await getBranches(repoPath);
   const branch = local.find((candidate) => candidate.name === name);
   if (!branch?.upstream || branch.upstreamGone) {
-    throw badRequest(`${name} has no branch on a remote to delete.`);
+    throw ApiError.badRequest(`${name} has no branch on a remote to delete.`);
   }
   return branch.upstream;
 }
@@ -460,12 +466,11 @@ export async function deleteRemoteBranch(repoPath, { name }) {
   assertRef(name);
   const { remote: remoteBranches } = await getBranches(repoPath);
   const target = remoteBranches.find((candidate) => candidate.name === name);
-  if (!target?.remote) throw badRequest(`Unknown remote branch: ${name}`);
+  if (!target?.remote) throw ApiError.badRequest(`Unknown remote branch: ${name}`);
 
   // The full ref can't be mistaken for a tag of the same name, or for an option.
-  await runGit(repoPath, ['push', target.remote, '--delete', `refs/heads/${target.localName}`], {
-    timeout: NETWORK_TIMEOUT_MS,
-  });
+  const ref = GitRefHelper.toLocalRef(target.localName);
+  await runGit(repoPath, ['push', target.remote, '--delete', ref], { timeout: NETWORK_TIMEOUT_MS });
 }
 
 /**
@@ -498,10 +503,10 @@ async function assertNotBehind(repoPath, names) {
 
   const summary = stale
     .map(({ name, behind, upstream }) => {
-      return `${name} is ${behind} ${behind === 1 ? 'commit' : 'commits'} behind ${upstream}`;
+      return `${name} is ${TextHelper.countOf(behind, 'commit')} behind ${upstream}`;
     })
     .join(' and ');
-  throw new ApiError(409, 'BRANCH_BEHIND', `Merge cancelled: ${summary}. Pull first.`);
+  throw ApiError.branchBehind(`Merge cancelled: ${summary}. Pull first.`);
 }
 
 function runMerge(repoPath, { branch, noFastForward }) {
@@ -525,7 +530,7 @@ export async function merge(repoPath, { branch, noFastForward = false }) {
 export async function mergeInto(repoPath, { target, noFastForward = false }) {
   assertRef(target);
   const { branch: source } = await getStatus(repoPath);
-  if (!source) throw gitFailure('Check out a branch before merging it into another.');
+  if (!source) throw ApiError.gitFailure('Check out a branch before merging it into another.');
   await assertNotBehind(repoPath, [source, target]);
 
   await runGit(repoPath, ['switch', target]);
@@ -583,11 +588,11 @@ export async function commit(repoPath, { message, amend = false, stageAll = fals
   const trimmed = message?.trim();
   const { operation, conflicted } = await getStatus(repoPath);
   // Staging everything here would commit the conflict markers.
-  if (conflicted.length > 0) throw gitFailure('Resolve the conflicts before committing.');
+  if (conflicted.length > 0) throw ApiError.gitFailure('Resolve the conflicts before committing.');
 
   // A merge or cherry-pick already has a message, and an amend can keep the existing one.
   const canReuseMessage = operation === 'merge' || operation === 'cherry-pick' || amend;
-  if (!trimmed && !canReuseMessage) throw badRequest('A commit message is required.');
+  if (!trimmed && !canReuseMessage) throw ApiError.badRequest('A commit message is required.');
 
   if (stageAll) await stage(repoPath);
   await runGit(repoPath, [
@@ -599,7 +604,7 @@ export async function commit(repoPath, { message, amend = false, stageAll = fals
 
 async function assertNoOperation(repoPath, doing) {
   const { operation } = await getStatus(repoPath);
-  if (operation) throw gitFailure(`Finish the ${operation} before ${doing}.`);
+  if (operation) throw ApiError.gitFailure(`Finish the ${operation} before ${doing}.`);
 }
 
 /** Checks out a commit on its own, without a branch. */
@@ -619,7 +624,7 @@ export async function cherryPick(repoPath, { hash }) {
   const [, ...parents] = (await runGit(repoPath, ['rev-list', '--parents', '-n', '1', hash]))
     .trim()
     .split(' ');
-  if (parents.length > 1) throw badRequest('A merge commit cannot be cherry-picked.');
+  if (parents.length > 1) throw ApiError.badRequest('A merge commit cannot be cherry-picked.');
 
   try {
     await reportingConflicts(repoPath, () => runGit(repoPath, ['cherry-pick', hash]));
@@ -640,7 +645,7 @@ const RESET_MODES = new Set(['soft', 'hard']);
  */
 export async function resetToCommit(repoPath, { hash, mode }) {
   assertCommitHash(hash);
-  if (!RESET_MODES.has(mode)) throw badRequest(`Unknown reset mode: ${mode}`);
+  if (!RESET_MODES.has(mode)) throw ApiError.badRequest(`Unknown reset mode: ${mode}`);
   await assertNoOperation(repoPath, 'resetting');
   await runGit(repoPath, ['reset', `--${mode}`, hash]);
 }
@@ -652,17 +657,10 @@ export async function getLastCommit(repoPath) {
 
   const { hash, shortHash, subject, parents } = commit;
   const [message, remoteBranches] = await Promise.all([
-    runGit(repoPath, ['log', '-1', '--format=%B', hash, '--']),
+    readMessage(repoPath, hash),
     runGit(repoPath, ['branch', '--remotes', '--contains', hash]),
   ]);
-  return {
-    hash,
-    shortHash,
-    subject,
-    message: message.trim(),
-    parents,
-    pushed: Boolean(remoteBranches.trim()),
-  };
+  return { hash, shortHash, subject, message, parents, pushed: Boolean(remoteBranches.trim()) };
 }
 
 /**
@@ -674,13 +672,15 @@ export async function getLastCommit(repoPath) {
 export async function undoCommit(repoPath, { hash, allowPushed = false }) {
   assertCommitHash(hash);
   const { operation, conflicted } = await getStatus(repoPath);
-  if (operation) throw gitFailure(`Finish the ${operation} before undoing a commit.`);
-  if (conflicted.length > 0) throw gitFailure('Resolve the conflicts before undoing a commit.');
+  if (operation) throw ApiError.gitFailure(`Finish the ${operation} before undoing a commit.`);
+  if (conflicted.length > 0) {
+    throw ApiError.gitFailure('Resolve the conflicts before undoing a commit.');
+  }
 
   const last = await getLastCommit(repoPath);
-  if (last?.hash !== hash) throw gitFailure('The latest commit has changed. Try again.');
+  if (last?.hash !== hash) throw ApiError.gitFailure('The latest commit has changed. Try again.');
   if (last.pushed && !allowPushed) {
-    throw gitFailure('This commit is already on a remote.');
+    throw ApiError.gitFailure('This commit is already on a remote.');
   }
 
   // A first commit has no parent to go back to, so its branch stops existing instead.
@@ -694,7 +694,7 @@ export async function stashSave(repoPath, { message }) {
   // Git exits 0 on a clean tree, which would read as a stash that never happened.
   const { staged, unstaged, conflicted } = await getStatus(repoPath);
   if (staged.length + unstaged.length + conflicted.length === 0) {
-    throw gitFailure('There are no changes to stash.');
+    throw ApiError.gitFailure('There are no changes to stash.');
   }
 
   const trimmed = message?.trim();
@@ -710,7 +710,7 @@ const STASH_CONFLICT_STEP = 'Resolve them under Uncommitted changes. The stash h
 
 function assertStashRef(ref) {
   if (typeof ref !== 'string' || !/^stash@\{\d+\}$/.test(ref)) {
-    throw badRequest(`Invalid stash: ${ref}`);
+    throw ApiError.badRequest(`Invalid stash: ${ref}`);
   }
 }
 
@@ -757,7 +757,7 @@ async function nameCommit(repoPath, hash) {
     ['name-rev', '--name-only', '--no-undefined', '--refs=refs/heads/*', hash],
     { allowedExitCodes: [0, 128] },
   );
-  return name.trim() || hash.slice(0, 7);
+  return name.trim() || GitRefHelper.shortHash(hash);
 }
 
 /**
@@ -766,16 +766,17 @@ async function nameCommit(repoPath, hash) {
  * branch's own commits on top of it.
  */
 async function getConflictLabels(repoPath) {
-  const gitDir = (await runGit(repoPath, ['rev-parse', '--absolute-git-dir'])).trim();
+  const gitDir = await getGitDir(repoPath);
   const operation = await getOperation(repoPath);
 
   if (operation === 'rebase') {
-    const folder = (await exists(path.join(gitDir, 'rebase-merge'))) ? 'rebase-merge' : 'rebase-apply';
+    const isMergeBackend = await FileSystemHelper.exists(path.join(gitDir, 'rebase-merge'));
+    const folder = isMergeBackend ? 'rebase-merge' : 'rebase-apply';
     const onto = await readGitFile(gitDir, `${folder}/onto`);
     const headName = await readGitFile(gitDir, `${folder}/head-name`);
     return {
       ours: (await nameCommit(repoPath, onto)) ?? 'HEAD',
-      theirs: headName?.replace(/^refs\/heads\//, '') ?? 'Commit being rebased',
+      theirs: headName === null ? 'Commit being rebased' : GitRefHelper.fromLocalRef(headName),
     };
   }
 
@@ -797,7 +798,7 @@ async function getConflictLabels(repoPath) {
 async function requireConflicted(repoPath, filePath) {
   const { conflicted } = await getStatus(repoPath);
   if (!conflicted.some((file) => file.path === filePath)) {
-    throw badRequest(`${filePath} has no conflict to resolve.`);
+    throw ApiError.badRequest(`${filePath} has no conflict to resolve.`);
   }
 }
 
@@ -805,7 +806,7 @@ async function requireConflicted(repoPath, filePath) {
 function workingFilePath(repoPath, filePath) {
   const root = path.resolve(repoPath);
   const target = path.resolve(root, filePath);
-  if (!target.startsWith(root + path.sep)) throw badRequest(`Invalid path: ${filePath}`);
+  if (!target.startsWith(root + path.sep)) throw ApiError.badRequest(`Invalid path: ${filePath}`);
   return target;
 }
 
@@ -857,12 +858,12 @@ export async function resolveConflict(repoPath, { filePath, content, side, remov
     return;
   }
   if (side !== undefined) {
-    if (!RESOLVE_SIDES[side]) throw badRequest(`Unknown side: ${side}`);
+    if (!RESOLVE_SIDES[side]) throw ApiError.badRequest(`Unknown side: ${side}`);
     await runGitOnPaths(repoPath, ['checkout', RESOLVE_SIDES[side], '--', filePath]);
     await stage(repoPath, { paths: [filePath] });
     return;
   }
-  if (typeof content !== 'string') throw badRequest('"content" is required.');
+  if (typeof content !== 'string') throw ApiError.badRequest('"content" is required.');
   const target = workingFilePath(repoPath, filePath);
   await fs.mkdir(path.dirname(target), { recursive: true });
   await fs.writeFile(target, content);

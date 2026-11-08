@@ -1,5 +1,6 @@
 import { Modal } from 'antd';
 import { useState } from 'react';
+import { KeyboardHelper } from '../utils/KeyboardHelper.js';
 
 /**
  * A modal that runs one action. `onSubmit` resolves true when the dialog should
@@ -27,7 +28,7 @@ export function ActionDialog({
   };
 
   const handleKeyDown = (event) => {
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) submit();
+    if (KeyboardHelper.isSubmitShortcut(event)) submit();
   };
 
   return (

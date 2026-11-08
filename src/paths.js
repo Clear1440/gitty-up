@@ -1,29 +1,30 @@
+import { MonoIdHelper } from './utils/MonoIdHelper.js';
+
 /** The history page's `commit` value that opens the working tree instead of a commit. */
 export const UNCOMMITTED = 'uncommitted';
 
-const MONO_PREFIX = 'mono-';
+/** @deprecated Use MonoIdHelper.fromGroupId. */
+export const monoRepositoryId = MonoIdHelper.fromGroupId;
 
-/** A group opened as a mono repo goes by this id, in place of a repository's. */
-export const monoRepositoryId = (groupId) => `${MONO_PREFIX}${groupId}`;
+/** @deprecated Use MonoIdHelper.isMonoId. */
+export const isMonoRepositoryId = MonoIdHelper.isMonoId;
 
-export const isMonoRepositoryId = (id) => id.startsWith(MONO_PREFIX);
+/** @deprecated Use MonoIdHelper.toGroupId. */
+export const monoGroupId = MonoIdHelper.toGroupId;
 
-export const monoGroupId = (id) => id.slice(MONO_PREFIX.length);
+const historyWith = (repositoryId, params) =>
+  `/repositories/${repositoryId}/history?${new URLSearchParams(params)}`;
 
 /** Builds the app's URLs, so route shapes live in one place. */
 export const paths = {
   home: () => '/',
   repository: (repositoryId) => `/repositories/${repositoryId}`,
-  history: (repositoryId, ref) => {
-    const base = `/repositories/${repositoryId}/history`;
-    return ref ? `${base}?${new URLSearchParams({ ref })}` : base;
-  },
+  history: (repositoryId, ref) =>
+    ref ? historyWith(repositoryId, { ref }) : `/repositories/${repositoryId}/history`,
   /** Every branch's history, with this branch's latest commit scrolled to and marked. */
-  focusBranch: (repositoryId, branch) =>
-    `/repositories/${repositoryId}/history?${new URLSearchParams({ focus: branch })}`,
+  focusBranch: (repositoryId, branch) => historyWith(repositoryId, { focus: branch }),
   /** The three-way editor for one conflicted file. */
   resolveConflict: (repositoryId, path) =>
     `/repositories/${repositoryId}/resolve?${new URLSearchParams({ path })}`,
-  uncommitted: (repositoryId) =>
-    `/repositories/${repositoryId}/history?${new URLSearchParams({ commit: UNCOMMITTED })}`,
+  uncommitted: (repositoryId) => historyWith(repositoryId, { commit: UNCOMMITTED }),
 };

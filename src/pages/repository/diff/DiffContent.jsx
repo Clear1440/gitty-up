@@ -1,7 +1,7 @@
 import { Segmented } from 'antd';
 import clsx from 'clsx';
-import { useMemo, useState } from 'react';
-import { readStored, writeStored } from '../../../utils/storage.js';
+import { useMemo } from 'react';
+import { useStoredState } from '../../../utils/useStoredState.js';
 import styles from '../DiffView.module.css';
 import { HunkRow, LineRow, PairRow } from './DiffRows.jsx';
 import { buildRows } from './diffRows.js';
@@ -18,13 +18,8 @@ const VIEWS = [
 
 /** Which view diffs show in, remembered between sessions. */
 export function useDiffViewMode() {
-  const [view, setView] = useState(() => readStored(VIEW_STORAGE_KEY, 'hunk'));
-
-  const changeView = (nextView) => {
-    setView(nextView);
-    writeStored(VIEW_STORAGE_KEY, nextView);
-  };
-
+  const [view, changeView] = useStoredState(VIEW_STORAGE_KEY, 'hunk');
+  // Only the hunk view shows git's hunks. The others need the whole file to lay out.
   return { view, changeView, fullFile: view !== 'hunk' };
 }
 
