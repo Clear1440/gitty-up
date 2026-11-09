@@ -99,7 +99,13 @@ const GIT_ACTIONS = {
   stash: { run: gitApi.stash, title: 'Stash', success: () => 'Changes stashed' },
   stashApply: { run: gitApi.stashApply, title: 'Apply stash', success: () => 'Stash applied' },
   stashPop: { run: gitApi.stashPop, title: 'Pop stash', success: () => 'Stash restored' },
-  stashDrop: { run: gitApi.stashDrop, title: 'Drop stash', success: () => 'Stash dropped' },
+  stashDrop: { run: gitApi.stashDrop, title: 'Delete stash', success: () => 'Stash deleted' },
+  applyPatch: {
+    run: gitApi.applyPatch,
+    title: 'Apply patch',
+    success: ({ mode, name }) =>
+      mode === 'commit' ? `Committed ${name}` : `Applied ${name} to your working tree`,
+  },
   /** Runs on the repository being brought in, not on the mono repo that asked. */
   joinMono: {
     run: (_monoId, { repositoryId, branch }) => gitApi.checkout(repositoryId, { branch }),

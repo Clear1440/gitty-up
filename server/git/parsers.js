@@ -242,7 +242,7 @@ export function parseNameStatus(output) {
   return files;
 }
 
-export const STASH_FORMAT = ['%gs', '%cI'].join('%x00');
+export const STASH_FORMAT = ['%gs', '%cI', '%H', '%P'].join('%x00');
 
 const NAMED_STASH = /^On ([^:]+): (.*)$/;
 const UNNAMED_STASH = /^WIP on ([^:]+): \S+ (.*)$/;
@@ -264,7 +264,14 @@ export function parseStashes(output) {
     .split('\n')
     .filter(Boolean)
     .map((line, index) => {
-      const [subject, date] = line.split('\0');
-      return { ref: `stash@{${index}}`, ...parseStashSubject(subject), date };
+      const [subject, date, hash = null, parents = ''] = line.split('\0');
+      return {
+        ref: `stash@{${index}}`,
+        ...parseStashSubject(subject),
+        date,
+        hash,
+        // The commit it was made on, then its index and, if it has any, untracked files.
+        parents: parents.split(' ').filter(Boolean),
+      };
     });
 }

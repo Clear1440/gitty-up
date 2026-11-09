@@ -1,3 +1,4 @@
+import { ApplyPatchDialog } from './ApplyPatchDialog.jsx';
 import { CreateBranchDialog } from './CreateBranchDialog.jsx';
 import { DeleteBranchDialog } from './DeleteBranchDialog.jsx';
 import { DeleteRemoteBranchDialog } from './DeleteRemoteBranchDialog.jsx';
@@ -8,6 +9,7 @@ import { PublishBranchDialog } from './PublishBranchDialog.jsx';
 import { StashDialog } from './StashDialog.jsx';
 
 const DIALOGS = {
+  applyPatch: ApplyPatchDialog,
   createBranch: CreateBranchDialog,
   deleteBranch: DeleteBranchDialog,
   deleteRemoteBranch: DeleteRemoteBranchDialog,

@@ -14,6 +14,8 @@ export const queryKeys = {
   commit: (id, hash) => [ROOT, 'detail', id, 'commit', hash],
   commitDiff: (id, hash, file) => [ROOT, 'detail', id, 'commit', hash, 'diff', file],
   stashes: (id) => [ROOT, 'detail', id, 'stashes'],
+  stash: (id, hash) => [ROOT, 'detail', id, 'stash', hash],
+  stashDiff: (id, hash, file) => [ROOT, 'detail', id, 'stash', hash, 'diff', file],
   /** Inside `repository`, so a checkout rereads the branch's own .gitty file. */
   scripts: (id) => [ROOT, 'detail', id, 'scripts'],
   diff: (id, file) => [ROOT, 'detail', id, 'diff', file],

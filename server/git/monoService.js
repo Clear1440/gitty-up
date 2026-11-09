@@ -465,5 +465,22 @@ export async function stashPop() {
 }
 
 export async function stashDrop() {
-  throw ApiError.badRequest('Open the repository on its own to drop a stash.');
+  throw ApiError.badRequest('Open the repository on its own to delete a stash.');
+}
+
+export async function getStashDetails() {
+  throw ApiError.badRequest('Open the repository on its own to see a stash.');
+}
+
+export async function getStashDiff() {
+  throw ApiError.badRequest('Open the repository on its own to see a stash.');
+}
+
+/** A patch spans one repository's files, so it belongs to that repository's own tab. */
+export async function createPatch() {
+  throw ApiError.badRequest('Open the repository on its own to create a patch.');
+}
+
+export async function applyPatch() {
+  throw ApiError.badRequest('Open the repository on its own to apply a patch.');
 }

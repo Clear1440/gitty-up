@@ -2,6 +2,7 @@ import { App } from 'antd';
 import { CommitHelper } from '../CommitHelper.js';
 import { useRepositoryContext } from '../RepositoryContext.js';
 import { StatusHelper } from '../StatusHelper.js';
+import { usePatchActions } from '../usePatchActions.js';
 import { groupRefs } from './groupRefs.js';
 
 /**
@@ -12,6 +13,7 @@ import { groupRefs } from './groupRefs.js';
 export function useCommitMenu(commit) {
   const { repository, status, run, openDialog, isBusy } = useRepositoryContext();
   const { modal } = App.useApp();
+  const { savePatch } = usePatchActions();
 
   // Each of a mono repo's commits belongs to one member, so these act on that repository.
   if (repository.isMono) return { items: null, checkout: () => {} };
@@ -79,6 +81,11 @@ export function useCommitMenu(commit) {
       key: 'new-branch',
       label: 'New branch from here…',
       onClick: () => openDialog('createBranch', { commit: { hash, shortHash, subject } }),
+    },
+    {
+      key: 'patch',
+      label: 'Save as patch…',
+      onClick: () => savePatch({ source: 'commit', hash }),
     },
   ];
 

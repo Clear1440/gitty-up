@@ -1428,6 +1428,106 @@ describe('managing individual stashes', () => {
   });
 });
 
+describe('previewing a stash', () => {
+  it('lists tracked and untracked files and shows each one’s diff', async () => {
+    await fs.writeFile(path.join(repo.work, 'readme.txt'), 'two\n');
+    await fs.writeFile(path.join(repo.work, 'new.txt'), 'fresh\n');
+    await request('POST', `${repo.api}/stash`, { message: 'mixed' });
+    const { body: stashes } = await request('GET', `${repo.api}/stashes`);
+    const { hash, parents } = stashes[0];
+    expect(parents[0]).toBe(git(repo.work, 'rev-parse', 'HEAD'));
+
+    const { body: details } = await request('GET', `${repo.api}/stashes/${hash}`);
+    expect(details.files.map(({ path: file, status }) => ({ file, status }))).toEqual([
+      { file: 'readme.txt', status: 'modified' },
+      { file: 'new.txt', status: 'untracked' },
+    ]);
+
+    const { body: tracked } = await request(
+      'GET',
+      `${repo.api}/stashes/${hash}/diff?path=readme.txt`,
+    );
+    expect(tracked.diff).toContain('+two');
+    const { body: untracked } = await request(
+      'GET',
+      `${repo.api}/stashes/${hash}/diff?path=new.txt&untracked=true`,
+    );
+    expect(untracked.diff).toContain('+fresh');
+  });
+
+  it('refuses a hash that is not one', async () => {
+    const { status } = await request('GET', `${repo.api}/stashes/--all`);
+    expect(status).toBe(400);
+  });
+});
+
+describe('patches', () => {
+  it('turns a commit into a patch that git am can replay elsewhere', async () => {
+    await writeAndCommit(repo.work, 'feature.txt', 'feature\n', 'Add feature');
+    const hash = git(repo.work, 'rev-parse', 'HEAD');
+    const { body } = await request('GET', `${repo.api}/patch?source=commit&hash=${hash}`);
+    expect(body.fileName).toMatch(/add-feature\.patch$/);
+    expect(body.patch).toContain('Subject: [PATCH] Add feature');
+
+    git(repo.work, 'reset', '--hard', 'HEAD~1');
+    const { status } = await request('POST', `${repo.api}/patch/apply`, {
+      patch: body.patch,
+      mode: 'commit',
+    });
+    expect(status).toBe(204);
+    expect(git(repo.work, 'log', '-1', '--format=%s')).toBe('Add feature');
+  });
+
+  it('makes a patch of every uncommitted change without touching the index', async () => {
+    await fs.writeFile(path.join(repo.work, 'readme.txt'), 'two\n');
+    await fs.writeFile(path.join(repo.work, 'untracked.txt'), 'new\n');
+
+    const { body } = await request('GET', `${repo.api}/patch?source=uncommitted`);
+    expect(body.patch).toContain('+two');
+    expect(body.patch).toContain('+new');
+    expect(git(repo.work, 'diff', '--cached', '--name-only')).toBe('');
+
+    git(repo.work, 'checkout', '--', 'readme.txt');
+    await fs.rm(path.join(repo.work, 'untracked.txt'));
+    await request('POST', `${repo.api}/patch/apply`, { patch: body.patch });
+    expect(await fs.readFile(path.join(repo.work, 'readme.txt'), 'utf8')).toBe('two\n');
+    expect(await fs.readFile(path.join(repo.work, 'untracked.txt'), 'utf8')).toBe('new\n');
+  });
+
+  it('makes a patch from a stash', async () => {
+    await fs.writeFile(path.join(repo.work, 'readme.txt'), 'stashed\n');
+    await request('POST', `${repo.api}/stash`, { message: 'keep' });
+
+    const { body } = await request('GET', `${repo.api}/patch?source=stash&ref=stash@{0}`);
+    expect(body.fileName).toBe('stash-0.patch');
+    expect(body.patch).toContain('+stashed');
+  });
+
+  it('refuses to apply commits from a patch without commit details', async () => {
+    const { status, body } = await request('POST', `${repo.api}/patch/apply`, {
+      patch: 'diff --git a/x b/x\n',
+      mode: 'commit',
+    });
+    expect(status).toBe(400);
+    expect(body.error.message).toContain('no commit details');
+  });
+
+  it('reports a clean failure for a patch that does not fit', async () => {
+    const patch = [
+      'diff --git a/readme.txt b/readme.txt',
+      '--- a/readme.txt',
+      '+++ b/readme.txt',
+      '@@ -1 +1 @@',
+      '-something else',
+      '+changed',
+      '',
+    ].join('\n');
+    const { status } = await request('POST', `${repo.api}/patch/apply`, { patch });
+    expect(status).toBeGreaterThanOrEqual(400);
+    expect(await fs.readFile(path.join(repo.work, 'readme.txt'), 'utf8')).toBe('one\n');
+  });
+});
+
 describe('history across branches', () => {
   it('covers every branch without a ref, and one branch with it', async () => {
     git(repo.work, 'switch', '-c', 'topic');

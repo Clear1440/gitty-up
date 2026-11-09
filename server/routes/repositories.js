@@ -164,6 +164,28 @@ function createGitRouter() {
     response.json(await request.service.getStashes(request.target));
   });
 
+  router.get('/stashes/:hash', async (request, response) => {
+    response.json(await request.service.getStashDetails(request.target, request.params.hash));
+  });
+
+  router.get('/stashes/:hash/diff', async (request, response) => {
+    const { path: filePath, originalPath, untracked, fullFile } = request.query;
+    const diff = await request.service.getStashDiff(request.target, {
+      hash: request.params.hash,
+      filePath: ValidationHelper.requireString(filePath, 'path'),
+      originalPath: originalPath || undefined,
+      untracked: untracked === 'true',
+      fullFile: fullFile === 'true',
+    });
+    response.json({ diff });
+  });
+
+  // A GET, as making a patch only reads the repository.
+  router.get('/patch', async (request, response) => {
+    const { source, hash, ref } = request.query;
+    response.json(await request.service.createPatch(request.target, { source, hash, ref }));
+  });
+
   router.get('/diff', async (request, response) => {
     const { path: filePath, staged, untracked, fullFile } = request.query;
     const diff = await request.service.getDiff(request.target, {
@@ -292,6 +314,14 @@ function createGitRouter() {
   action(router, '/stash/apply', (service, target, { ref }) => service.stashApply(target, { ref }));
   action(router, '/stash/pop', (service, target, { ref }) => service.stashPop(target, { ref }));
   action(router, '/stash/drop', (service, target, { ref }) => service.stashDrop(target, { ref }));
+
+  // Patches
+  action(router, '/patch/apply', (service, target, { patch, mode }) =>
+    service.applyPatch(target, {
+      patch: ValidationHelper.requireString(patch, 'patch'),
+      mode: mode === 'commit' ? 'commit' : 'changes',
+    }),
+  );
 
   return router;
 }

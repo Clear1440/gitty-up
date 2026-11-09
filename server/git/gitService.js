@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { ApiError } from '../errors.js';
 import { FileSystemHelper } from '../utils/FileSystemHelper.js';
@@ -736,6 +737,187 @@ export async function stashPop(repoPath, { ref = 'stash@{0}' } = {}) {
 export async function stashDrop(repoPath, { ref }) {
   assertStashRef(ref);
   await runGit(repoPath, ['stash', 'drop', ref]);
+}
+
+/**
+ * A stash commit's parents: the commit it was made on, its index, and with
+ * --include-untracked a third, parentless commit holding the untracked files.
+ */
+async function readStashParents(repoPath, hash) {
+  assertCommitHash(hash);
+  const output = await runGit(repoPath, ['log', '-1', '--format=%P', hash, '--']);
+  const [base, , untracked] = output.trim().split(' ');
+  if (!base) throw ApiError.badRequest(`${hash} is not a stash.`);
+  return { base, untracked };
+}
+
+/** What a stash holds: its tracked changes, then any untracked files it took. */
+export async function getStashDetails(repoPath, hash) {
+  const { base, untracked } = await readStashParents(repoPath, hash);
+  const nameStatus = (args) =>
+    runGit(repoPath, ['diff-tree', '-r', '--no-commit-id', '--name-status', '-z', ...args]);
+  const [tracked, added] = await Promise.all([
+    nameStatus(['-M', base, hash]),
+    untracked ? nameStatus(['--root', untracked]) : '',
+  ]);
+  return {
+    hash,
+    files: [
+      ...parseNameStatus(tracked),
+      ...parseNameStatus(added).map((file) => ({ ...file, status: 'untracked', untracked: true })),
+    ],
+  };
+}
+
+export async function getStashDiff(
+  repoPath,
+  { hash, filePath, originalPath, untracked = false, fullFile = false },
+) {
+  const parents = await readStashParents(repoPath, hash);
+  if (untracked && !parents.untracked) {
+    throw ApiError.badRequest('This stash has no untracked files.');
+  }
+  const range = untracked ? ['--root', parents.untracked] : ['-M', parents.base, hash];
+  return runGitOnPaths(repoPath, [
+    'diff-tree',
+    '-p',
+    '--no-commit-id',
+    ...diffFlags(fullFile),
+    ...range,
+    '--',
+    ...(originalPath ? [originalPath] : []),
+    filePath,
+  ]);
+}
+
+// Patches
+
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+
+/** A file name made from free text, such as a commit subject. */
+function patchFileName(...parts) {
+  const slug = parts
+    .filter(Boolean)
+    .join('-')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+  return `${slug || 'changes'}.patch`;
+}
+
+/**
+ * Every uncommitted change, untracked files included, as one diff against HEAD.
+ * Staging everything into a throwaway copy of the index leaves the real one alone.
+ */
+async function diffUncommitted(repoPath) {
+  const [indexPath, hasHead] = await Promise.all([
+    runGit(repoPath, ['rev-parse', '--path-format=absolute', '--git-path', 'index']),
+    refExists(repoPath, 'HEAD'),
+  ]);
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gitty-patch-'));
+  const tempIndex = path.join(tempDir, 'index');
+  try {
+    await fs.copyFile(indexPath.trim(), tempIndex).catch(() => {});
+    const env = { GIT_INDEX_FILE: tempIndex };
+    await runGit(repoPath, ['add', '--all'], { env });
+    return await runGit(
+      repoPath,
+      ['diff', '--cached', '--binary', ...diffFlags(false), hasHead ? 'HEAD' : EMPTY_TREE],
+      { env },
+    );
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * A patch file's name and text. `source` is "commit" (with `hash`), "stash" (with
+ * `ref`) or "uncommitted". A commit's patch keeps its author and message, for git am.
+ */
+export async function createPatch(repoPath, { source, hash, ref }) {
+  let patch;
+  let fileName;
+  if (source === 'commit') {
+    const commit = await readCommit(repoPath, hash);
+    patch = await runGit(repoPath, [
+      'format-patch',
+      '-1',
+      '--stdout',
+      '--binary',
+      '--no-color',
+      ...(commit.parents.length === 0 ? ['--root'] : []),
+      commit.hash,
+    ]);
+    fileName = patchFileName(commit.shortHash, commit.subject);
+  } else if (source === 'stash') {
+    assertStashRef(ref);
+    const show = (extra) =>
+      runGit(repoPath, ['stash', 'show', '-p', '--binary', ...diffFlags(false), ...extra, ref]);
+    // Older git cannot show a stash's untracked files.
+    patch = await show(['--include-untracked']).catch(() => show([]));
+    fileName = patchFileName('stash', ref.match(/\d+/)[0]);
+  } else if (source === 'uncommitted') {
+    patch = await diffUncommitted(repoPath);
+    fileName = patchFileName('uncommitted', await getCurrentBranch(repoPath));
+  } else {
+    throw ApiError.badRequest(`Unknown patch source: ${source}`);
+  }
+  if (!patch.trim()) throw ApiError.gitFailure('There are no changes to put in a patch.');
+  return { fileName, patch };
+}
+
+/** Whether a patch came from git format-patch, which git am can turn back into commits. */
+export function isMailboxPatch(patch) {
+  return /^From [0-9a-f]{40} /m.test(patch);
+}
+
+/**
+ * Applies a patch. "commit" mode makes commits from a format-patch file with git am,
+ * and gives up cleanly if it can't. "changes" mode only changes the working tree,
+ * falling back to a three-way merge that leaves conflicts to resolve.
+ */
+export async function applyPatch(repoPath, { patch, mode = 'changes' }) {
+  if (typeof patch !== 'string' || !patch.trim()) {
+    throw ApiError.badRequest('The patch is empty.');
+  }
+  // Windows editors may have saved it with CRLF, which git apply would reject.
+  const input = patch.includes('\r\n') && !patch.includes('GIT binary patch')
+    ? patch.replace(/\r\n/g, '\n')
+    : patch;
+
+  if (mode === 'commit') {
+    if (!isMailboxPatch(input)) {
+      throw ApiError.badRequest(
+        'This patch has no commit details. Apply it as changes, then commit them.',
+      );
+    }
+    try {
+      await runGit(repoPath, ['am', '--3way', '--keep-cr'], { input });
+    } catch (error) {
+      // Left paused, git am would look like a rebase that the rebase buttons can't end.
+      await runGit(repoPath, ['am', '--abort']).catch(() => {});
+      throw ApiError.gitFailure(
+        'The patch does not apply here as commits. Nothing was changed. Try applying it as changes instead.',
+        error.details ?? error.message,
+      );
+    }
+    return;
+  }
+
+  const apply = (extra) =>
+    runGit(repoPath, ['apply', '--whitespace=nowarn', ...extra, '-'], { input });
+  try {
+    await apply(['--check']);
+  } catch {
+    await reportingConflicts(
+      repoPath,
+      () => apply(['--3way']),
+      'Resolve them under Uncommitted changes.',
+    );
+    return;
+  }
+  await apply([]);
 }
 
 /** Which version of a conflicted file each index stage holds. */

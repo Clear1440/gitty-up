@@ -14,6 +14,11 @@ export const gitApi = {
   getLastCommit: (id) => http.get(route(id, '/last-commit')),
   getPullRequests: (id) => http.get(route(id, '/pull-requests')),
   getStashes: (id) => http.get(route(id, '/stashes')),
+  getStashDetails: (id, hash) => http.get(route(id, `/stashes/${hash}`)),
+  getStashDiff: (id, hash, { path, originalPath, untracked, fullFile }) =>
+    http.get(route(id, `/stashes/${hash}/diff`), { path, originalPath, untracked, fullFile }),
+  /** `source` is "commit" with `hash`, "stash" with `ref`, or "uncommitted". */
+  createPatch: (id, { source, hash, ref }) => http.get(route(id, '/patch'), { source, hash, ref }),
   getScripts: (id) => http.get(route(id, '/scripts')),
   runScript: (id, { name }) => http.post(route(id, '/scripts/run'), { name }),
   getDiff: (id, { path, staged, untracked, fullFile }) =>
@@ -61,4 +66,5 @@ export const gitApi = {
   stashApply: (id, { ref }) => http.post(route(id, '/stash/apply'), { ref }),
   stashPop: (id, { ref } = {}) => http.post(route(id, '/stash/pop'), { ref }),
   stashDrop: (id, { ref }) => http.post(route(id, '/stash/drop'), { ref }),
+  applyPatch: (id, { patch, mode }) => http.post(route(id, '/patch/apply'), { patch, mode }),
 };
