@@ -1,4 +1,6 @@
 import {
+  AppstoreOutlined,
+  BarsOutlined,
   CloseOutlined,
   ExportOutlined,
   FolderAddOutlined,
@@ -7,8 +9,9 @@ import {
   SearchOutlined,
   SyncOutlined,
 } from '@ant-design/icons';
-import { App, Button, Input, Result, Spin, Tooltip } from 'antd';
-import { useState } from 'react';
+import { App, Button, Input, Result, Segmented, Spin, Tooltip } from 'antd';
+import clsx from 'clsx';
+import { useMemo, useState } from 'react';
 import {
   useCreateGroup,
   useFetchAllRepositories,
@@ -25,11 +28,33 @@ import styles from './HomePage.module.css';
 import { LinkRepositoryDialog } from './LinkRepositoryDialog.jsx';
 import { RepositoryRow } from './RepositoryRow.jsx';
 import { RepositorySection } from './RepositorySection.jsx';
-import { buildSections } from './sections.js';
+import { buildSections, UNGROUPED, ungroupedSection } from './sections.js';
+import { RepositoryListContext } from './useRepositoryList.js';
 import { RepositorySelectionContext, useRepositorySelection } from './useRepositorySelection.js';
 
 const COLLAPSED_STORAGE_KEY = 'gitty-up.collapsedGroups';
+const VIEW_STORAGE_KEY = 'gitty-up.repositoryListView';
+const VIEWS = ['condensed', 'detailed'];
 const NO_GROUPS = [];
+
+const VIEW_OPTIONS = [
+  {
+    value: 'condensed',
+    icon: (
+      <Tooltip title="Condensed">
+        <BarsOutlined aria-label="Condensed" />
+      </Tooltip>
+    ),
+  },
+  {
+    value: 'detailed',
+    icon: (
+      <Tooltip title="Detailed">
+        <AppstoreOutlined aria-label="Detailed" />
+      </Tooltip>
+    ),
+  },
+];
 
 /** Which sections are folded away, remembered between sessions. */
 function useCollapsedSections() {
@@ -114,19 +139,33 @@ export function HomePage() {
   const { collapsed, toggle } = useCollapsedSections();
   const [search, setSearch] = useState('');
   const [dialog, setDialog] = useState(null);
+  const [view, setView] = useStoredState(VIEW_STORAGE_KEY, 'condensed', {
+    isValid: (value) => VIEWS.includes(value),
+  });
+  const [drag, setDrag] = useState(null);
+  const condensed = view === 'condensed';
+  const listContext = useMemo(() => ({ condensed, drag, setDrag }), [condensed, drag]);
 
   const closeDialog = () => setDialog(null);
   const isSearching = Boolean(search.trim());
   const hasContent = repositories?.length > 0 || groups.length > 0;
   const sections = repositories ? buildSections(repositories, groups, search) : [];
+  // While a repository is dragged, Ungrouped shows even when empty, to drop it there.
+  const isDraggingRepository = drag?.kind === 'repository';
+  if (isDraggingRepository && !sections.some((section) => section.id === UNGROUPED)) {
+    sections.push(ungroupedSection());
+  }
   // A match inside a collapsed section must still be seen.
   const isCollapsed = (section) => !isSearching && collapsed.includes(section.id);
-  // Rows that can be picked to open together: those on show that have a folder.
-  const selectableIds = sections
-    .filter((section) => groups.length === 0 || !isCollapsed(section))
-    .flatMap((section) => section.repositories)
-    .filter((repository) => repository.path !== null)
-    .map((repository) => repository.id);
+  // Rows that can be picked to open together: those on show that have a folder. A
+  // repository in many groups shows more than once, but is picked only once.
+  const selectableIds = ListHelper.unique(
+    sections
+      .filter((section) => groups.length === 0 || !isCollapsed(section))
+      .flatMap((section) => section.repositories)
+      .filter((repository) => repository.path !== null)
+      .map((repository) => repository.id),
+  );
   const selection = useRepositorySelection(selectableIds);
 
   const linkButton = (
@@ -165,7 +204,7 @@ export function HomePage() {
     // With no groups there is nothing to tell apart, so the list needs no heading.
     if (groups.length === 0) {
       return (
-        <div className={styles.list}>
+        <div className={clsx(styles.list, condensed && styles.condensedList)}>
           {sections[0].repositories.map((repository) => (
             <RepositoryRow key={repository.id} repository={repository} groups={groups} />
           ))}
@@ -173,7 +212,7 @@ export function HomePage() {
       );
     }
     return (
-      <div className={styles.sections}>
+      <div className={clsx(styles.sections, condensed && styles.condensedSections)}>
         {sections.map((section) => (
           <RepositorySection
             key={section.id}
@@ -209,6 +248,13 @@ export function HomePage() {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
+            <Segmented
+              className={styles.viewToggle}
+              aria-label="List layout"
+              options={VIEW_OPTIONS}
+              value={view}
+              onChange={setView}
+            />
             <Button icon={<FolderOutlined />} onClick={() => setDialog('group')}>
               New group
             </Button>
@@ -218,7 +264,9 @@ export function HomePage() {
         )}
       </header>
       <SelectionBar selection={selection} />
-      <RepositorySelectionContext value={selection}>{renderContent()}</RepositorySelectionContext>
+      <RepositoryListContext value={listContext}>
+        <RepositorySelectionContext value={selection}>{renderContent()}</RepositorySelectionContext>
+      </RepositoryListContext>
       {dialog === 'link' && <LinkRepositoryDialog onClose={closeDialog} />}
       {dialog === 'bulk' && <BulkImportDialog onClose={closeDialog} />}
       {dialog === 'group' && (

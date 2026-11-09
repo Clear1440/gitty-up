@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { buildSections, matchesSearch, UNGROUPED } from './sections.js';
 
-const repository = (name, branch, groupId) => ({
+const repository = (name, branch, ...groupIds) => ({
   id: name,
   name,
-  groupId,
+  groupIds,
   path: `/code/needle/${name}`,
   remoteUrl: 'https://example.com/needle.git',
   summary: branch ? { branch, lastCommit: { subject: 'needle' } } : null,
@@ -54,6 +54,12 @@ describe('buildSections', () => {
   it('leaves out the ungrouped section when everything has a group', () => {
     const sections = buildSections([repositories[0]], groups);
     expect(sections.map(({ id }) => id)).toEqual(['g1', 'g2']);
+  });
+
+  it('shows a repository in every group it is in', () => {
+    const both = repository('both', 'main', 'g1', 'g2');
+    const sections = buildSections([both], groups);
+    expect(sections.map(({ repositories }) => repositories.length)).toEqual([1, 1]);
   });
 
   it('keeps only sections with a match while searching', () => {

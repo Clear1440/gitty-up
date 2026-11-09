@@ -126,8 +126,90 @@
   gap: var(--space-2);
 }
 
+/* A color label shows as a bar down the left edge. */
+.colored::before {
+  content: '';
+  position: absolute;
+  top: var(--space-2);
+  bottom: var(--space-2);
+  left: 0;
+  width: 3px;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--repository-color);
+}
+
+.dragging {
+  opacity: 0.4;
+}
+
+/* Condensed: one short line per repository. */
+.condensed {
+  border-radius: var(--radius-md);
+}
+
+.condensed .body {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) minmax(72px, auto);
+  gap: var(--space-3);
+  padding-top: var(--space-1);
+  padding-right: calc(var(--space-5) + var(--space-3));
+  padding-bottom: var(--space-1);
+}
+
+.condensed.colored::before {
+  top: var(--space-1);
+  bottom: var(--space-1);
+}
+
+.condensed .title {
+  font-size: var(--font-size-sm);
+}
+
+.condensed .meta {
+  font-size: var(--font-size-xs);
+}
+
+.condensed .lastCommit {
+  justify-content: flex-end;
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.condensed .missing {
+  font-size: var(--font-size-xs);
+}
+
+.condensed .stubActions :global(.ant-btn) {
+  height: 22px;
+  font-size: var(--font-size-xs);
+}
+
+.condensed .menu {
+  right: var(--space-1);
+}
+
+/* Menu icons: a color sample, or a blank the width of a tick to line labels up. */
+.swatch {
+  display: inline-block;
+  flex: none;
+  margin-inline-end: var(--space-2);
+  width: 12px;
+  height: 12px;
+  border: 1px dashed var(--color-text-muted);
+  border-radius: 50%;
+}
+
+.swatch[style] {
+  border: 0;
+}
+
+.blank {
+  display: inline-block;
+  width: 12px;
+}
+
 @media (max-width: 720px) {
-  .body {
+  .body,
+  .condensed .body {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--space-1);
   }
@@ -135,5 +217,9 @@
   .missing,
   .stubActions {
     grid-column: auto;
+  }
+
+  .condensed .lastCommit {
+    justify-content: flex-start;
   }
 }

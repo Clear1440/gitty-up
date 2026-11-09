@@ -1,4 +1,5 @@
 import { ApiError } from '../errors.js';
+import { groupIdsOf } from '../store/repositoryStore.js';
 import { AsyncHelper } from '../utils/AsyncHelper.js';
 import { TextHelper } from '../utils/TextHelper.js';
 import { GitRefHelper } from './GitRefHelper.js';
@@ -37,7 +38,7 @@ const namesOf = (members) => TextHelper.joinWithAnd(members.map(({ name }) => na
 export async function resolveMono(store, group) {
   if (!group.monoBranch) return null;
 
-  const linked = (await store.list()).filter(({ groupId }) => groupId === group.id);
+  const linked = (await store.list()).filter((entry) => groupIdsOf(entry).includes(group.id));
   const repositories = await readEach(assignPrefixes(linked), async (repository) => {
     const missing = { ...repository, branch: null, missing: true };
     // A stub has no folder, and git would otherwise run in the server's own.

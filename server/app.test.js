@@ -133,16 +133,78 @@ describe('linked repositories', () => {
 
 describe('repository groups', () => {
   const list = async () => (await request('GET', '/api/repositories')).body;
-  const groupIdOf = async (id) => (await list()).find((entry) => entry.id === id).groupId;
+  const entryOf = async (id) => (await list()).find((entry) => entry.id === id);
+  const groupIdsOf = async (id) => (await entryOf(id)).groupIds;
+  const createGroup = async (name) =>
+    (await request('POST', '/api/repositories/groups', { name })).body;
 
   it('moves a repository into a group and back out', async () => {
-    const { body: group } = await request('POST', '/api/repositories/groups', { name: 'Work' });
+    const group = await createGroup('Work');
 
     await request('PUT', `${repo.api}/group`, { groupId: group.id });
-    expect(await groupIdOf(repo.id)).toBe(group.id);
+    expect(await groupIdsOf(repo.id)).toEqual([group.id]);
 
     await request('PUT', `${repo.api}/group`, { groupId: null });
-    expect(await groupIdOf(repo.id)).toBeUndefined();
+    expect(await groupIdsOf(repo.id)).toBeUndefined();
+  });
+
+  it('puts a repository in many groups at once', async () => {
+    const first = await createGroup(`Many A ${repositoryCount}`);
+    const second = await createGroup(`Many B ${repositoryCount}`);
+
+    const { status } = await request('PUT', `${repo.api}/groups`, {
+      groupIds: [first.id, second.id, first.id],
+    });
+    expect(status).toBe(204);
+    expect(await groupIdsOf(repo.id)).toEqual([first.id, second.id]);
+
+    await request('PUT', `${repo.api}/groups`, { groupIds: [] });
+    expect(await groupIdsOf(repo.id)).toBeUndefined();
+  });
+
+  it('refuses a list of groups with one that does not exist', async () => {
+    const group = await createGroup(`Real ${repositoryCount}`);
+    const { status } = await request('PUT', `${repo.api}/groups`, {
+      groupIds: [group.id, 'nope'],
+    });
+    expect(status).toBe(404);
+    expect((await request('PUT', `${repo.api}/groups`, { groupIds: 'x' })).status).toBe(400);
+  });
+
+  it('only takes a deleted group off its repositories', async () => {
+    const kept = await createGroup(`Kept ${repositoryCount}`);
+    const gone = await createGroup(`Gone ${repositoryCount}`);
+    await request('PUT', `${repo.api}/groups`, { groupIds: [kept.id, gone.id] });
+
+    await request('DELETE', `/api/repositories/groups/${gone.id}`);
+
+    expect(await groupIdsOf(repo.id)).toEqual([kept.id]);
+  });
+
+  it('reorders the groups, keeping any left out at the end', async () => {
+    const before = (await request('GET', '/api/repositories/groups')).body.map(({ id }) => id);
+    const reversed = [...before].reverse();
+
+    const { status, body } = await request('PUT', '/api/repositories/groups/order', {
+      ids: reversed.slice(0, -1),
+    });
+
+    expect(status).toBe(200);
+    expect(body.map(({ id }) => id)).toEqual([...reversed.slice(0, -1), reversed.at(-1)]);
+    const { body: groups } = await request('GET', '/api/repositories/groups');
+    expect(groups.map(({ id }) => id)).toEqual(body.map(({ id }) => id));
+  });
+
+  it('colors a repository and clears the color', async () => {
+    expect((await request('PUT', `${repo.api}/color`, { color: 'teal' })).status).toBe(204);
+    expect((await entryOf(repo.id)).color).toBe('teal');
+
+    await request('PUT', `${repo.api}/color`, { color: null });
+    expect((await entryOf(repo.id)).color).toBeUndefined();
+  });
+
+  it('refuses a color it does not know', async () => {
+    expect((await request('PUT', `${repo.api}/color`, { color: '#ff0000' })).status).toBe(400);
   });
 
   it('reuses a group when its name is added again', async () => {
@@ -164,7 +226,7 @@ describe('repository groups', () => {
 
     await request('DELETE', `/api/repositories/groups/${group.id}`);
 
-    expect(await groupIdOf(repo.id)).toBeUndefined();
+    expect(await groupIdsOf(repo.id)).toBeUndefined();
     const { body: groups } = await request('GET', '/api/repositories/groups');
     expect(groups.some(({ id }) => id === group.id)).toBe(false);
   });
@@ -174,19 +236,36 @@ describe('repository groups', () => {
     expect(status).toBe(404);
   });
 
-  it('keeps a stub in its group once it is located', async () => {
+  it('keeps a stub in its groups, with its color, once it is located', async () => {
     const { body: stub } = await request('POST', '/api/repositories/stubs', {
       url: `https://example.com/owner/grouped-${repositoryCount}.git`,
     });
-    const { body: group } = await request('POST', '/api/repositories/groups', { name: 'Stubs' });
+    const group = await createGroup('Stubs');
     await request('PUT', `/api/repositories/${stub.id}/group`, { groupId: group.id });
+    await request('PUT', `/api/repositories/${stub.id}/color`, { color: 'purple' });
 
     const other = path.join(path.dirname(repo.work), 'other');
     await fs.mkdir(other);
     git(other, 'init');
     const { body } = await request('POST', `/api/repositories/${stub.id}/locate`, { path: other });
 
-    expect(body.groupId).toBe(group.id);
+    expect(body.groupIds).toEqual([group.id]);
+    expect(body.color).toBe('purple');
+  });
+
+  it('reads the single group kept by older files', async () => {
+    const dataDir = await fs.mkdtemp(path.join(sandbox, 'legacy-'));
+    await fs.writeFile(
+      RepositoryStore.fileIn(dataDir),
+      JSON.stringify({
+        repositories: [{ id: 'old', name: 'old', path: '/old', groupId: 'g1' }],
+        groups: [{ id: 'g1', name: 'Legacy' }],
+      }),
+    );
+    const store = new RepositoryStore(dataDir);
+    const [entry] = await store.list();
+    expect(entry.groupIds).toEqual(['g1']);
+    expect(entry).not.toHaveProperty('groupId');
   });
 });
 
@@ -236,7 +315,7 @@ describe('bulk linking', () => {
     const { body: groups } = await request('GET', '/api/repositories/groups');
     const group = groups.find(({ name }) => name === groupName);
     const { body: repositories } = await request('GET', '/api/repositories');
-    const members = repositories.filter(({ groupId }) => groupId === group.id);
+    const members = repositories.filter(({ groupIds }) => groupIds?.includes(group.id));
     expect(members.map(({ name }) => name).sort()).toEqual(['alpha', 'beta']);
   });
 
@@ -244,7 +323,7 @@ describe('bulk linking', () => {
     const paths = [path.join(parent, 'alpha')];
     await request('POST', '/api/repositories/bulk', { paths });
     const { body: repositories } = await request('GET', '/api/repositories');
-    const linked = repositories.find((entry) => entry.name === 'alpha' && !entry.groupId);
+    const linked = repositories.find((entry) => entry.name === 'alpha' && !entry.groupIds);
     expect(linked).toBeDefined();
   });
 
@@ -266,7 +345,7 @@ describe('bulk linking', () => {
     await request('POST', '/api/repositories/bulk', { paths: [repo.work], groupName: 'Other' });
 
     const { body } = await request('GET', repo.api);
-    expect(body.groupId).toBe(group.id);
+    expect(body.groupIds).toEqual([group.id]);
   });
 
   it('creates no group when nothing could be linked', async () => {

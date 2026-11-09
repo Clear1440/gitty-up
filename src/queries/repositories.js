@@ -92,9 +92,59 @@ export function useLocateRepository(repositoryId) {
   return useRepositoryListMutation((path) => repositoriesApi.locate(repositoryId, path));
 }
 
-export function useSetRepositoryGroup() {
-  return useRepositoryListMutation(({ repositoryId, groupId }) =>
-    repositoriesApi.setGroup(repositoryId, groupId),
+/**
+ * A mutation that shows its result at once, by writing `apply(cached, variables)` into
+ * the cache, then puts the cache back if the server turns it down. Dragging feels
+ * instant this way. The query is reread either way, to settle on what was saved.
+ */
+function useOptimisticMutation(queryKey, mutationFn, apply) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onMutate: async (variables) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData(queryKey);
+      if (previous) queryClient.setQueryData(queryKey, apply(previous, variables));
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) queryClient.setQueryData(queryKey, context.previous);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey }),
+  });
+}
+
+const updateRepository = (repositories, repositoryId, changes) =>
+  repositories.map((repository) =>
+    repository.id === repositoryId ? { ...repository, ...changes } : repository,
+  );
+
+/** Puts a repository in exactly the groups given. An empty list leaves it ungrouped. */
+export function useSetRepositoryGroups() {
+  return useOptimisticMutation(
+    queryKeys.repositoryList(),
+    ({ repositoryId, groupIds }) => repositoriesApi.setGroups(repositoryId, groupIds),
+    (repositories, { repositoryId, groupIds }) =>
+      updateRepository(repositories, repositoryId, { groupIds }),
+  );
+}
+
+/** Labels a repository with a color, or clears it with null. */
+export function useSetRepositoryColor() {
+  return useOptimisticMutation(
+    queryKeys.repositoryList(),
+    ({ repositoryId, color }) => repositoriesApi.setColor(repositoryId, color),
+    (repositories, { repositoryId, color }) =>
+      updateRepository(repositories, repositoryId, { color: color ?? undefined }),
+  );
+}
+
+/** Puts the groups in the order of the ids given. */
+export function useReorderGroups() {
+  return useOptimisticMutation(
+    queryKeys.repositoryGroups(),
+    repositoriesApi.reorderGroups,
+    (groups, ids) => ids.flatMap((id) => groups.find((group) => group.id === id) ?? []),
   );
 }
 
