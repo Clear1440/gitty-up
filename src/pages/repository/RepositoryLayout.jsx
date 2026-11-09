@@ -14,6 +14,7 @@ import { ActionBar } from './ActionBar.jsx';
 import { BranchSidebar } from './BranchSidebar.jsx';
 import { RepositoryDialogs } from './dialogs/RepositoryDialogs.jsx';
 import { OperationBanner } from './OperationBanner.jsx';
+import { PatchDropZone } from './PatchDropZone.jsx';
 import { RepositoryContext } from './RepositoryContext.js';
 import styles from './RepositoryLayout.module.css';
 
@@ -59,25 +60,27 @@ function RepositoryWorkspace({ repository }) {
 
   return (
     <RepositoryContext value={context}>
-      <div className={styles.workspace}>
-        <ActionBar />
-        <OperationBanner />
-        <div
-          ref={bodyRef}
-          className={clsx(styles.body, resolving && styles.fullWidth)}
-          style={bodyStyle}
-        >
-          {/* Resolving a conflict needs the width for its three panes. */}
-          {!resolving && (
-            <BranchSidebar
-              resizeHandle={<ResizeHandle label="Resize branches" {...handleFor('sidebar')} />}
-            />
-          )}
-          <section className={styles.main}>
-            <Outlet />
-          </section>
+      <PatchDropZone>
+        <div className={styles.workspace}>
+          <ActionBar />
+          <OperationBanner />
+          <div
+            ref={bodyRef}
+            className={clsx(styles.body, resolving && styles.fullWidth)}
+            style={bodyStyle}
+          >
+            {/* Resolving a conflict needs the width for its three panes. */}
+            {!resolving && (
+              <BranchSidebar
+                resizeHandle={<ResizeHandle label="Resize branches" {...handleFor('sidebar')} />}
+              />
+            )}
+            <section className={styles.main}>
+              <Outlet />
+            </section>
+          </div>
         </div>
-      </div>
+      </PatchDropZone>
       <RepositoryDialogs dialog={dialog} onClose={() => setDialog(null)} />
     </RepositoryContext>
   );

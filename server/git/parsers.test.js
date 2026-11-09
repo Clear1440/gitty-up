@@ -129,8 +129,8 @@ describe('parseStashes', () => {
   it('splits branch from message and numbers stashes newest first', () => {
     const stashes = parseStashes(
       [
-        'On feature/a: my note: with colon\x002026-01-02T00:00:00+00:00',
-        'WIP on main: abc123 Fix thing\x002026-01-01T00:00:00+00:00',
+        'On feature/a: my note: with colon\x002026-01-02T00:00:00+00:00\x00s1\x00base1 index1 untracked1',
+        'WIP on main: abc123 Fix thing\x002026-01-01T00:00:00+00:00\x00s2\x00base2 index2',
       ].join('\n'),
     );
 
@@ -140,12 +140,16 @@ describe('parseStashes', () => {
         branch: 'feature/a',
         message: 'my note: with colon',
         date: '2026-01-02T00:00:00+00:00',
+        hash: 's1',
+        parents: ['base1', 'index1', 'untracked1'],
       },
       {
         ref: 'stash@{1}',
         branch: 'main',
         message: 'WIP: Fix thing',
         date: '2026-01-01T00:00:00+00:00',
+        hash: 's2',
+        parents: ['base2', 'index2'],
       },
     ]);
   });

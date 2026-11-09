@@ -5,6 +5,7 @@ import {
   CloudUploadOutlined,
   DownOutlined,
   ExportOutlined,
+  FileTextOutlined,
   InboxOutlined,
   MergeOutlined,
   PlusOutlined,
@@ -23,6 +24,7 @@ import { MonoMembers } from './MonoMembers.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { ScriptsMenu } from './ScriptsMenu.jsx';
 import { StatusHelper } from './StatusHelper.js';
+import { usePatchActions } from './usePatchActions.js';
 import { usePush } from './usePush.js';
 import { useUndoCommitShortcut } from './useUndoCommitShortcut.js';
 import styles from './ActionBar.module.css';
@@ -83,6 +85,7 @@ export function ActionBar() {
   const queryClient = useQueryClient();
   const { message, modal } = App.useApp();
   const push = usePush();
+  const { savePatch, pickPatchFile } = usePatchActions();
   useUndoCommitShortcut();
 
   const changedFileCount = StatusHelper.countChangedFiles(status);
@@ -132,6 +135,14 @@ export function ActionBar() {
       key: 'ff-only',
       label: 'Pull fast-forward only',
       onClick: () => run('pull', { mode: 'ff-only' }),
+    },
+  ];
+
+  const patchMenu = [
+    {
+      key: 'save-uncommitted',
+      label: 'Save uncommitted changes as patch…',
+      onClick: () => savePatch({ source: 'uncommitted' }),
     },
   ];
 
@@ -209,10 +220,19 @@ export function ActionBar() {
             label="Pop"
             hint="Restore the latest stash and remove it"
             icon={<ExportOutlined />}
-            count={stashes.length}
             loading={pendingAction === 'stashPop'}
             disabled={isBusy || midOperation || stashes.length === 0}
             onClick={() => run('stashPop')}
+          />
+          <SplitActionButton
+            label="Patch"
+            hint="Apply a .patch or .diff file. You can also drop one onto the window."
+            icon={<FileTextOutlined />}
+            loading={pendingAction === 'applyPatch'}
+            disabled={isBusy || midOperation}
+            menuDisabled={changedFileCount === 0}
+            menuItems={patchMenu}
+            onClick={pickPatchFile}
           />
         </>
       )}

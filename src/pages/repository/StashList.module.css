@@ -10,11 +10,18 @@
   gap: var(--space-2);
   padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
   border-radius: var(--radius-md);
+  cursor: pointer;
 }
 
 .row:hover,
 .row:focus-within {
   background: var(--color-surface-hover);
+}
+
+.selected,
+.selected:hover,
+.selected:focus-within {
+  background: var(--color-primary-subtle);
 }
 
 .icon {
@@ -23,12 +30,29 @@
 }
 
 .text {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.text:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .message,
 .meta {
+  display: block;
+  max-width: 100%;
   margin: 0;
   overflow: hidden;
   line-height: var(--line-height-tight);

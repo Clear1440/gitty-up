@@ -1,0 +1,37 @@
+.zone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.overlay {
+  position: absolute;
+  inset: var(--space-2);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--color-primary);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-bg) 80%, transparent);
+  backdrop-filter: blur(4px);
+  /* Leaves the drop events to the zone, so leaving the overlay isn't leaving the zone. */
+  pointer-events: none;
+}
+
+.prompt {
+  color: var(--color-text);
+  font-size: var(--font-size-md);
+  text-align: center;
+}
+
+.prompt p {
+  margin: var(--space-2) 0 0;
+}
+
+.icon {
+  color: var(--color-primary);
+  font-size: 32px;
+}

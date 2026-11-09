@@ -1,4 +1,9 @@
-import { CloudOutlined, LaptopOutlined, PullRequestOutlined } from '@ant-design/icons';
+import {
+  CloudOutlined,
+  InboxOutlined,
+  LaptopOutlined,
+  PullRequestOutlined,
+} from '@ant-design/icons';
 import { Avatar, Button, Dropdown, Empty, Result, Spin, Tag } from 'antd';
 import clsx from 'clsx';
 import { useEffect, useMemo, useRef } from 'react';
@@ -6,8 +11,8 @@ import { Link, useLocation, useSearchParams } from 'react-router';
 import { RelativeTime } from '../../components/RelativeTime.jsx';
 import { ResizeHandle } from '../../components/ResizeHandle.jsx';
 import { useResizableSizes } from '../../components/useResizableSizes.js';
-import { UNCOMMITTED, paths } from '../../paths.js';
-import { useCommits, usePullRequests } from '../../queries/git.js';
+import { StashSelection, UNCOMMITTED, paths } from '../../paths.js';
+import { useCommits, usePullRequests, useStashes } from '../../queries/git.js';
 import { TextHelper } from '../../utils/TextHelper.js';
 import { CommitHelper } from './CommitHelper.js';
 import { layoutCommitGraph } from './history/commitGraph.js';
@@ -16,10 +21,13 @@ import { CommitPane } from './history/CommitPane.jsx';
 import { GraphTooltipArea } from './history/GraphTooltipArea.jsx';
 import { findBranchTip, groupHasBranch, groupRefs } from './history/groupRefs.js';
 import { RefBranchActions } from './history/RefBranchActions.jsx';
+import { StashPane } from './history/StashPane.jsx';
+import { interleaveStashes } from './history/stashRows.js';
 import { useCommitMenu } from './history/useCommitMenu.js';
 import { WorkingTreePane } from './history/WorkingTreePane.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { StatusHelper } from './StatusHelper.js';
+import { useStashMenu } from './useStashMenu.js';
 import styles from './HistoryPage.module.css';
 
 const REF_TAG_STYLES = { head: styles.refHead, branch: styles.refBranch, tag: styles.refTag };
@@ -143,6 +151,43 @@ function UncommittedRow({ graphRow, columnCount, fileCount, selected, onSelect }
   );
 }
 
+/** A stash, drawn as a short branch off the commit it was made on. */
+function StashRow({ entry, graphRow, columnCount, selected, onSelect }) {
+  const { stash } = entry;
+  const items = useStashMenu(stash);
+  // React bubbles events out of a menu to here, though it is elsewhere on the page.
+  const isInRow = (event) => event.currentTarget.contains(event.target);
+
+  return (
+    <Dropdown menu={{ items }} trigger={['contextMenu']}>
+      <li
+        className={clsx(styles.commit, selected && styles.selectedCommit)}
+        onClick={(event) => isInRow(event) && onSelect(entry.hash)}
+      >
+        <div className={styles.tree}>
+          <CommitGraphCell row={graphRow} columnCount={columnCount} isStash />
+        </div>
+        <span className={styles.author}>
+          <InboxOutlined className={styles.stashIcon} />
+          <span className={styles.authorName}>Stash</span>
+        </span>
+        <button
+          type="button"
+          className={clsx(styles.subject, styles.stash)}
+          title={stash.message}
+          aria-pressed={selected}
+        >
+          {stash.message}
+        </button>
+        <RelativeTime className={styles.time} date={stash.date} />
+        <code className={styles.hash} title={stash.hash}>
+          {stash.ref}
+        </code>
+      </li>
+    </Dropdown>
+  );
+}
+
 function CommitRow({ commit, graphRow, columnCount, selected, focus, pullRequests, onSelect }) {
   const groups = groupRefs(commit.refs);
   const { items, checkout } = useCommitMenu(commit);
@@ -220,6 +265,8 @@ export function HistoryPage() {
   const { data: commits, error, isPending, hasNextPage, isFetchingNextPage, fetchNextPage } =
     useCommits(repository.id, ref);
   const { data: pullRequestList } = usePullRequests(repository.id);
+  const { data: stashes = [] } = useStashes(repository.id);
+  const selectedStash = StashSelection.toHash(selectedHash);
   const pullRequests = useMemo(
     () => new Map((pullRequestList ?? []).map((pull) => [pull.branch, pull])),
     [pullRequestList],
@@ -240,13 +287,14 @@ export function HistoryPage() {
   const showUncommitted =
     (fileCount > 0 || Boolean(status.operation)) && (!ref || ref === status.branch);
   const { branch: currentBranch, headHash } = status;
+  const entries = useMemo(() => interleaveStashes(commits ?? [], stashes), [commits, stashes]);
   const graph = useMemo(
     () =>
       layoutCommitGraph([
         ...(showUncommitted ? [uncommittedCommit(currentBranch, headHash)] : []),
-        ...(commits ?? []),
+        ...entries,
       ]),
-    [commits, showUncommitted, currentBranch, headHash],
+    [entries, showUncommitted, currentBranch, headHash],
   );
   const graphRowOffset = showUncommitted ? 1 : 0;
   const tableRef = useRef(null);
@@ -336,22 +384,33 @@ export function HistoryPage() {
                   onSelect={toggleCommit}
                 />
               )}
-              {commits.map((commit, index) => (
-                <CommitRow
-                  key={commit.hash}
-                  commit={commit}
-                  graphRow={graph.rows[index + graphRowOffset]}
-                  columnCount={graph.columnCount}
-                  selected={commit.hash === selectedHash}
-                  focus={
-                    commit.hash === focusedHash && focusRequest
-                      ? { branch: focusedBranch, request: focusRequest }
-                      : undefined
-                  }
-                  pullRequests={pullRequests}
-                  onSelect={toggleCommit}
-                />
-              ))}
+              {entries.map((commit, index) =>
+                commit.stash ? (
+                  <StashRow
+                    key={commit.hash}
+                    entry={commit}
+                    graphRow={graph.rows[index + graphRowOffset]}
+                    columnCount={graph.columnCount}
+                    selected={commit.hash === selectedHash}
+                    onSelect={toggleCommit}
+                  />
+                ) : (
+                  <CommitRow
+                    key={commit.hash}
+                    commit={commit}
+                    graphRow={graph.rows[index + graphRowOffset]}
+                    columnCount={graph.columnCount}
+                    selected={commit.hash === selectedHash}
+                    focus={
+                      commit.hash === focusedHash && focusRequest
+                        ? { branch: focusedBranch, request: focusRequest }
+                        : undefined
+                    }
+                    pullRequests={pullRequests}
+                    onSelect={toggleCommit}
+                  />
+                ),
+              )}
             </ol>
           </GraphTooltipArea>
         </div>
@@ -366,7 +425,15 @@ export function HistoryPage() {
       {selectedHash === UNCOMMITTED && (
         <WorkingTreePane onClose={() => toggleCommit(UNCOMMITTED)} resizeHandle={paneHandle} />
       )}
-      {selectedHash && selectedHash !== UNCOMMITTED && (
+      {selectedStash && (
+        <StashPane
+          key={selectedStash}
+          hash={selectedStash}
+          onClose={() => toggleCommit(selectedHash)}
+          resizeHandle={paneHandle}
+        />
+      )}
+      {selectedHash && selectedHash !== UNCOMMITTED && !selectedStash && (
         <CommitPane
           key={selectedHash}
           hash={selectedHash}

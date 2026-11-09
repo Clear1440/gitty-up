@@ -1,6 +1,8 @@
 import {
   CheckOutlined,
   CloseOutlined,
+  FileTextOutlined,
+  InboxOutlined,
   MinusOutlined,
   PlusOutlined,
   UndoOutlined,
@@ -15,8 +17,11 @@ import { CommitPanel } from '../CommitPanel.jsx';
 import { DiffView } from '../DiffView.jsx';
 import { FileSection } from '../FileSection.jsx';
 import { useRepositoryContext } from '../RepositoryContext.js';
+import { StatusHelper } from '../StatusHelper.js';
+import { usePatchActions } from '../usePatchActions.js';
 import styles from './CommitPane.module.css';
 import { FilesAndDiff } from './FilesAndDiff.jsx';
+import stashStyles from './StashPane.module.css';
 
 function IconAction({ label, icon, ...buttonProps }) {
   return (
@@ -144,7 +149,9 @@ function WorkingTreeFiles({ selected, onSelect }) {
 
 /** The uncommitted changes: the commit pane's counterpart for work not yet in a commit. */
 export function WorkingTreePane({ onClose, resizeHandle }) {
-  const { status } = useRepositoryContext();
+  const { repository, status, openDialog, isBusy, pendingAction } = useRepositoryContext();
+  const { savePatch } = usePatchActions();
+  const hasFiles = StatusHelper.countChangedFiles(status) > 0;
   const [choice, setChoice] = useState(null);
   const selected = findSelectedFile(status, choice);
   const place = status.branch
@@ -168,6 +175,27 @@ export function WorkingTreePane({ onClose, resizeHandle }) {
           {place}
           {status.mono && ` across ${TextHelper.countOf(memberCount, 'repository', 'repositories')}`}
         </p>
+        {/* Stashes and patches belong to one repository, so a mono repo leaves them out. */}
+        {!repository.isMono && hasFiles && (
+          <div className={stashStyles.actions}>
+            <Button
+              size="small"
+              icon={<InboxOutlined />}
+              loading={pendingAction === 'stash'}
+              disabled={isBusy || Boolean(status.operation)}
+              onClick={() => openDialog('stash')}
+            >
+              Stash all changes
+            </Button>
+            <Button
+              size="small"
+              icon={<FileTextOutlined />}
+              onClick={() => savePatch({ source: 'uncommitted' })}
+            >
+              Save as patch
+            </Button>
+          </div>
+        )}
       </header>
       {selected ? (
         <FilesAndDiff files={<WorkingTreeFiles selected={selected} onSelect={setChoice} />}>

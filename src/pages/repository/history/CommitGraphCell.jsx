@@ -35,8 +35,10 @@ function segmentPath({ kind, from, to }) {
 /**
  * The slice of the git tree beside one commit. Rows line up to form the whole tree.
  * `isUncommitted` draws the work in progress, which is not a commit yet, as dashed.
+ * `isStash` draws a stash as a hollow square on a dashed line, as it is set aside work.
  */
-export function CommitGraphCell({ row, columnCount, isHead, isMerge, isUncommitted }) {
+export function CommitGraphCell({ row, columnCount, isHead, isMerge, isUncommitted, isStash }) {
+  const isDashed = isUncommitted || isStash;
   const width = Math.min(columnCount, MAX_VISIBLE_COLUMNS) * COLUMN_WIDTH;
   const nodeColor = graphColor(row.color);
   const nodeX = columnX(row.column);
@@ -50,9 +52,7 @@ export function CommitGraphCell({ row, columnCount, isHead, isMerge, isUncommitt
           fill="none"
           stroke={graphColor(segment.color)}
           strokeWidth={LINE_WIDTH}
-          strokeDasharray={
-            isUncommitted && segment.kind === 'bottom' ? UNCOMMITTED_DASHES : undefined
-          }
+          strokeDasharray={isDashed && segment.kind === 'bottom' ? UNCOMMITTED_DASHES : undefined}
         />
       ))}
       {isHead && (
@@ -76,16 +76,29 @@ export function CommitGraphCell({ row, columnCount, isHead, isMerge, isUncommitt
           />
         </>
       )}
-      <circle
-        cx={nodeX}
-        cy={ROW_MIDDLE}
-        r={NODE_RADIUS}
-        // Merges are hollow, so they stand out from ordinary commits.
-        fill={isMerge || isUncommitted ? 'var(--color-bg)' : nodeColor}
-        stroke={nodeColor}
-        strokeWidth={LINE_WIDTH}
-        strokeDasharray={isUncommitted ? UNCOMMITTED_DASHES : undefined}
-      />
+      {isStash ? (
+        <rect
+          x={nodeX - NODE_RADIUS}
+          y={ROW_MIDDLE - NODE_RADIUS}
+          width={NODE_RADIUS * 2}
+          height={NODE_RADIUS * 2}
+          rx={1.5}
+          fill="var(--color-bg)"
+          stroke={nodeColor}
+          strokeWidth={LINE_WIDTH}
+        />
+      ) : (
+        <circle
+          cx={nodeX}
+          cy={ROW_MIDDLE}
+          r={NODE_RADIUS}
+          // Merges are hollow, so they stand out from ordinary commits.
+          fill={isMerge || isUncommitted ? 'var(--color-bg)' : nodeColor}
+          stroke={nodeColor}
+          strokeWidth={LINE_WIDTH}
+          strokeDasharray={isUncommitted ? UNCOMMITTED_DASHES : undefined}
+        />
+      )}
       {/* Invisible and wider than what they cover, as a 2px line is hard to land on. */}
       {row.segments.map((segment, index) => (
         <path

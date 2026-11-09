@@ -89,6 +89,22 @@ export function useStashes(repositoryId) {
   return useQuery(stashesQuery(repositoryId));
 }
 
+/** A stash's files. A stash never changes, so its hash is enough to cache it by. */
+export function useStashDetails(repositoryId, hash) {
+  return useQuery({
+    queryKey: queryKeys.stash(repositoryId, hash),
+    queryFn: () => gitApi.getStashDetails(repositoryId, hash),
+  });
+}
+
+export function useStashDiff(repositoryId, hash, file, { fullFile }) {
+  return useQuery({
+    queryKey: queryKeys.stashDiff(repositoryId, hash, { ...file, fullFile }),
+    queryFn: () => gitApi.getStashDiff(repositoryId, hash, { ...file, fullFile }),
+    enabled: Boolean(file),
+  });
+}
+
 /** What the repository's .gitty file offers to run. `found` is false when it has none. */
 export function useScripts(repositoryId) {
   return useQuery({
