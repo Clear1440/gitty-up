@@ -1,8 +1,9 @@
 import { CheckOutlined } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
-import { Button, Checkbox, Input, Tooltip } from 'antd';
+import { App, Button, Checkbox, Input, Tooltip } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router';
+import { gitApi } from '../../api';
 import { queryKeys } from '../../queries/queryKeys.js';
 import { KeyboardHelper } from '../../utils/KeyboardHelper.js';
 import { ListHelper } from '../../utils/ListHelper.js';
@@ -38,8 +39,33 @@ export function CommitPanel({ onClean }) {
   const queryClient = useQueryClient();
   const { state: navigationState } = useLocation();
   const inputRef = useRef(null);
-  const [message, setMessage] = useCommitDraft(repository.id);
-  const [amend, setAmend] = useState(false);
+  const [draft, setDraft] = useCommitDraft(repository.id);
+  // While amending, the box holds the previous commit's message, apart from the draft.
+  const [amending, setAmending] = useState(null);
+  const amend = Boolean(amending);
+  const message = amending ? amending.message : draft;
+  const setMessage = amending
+    ? (text) => setAmending((current) => ({ ...current, message: text }))
+    : setDraft;
+  const { message: toast } = App.useApp();
+
+  const setAmend = async (checked) => {
+    if (!checked) {
+      setAmending(null);
+      return;
+    }
+    try {
+      const last = await gitApi.getLastCommit(repository.id);
+      if (!last) {
+        toast.info('There is no commit to amend yet');
+        return;
+      }
+      setAmending({ message: last.message.trim(), pushed: last.pushed, shortHash: last.shortHash });
+      inputRef.current?.focus();
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
   const [pushAfterCommit, setPushAfterCommit] = useState(false);
   // Null until the user chooses, so the default can follow what is staged.
   const [stageAllChoice, setStageAllChoice] = useState(null);
@@ -81,8 +107,9 @@ export function CommitPanel({ onClean }) {
       repositoryCount: repositories.length,
     });
     if (committed) {
-      setMessage('');
-      setAmend(false);
+      // An amend leaves the draft alone, as it was written for a commit still to come.
+      if (amend) setAmending(null);
+      else setDraft('');
       setStageAllChoice(null);
 
       if (pushAfterCommit) {
@@ -130,6 +157,13 @@ export function CommitPanel({ onClean }) {
           Push after commit
         </Checkbox>
       </div>
+      {amending && (
+        <p className={styles.amendNote}>
+          Editing {amending.shortHash}
+          {fileCount > 0 ? `, adding ${TextHelper.countOf(fileCount, 'file')}` : ''}.
+          {amending.pushed && ' It is already pushed, so this needs a force push.'}
+        </p>
+      )}
       {/* It opens over the checkboxes above, so it must never catch a click meant for them. */}
       <Tooltip
         title={blocker ?? summary}

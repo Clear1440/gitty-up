@@ -76,6 +76,17 @@ export function useCommitMenu(commit) {
         },
       ],
     },
+    // Rewording an older commit would mean rewriting every commit after it.
+    ...(isHead
+      ? [
+          {
+            key: 'reword',
+            label: 'Edit commit message…',
+            disabled: blocked,
+            onClick: () => openDialog('rewordCommit', { hash, shortHash }),
+          },
+        ]
+      : []),
     { type: 'divider' },
     {
       key: 'new-branch',

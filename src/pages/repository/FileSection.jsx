@@ -1,3 +1,4 @@
+import { Dropdown } from 'antd';
 import clsx from 'clsx';
 import styles from './FileSection.module.css';
 
@@ -23,17 +24,20 @@ function splitPath(path, inRepository) {
   };
 }
 
-function FileRow({ file, selected, onSelect, actions }) {
+function FileRow({ file, selected, onSelect, actions, menuItems }) {
   const badge = STATUS_BADGES[file.status];
   const { folder, directory, name } = splitPath(file.path, Boolean(file.repository));
 
-  return (
+  const row = (
     <li className={clsx(styles.row, selected && styles.selected)}>
       <button
         type="button"
         className={styles.button}
         title={file.originalPath ? `${file.originalPath} → ${file.path}` : file.path}
-        onClick={() => onSelect(file)}
+        aria-pressed={selected}
+        // Shift-clicking would otherwise select the text of every row in between.
+        onMouseDown={(event) => event.shiftKey && event.preventDefault()}
+        onClick={(event) => onSelect(file, event)}
       >
         <span className={clsx(styles.badge, badge.className)} title={file.status}>
           {badge.letter}
@@ -47,9 +51,28 @@ function FileRow({ file, selected, onSelect, actions }) {
       <span className={styles.actions}>{actions}</span>
     </li>
   );
+
+  if (!menuItems) return row;
+  return (
+    <Dropdown menu={{ items: menuItems }} trigger={['contextMenu']}>
+      {row}
+    </Dropdown>
+  );
 }
 
-export function FileSection({ title, files, headerAction, isSelected, onSelect, renderActions }) {
+/**
+ * A titled list of changed files. `onSelect` gets the file and the click, so callers can
+ * act on shift and ctrl. `getMenuItems`, if given, adds a right-click menu to each file.
+ */
+export function FileSection({
+  title,
+  files,
+  headerAction,
+  isSelected,
+  onSelect,
+  renderActions,
+  getMenuItems,
+}) {
   if (files.length === 0) return null;
   return (
     <section className={styles.section}>
@@ -67,6 +90,7 @@ export function FileSection({ title, files, headerAction, isSelected, onSelect, 
             selected={isSelected(file)}
             onSelect={onSelect}
             actions={renderActions(file)}
+            menuItems={getMenuItems?.(file)}
           />
         ))}
       </ul>
