@@ -27,17 +27,34 @@ const createGroup = (name) => ({ id: randomUUID().slice(0, ID_LENGTH), name });
 const findGroupByName = (groups, name) =>
   groups.find((group) => group.name.toLowerCase() === name.toLowerCase());
 
-function withoutGroup(repository) {
-  const ungrouped = { ...repository };
-  delete ungrouped.groupId;
-  return ungrouped;
+/** The groups a repository is in. Older files kept a single `groupId` instead. */
+export const groupIdsOf = (repository) =>
+  repository.groupIds ?? (repository.groupId ? [repository.groupId] : []);
+
+/** The repository in exactly `groupIds`, dropping the field when there are none. */
+function withGroups(repository, groupIds) {
+  const updated = { ...repository };
+  delete updated.groupId;
+  delete updated.groupIds;
+  const unique = [...new Set(groupIds)];
+  return unique.length > 0 ? { ...updated, groupIds: unique } : updated;
+}
+
+/** Brings an entry from an older file up to date. */
+const normalize = (repository) => withGroups(repository, groupIdsOf(repository));
+
+/** Carries the user's choices over from one entry to the one that replaces it. */
+function keepChoices(from, to) {
+  const withColor = from.color ? { ...to, color: from.color } : to;
+  return withGroups(withColor, groupIdsOf(from));
 }
 
 /**
  * Persists the linked repositories and their groups as a JSON file in the data directory.
  * A stub is an entry known only by its remote URL. Its `path` stays null until
  * it is cloned or located, when `resolveStub` swaps it for a real entry.
- * A repository belongs to at most one group, through its optional `groupId`. A group
+ * A repository can belong to any number of groups, through its optional `groupIds`,
+ * and can carry a `color` label. Groups are kept in the order they are shown. A group
  * opened as a mono repo also remembers the branch it is on, as `monoBranch`.
  */
 export class RepositoryStore {
@@ -92,8 +109,8 @@ export class RepositoryStore {
     for (const repositoryPath of repositoryPaths) {
       const entry = createEntry(repositoryPath);
       const repository = byId.get(entry.id) ?? entry;
-      const joinsGroup = group && !repository.groupId;
-      byId.set(entry.id, joinsGroup ? { ...repository, groupId: group.id } : repository);
+      const joinsGroup = group && groupIdsOf(repository).length === 0;
+      byId.set(entry.id, joinsGroup ? withGroups(repository, [group.id]) : repository);
     }
 
     await this.#save({
@@ -113,7 +130,7 @@ export class RepositoryStore {
     return stub;
   }
 
-  /** Turns a stub into a linked repository, keeping its place in the list and its group. */
+  /** Turns a stub into a linked repository, keeping its place, groups and color. */
   async resolveStub(stubId, repositoryPath) {
     const repository = createEntry(repositoryPath);
     const existing = await this.get(repository.id);
@@ -122,8 +139,8 @@ export class RepositoryStore {
       return existing;
     }
     const repositories = await this.list();
-    const { groupId } = repositories.find((entry) => entry.id === stubId);
-    const resolved = groupId ? { ...repository, groupId } : repository;
+    const stub = repositories.find((entry) => entry.id === stubId);
+    const resolved = keepChoices(stub, repository);
     await this.#save({
       repositories: repositories.map((entry) => (entry.id === stubId ? resolved : entry)),
     });
@@ -170,32 +187,59 @@ export class RepositoryStore {
     });
   }
 
-  /** Removes a group. Its repositories stay linked and become ungrouped. */
+  /**
+   * Puts the groups in the order of `ids`. Any group left out keeps its place after
+   * those named, so a group created meanwhile is never lost.
+   */
+  async reorderGroups(ids) {
+    const groups = await this.listGroups();
+    const byId = new Map(groups.map((group) => [group.id, group]));
+    const named = [...new Set(ids)].flatMap((id) => byId.get(id) ?? []);
+    const reordered = [...named, ...groups.filter((group) => !named.includes(group))];
+    await this.#save({ groups: reordered });
+    return reordered;
+  }
+
+  /** Removes a group. Its repositories stay linked and just leave that group. */
   async removeGroup(id) {
     const [repositories, groups] = await Promise.all([this.list(), this.listGroups()]);
     await this.#save({
-      repositories: repositories.map((repository) =>
-        repository.groupId === id ? withoutGroup(repository) : repository,
-      ),
+      repositories: repositories.map((repository) => {
+        const groupIds = groupIdsOf(repository);
+        if (!groupIds.includes(id)) return repository;
+        return withGroups(repository, groupIds.filter((groupId) => groupId !== id));
+      }),
       groups: groups.filter((group) => group.id !== id),
     });
   }
 
-  /** Moves a repository into a group, or out of any group when `groupId` is null. */
-  async setGroup(id, groupId) {
+  /** Puts a repository in exactly these groups. An empty list leaves it ungrouped. */
+  async setGroups(id, groupIds) {
+    await this.#update(id, (repository) => withGroups(repository, groupIds));
+  }
+
+  /** Labels a repository with a color, or clears the label when `color` is null. */
+  async setColor(id, color) {
+    await this.#update(id, (repository) => {
+      const updated = { ...repository };
+      delete updated.color;
+      return color ? { ...updated, color } : updated;
+    });
+  }
+
+  async #update(id, change) {
     const repositories = await this.list();
     await this.#save({
-      repositories: repositories.map((repository) => {
-        if (repository.id !== id) return repository;
-        return groupId ? { ...repository, groupId } : withoutGroup(repository);
-      }),
+      repositories: repositories.map((repository) =>
+        repository.id === id ? change(repository) : repository,
+      ),
     });
   }
 
   async #load() {
     try {
       const { repositories, groups = [] } = JSON.parse(await fs.readFile(this.#filePath, 'utf8'));
-      return { repositories, groups };
+      return { repositories: repositories.map(normalize), groups };
     } catch (error) {
       if (error.code === 'ENOENT') return { repositories: [], groups: [] };
       throw error;

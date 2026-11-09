@@ -1,8 +1,70 @@
+/* Padding with a matching negative margin leaves room for the drop outline. */
+.section {
+  position: relative;
+  margin: calc(-1 * var(--space-1));
+  padding: var(--space-1);
+  border: 1px dashed transparent;
+  border-radius: var(--radius-lg);
+  transition:
+    border-color 0.1s,
+    background-color 0.1s;
+}
+
+.dropInto {
+  border-color: var(--color-primary);
+  background: var(--color-focus-tint);
+}
+
+/* A line where a dragged group would land. */
+.dropBefore::before,
+.dropAfter::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--color-primary);
+}
+
+/* Halfway across the gap between two sections, less the margins that eat into it. */
+.dropBefore::before {
+  top: calc((2 * var(--space-1) - var(--section-gap, var(--space-4))) / 2 - 1px);
+}
+
+.dropAfter::after {
+  bottom: calc((2 * var(--space-1) - var(--section-gap, var(--space-4))) / 2 - 1px);
+}
+
 .header {
   display: flex;
   align-items: center;
   gap: var(--space-1);
   margin-bottom: var(--space-2);
+}
+
+.handle {
+  display: flex;
+  align-items: center;
+  padding: var(--space-1) 2px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  cursor: grab;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
+.header:hover .handle,
+.handle:focus-visible {
+  opacity: 1;
+}
+
+.handle:active {
+  cursor: grabbing;
+}
+
+.condensedList {
+  gap: var(--space-1);
 }
 
 .heading {

@@ -13,6 +13,15 @@ import { ValidationHelper } from '../utils/ValidationHelper.js';
 
 const DEFAULT_COMMIT_PAGE_SIZE = 100;
 const MAX_COMMIT_PAGE_SIZE = 500;
+/** The labels a repository can be colored with. The page picks the shade for each. */
+const REPOSITORY_COLORS = ['red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'pink'];
+
+async function assertGroupsExist(store, groupIds) {
+  const groups = await store.listGroups();
+  if (!groupIds.every((id) => groups.some((group) => group.id === id))) {
+    throw ApiError.notFound('That group does not exist.');
+  }
+}
 
 /** Adds what the repositories page shows about a repository: its branch, changes and so on. */
 async function withSummary(repository) {
@@ -304,6 +313,14 @@ function createGroupsRouter(store) {
     response.status(201).json(await store.addGroup(name));
   });
 
+  router.put('/order', async (request, response) => {
+    const ids = request.body?.ids;
+    if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) {
+      throw ApiError.badRequest('"ids" must be a list of group ids.');
+    }
+    response.json(await store.reorderGroups(ids));
+  });
+
   router.patch('/:groupId', async (request, response) => {
     const name = ValidationHelper.requireTrimmedString(request.body?.name, 'name');
     response.json(await store.renameGroup(request.params.groupId, name));
@@ -406,12 +423,32 @@ export function createRepositoriesRouter(store) {
     response.status(204).end();
   });
 
+  /** Puts a repository in exactly one group, or none when `groupId` is null. */
   router.put('/:repositoryId/group', async (request, response) => {
     const groupId = request.body?.groupId ?? null;
-    if (groupId !== null && !(await store.getGroup(groupId))) {
-      throw ApiError.notFound('That group does not exist.');
+    const groupIds = groupId === null ? [] : [groupId];
+    await assertGroupsExist(store, groupIds);
+    await store.setGroups(request.repository.id, groupIds);
+    response.status(204).end();
+  });
+
+  /** Puts a repository in exactly the groups listed. An empty list leaves it ungrouped. */
+  router.put('/:repositoryId/groups', async (request, response) => {
+    const groupIds = request.body?.groupIds;
+    if (!Array.isArray(groupIds) || !groupIds.every((id) => typeof id === 'string')) {
+      throw ApiError.badRequest('"groupIds" must be a list of group ids.');
     }
-    await store.setGroup(request.repository.id, groupId);
+    await assertGroupsExist(store, groupIds);
+    await store.setGroups(request.repository.id, groupIds);
+    response.status(204).end();
+  });
+
+  router.put('/:repositoryId/color', async (request, response) => {
+    const color = request.body?.color ?? null;
+    if (color !== null && !REPOSITORY_COLORS.includes(color)) {
+      throw ApiError.badRequest(`"color" must be one of ${REPOSITORY_COLORS.join(', ')}.`);
+    }
+    await store.setColor(request.repository.id, color);
     response.status(204).end();
   });
 
