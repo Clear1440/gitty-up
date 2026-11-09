@@ -7,6 +7,7 @@ import { paths } from '../../paths.js';
 import { useOpenMono, useRepositories } from '../../queries/repositories.js';
 import { MonoIdHelper } from '../../utils/MonoIdHelper.js';
 import { TextHelper } from '../../utils/TextHelper.js';
+import { isInGroup } from './groupMembership.js';
 import { describeLeftOut, findMonoBranches } from './monoBranches.js';
 import styles from './OpenMonoButton.module.css';
 
@@ -69,7 +70,7 @@ export function OpenMonoButton({ group }) {
   const [choosing, setChoosing] = useState(false);
 
   // From the full list, as a search must not change who a mono repo takes in.
-  const repositories = allRepositories.filter(({ groupId }) => groupId === group.id);
+  const repositories = allRepositories.filter((repository) => isInGroup(repository, group.id));
   const choices = findMonoBranches(repositories);
 
   const open = async (branch) => {

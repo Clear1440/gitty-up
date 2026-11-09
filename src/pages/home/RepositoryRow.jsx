@@ -1,5 +1,7 @@
 import {
+  BgColorsOutlined,
   BranchesOutlined,
+  CheckOutlined,
   CloseOutlined,
   CloudDownloadOutlined,
   DisconnectOutlined,
@@ -12,33 +14,39 @@ import {
 } from '@ant-design/icons';
 import { App, Button, Dropdown } from 'antd';
 import clsx from 'clsx';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { AheadBehind } from '../../components/AheadBehind.jsx';
 import { RelativeTime } from '../../components/RelativeTime.jsx';
 import { paths } from '../../paths.js';
 import {
   useCreateGroup,
-  useSetRepositoryGroup,
+  useSetRepositoryColor,
+  useSetRepositoryGroups,
   useUnlinkRepository,
 } from '../../queries/repositories.js';
 import { useTabs } from '../../tabs/TabsContext.jsx';
 import { KeyboardHelper } from '../../utils/KeyboardHelper.js';
+import { groupIdsOf, isInGroup, toggleGroup, UNGROUPED } from './groupMembership.js';
 import { GroupNameDialog } from './GroupNameDialog.jsx';
+import { colorValueOf, REPOSITORY_COLORS } from './repositoryColors.js';
 import styles from './RepositoryRow.module.css';
 import { CloneRepositoryDialog, LocateRepositoryDialog } from './StubDialogs.jsx';
+import { DRAG_TYPE, useRepositoryList } from './useRepositoryList.js';
 import { useRepositorySelectionContext } from './useRepositorySelection.js';
 
 const MIDDLE_BUTTON = 1;
 
-function Identity({ repository }) {
+function Identity({ repository, condensed }) {
   const location = repository.path ?? repository.remoteUrl;
   return (
-    <div className={styles.identity}>
+    <div className={styles.identity} title={condensed ? location : undefined}>
       <h3 className={styles.title}>{repository.name}</h3>
-      <p className={styles.path} title={location}>
-        {location}
-      </p>
+      {!condensed && (
+        <p className={styles.path} title={location}>
+          {location}
+        </p>
+      )}
     </div>
   );
 }
@@ -51,20 +59,40 @@ function BranchLabel({ summary }) {
   );
 }
 
-function RowStatus({ summary }) {
+function RowStatus({ summary, condensed }) {
+  const meta = (
+    <div className={styles.meta}>
+      <BranchLabel summary={summary} />
+      <span className={styles.syncState}>
+        <AheadBehind ahead={summary.ahead} behind={summary.behind} />
+      </span>
+      {summary.changeCount > 0 && (
+        <span className={styles.changes}>
+          <EditOutlined /> {summary.changeCount}
+        </span>
+      )}
+    </div>
+  );
+
+  // One line: the last commit shows only as its time, with the subject on hover.
+  if (condensed) {
+    return (
+      <>
+        {meta}
+        {summary.lastCommit ? (
+          <span className={styles.lastCommit} title={summary.lastCommit.subject}>
+            <RelativeTime className={styles.commitTime} date={summary.lastCommit.date} />
+          </span>
+        ) : (
+          <span className={styles.lastCommit}>No commits</span>
+        )}
+      </>
+    );
+  }
+
   return (
     <>
-      <div className={styles.meta}>
-        <BranchLabel summary={summary} />
-        <span className={styles.syncState}>
-          <AheadBehind ahead={summary.ahead} behind={summary.behind} />
-        </span>
-        {summary.changeCount > 0 && (
-          <span className={styles.changes}>
-            <EditOutlined /> {summary.changeCount}
-          </span>
-        )}
-      </div>
+      {meta}
       {summary.lastCommit ? (
         <p className={styles.lastCommit}>
           <span className={styles.commitSubject}>{summary.lastCommit.subject}</span>
@@ -78,13 +106,13 @@ function RowStatus({ summary }) {
 }
 
 /** A repository known only by its URL. It has no folder to open until one is chosen. */
-function StubBody({ repository }) {
+function StubBody({ repository, condensed }) {
   const [dialog, setDialog] = useState(null);
   const closeDialog = () => setDialog(null);
 
   return (
     <div className={styles.body}>
-      <Identity repository={repository} />
+      <Identity repository={repository} condensed={condensed} />
       <div className={styles.stubActions}>
         <Button
           type="primary"
@@ -108,16 +136,33 @@ function StubBody({ repository }) {
   );
 }
 
-export function RepositoryRow({ repository, groups }) {
+const Swatch = ({ value }) => (
+  <span className={styles.swatch} style={value ? { background: value } : undefined} />
+);
+
+/**
+ * One repository on the home page. `sectionId` is the section it shows in, which
+ * matters when it is dragged out: a repository in many groups shows in each.
+ */
+export function RepositoryRow({ repository, groups, sectionId = UNGROUPED }) {
   const { modal, notification } = App.useApp();
   const unlink = useUnlinkRepository();
-  const setGroup = useSetRepositoryGroup();
+  const setGroups = useSetRepositoryGroups();
+  const setColor = useSetRepositoryColor();
   const createGroup = useCreateGroup();
   const [naming, setNaming] = useState(false);
   const { closeTab, openTab } = useTabs();
   const selection = useRepositorySelectionContext();
+  const { condensed, drag, setDrag } = useRepositoryList();
+  const rowRef = useRef(null);
   const isStub = repository.path === null;
   const isSelected = selection.isSelected(repository.id);
+  const canDrag = groups.length > 0;
+  const isDragging =
+    drag?.kind === 'repository' &&
+    drag.repositoryId === repository.id &&
+    drag.fromSectionId === sectionId;
+  const colorValue = colorValueOf(repository.color);
 
   const openInBackground = (event) => {
     event.preventDefault();
@@ -134,6 +179,19 @@ export function RepositoryRow({ repository, groups }) {
     }
   };
 
+  const handleDragStart = (event) => {
+    event.dataTransfer.effectAllowed = 'copyMove';
+    event.dataTransfer.setData(DRAG_TYPE, repository.id);
+    // Drag the whole row, not just the link text the pointer happened to be on.
+    const rect = rowRef.current.getBoundingClientRect();
+    event.dataTransfer.setDragImage(
+      rowRef.current,
+      event.clientX - rect.left,
+      event.clientY - rect.top,
+    );
+    setDrag({ kind: 'repository', repositoryId: repository.id, fromSectionId: sectionId });
+  };
+
   const selectedCount = selection.selectedIds.length;
   const contextItems = [
     {
@@ -145,17 +203,28 @@ export function RepositoryRow({ repository, groups }) {
     { key: 'clear', label: 'Clear selection', icon: <CloseOutlined />, onClick: selection.clear },
   ];
 
-  const moveToGroup = async (groupId) => {
+  const saveGroups = async (groupIds) => {
     try {
-      await setGroup.mutateAsync({ repositoryId: repository.id, groupId });
+      await setGroups.mutateAsync({ repositoryId: repository.id, groupIds });
     } catch (error) {
-      notification.error({ title: 'Could not move the repository', description: error.message });
+      notification.error({ title: 'Could not change the groups', description: error.message });
     }
   };
 
-  const moveToNewGroup = async (name) => {
+  const saveColor = async (color) => {
+    try {
+      await setColor.mutateAsync({ repositoryId: repository.id, color });
+    } catch (error) {
+      notification.error({ title: 'Could not change the color', description: error.message });
+    }
+  };
+
+  const addToNewGroup = async (name) => {
     const group = await createGroup.mutateAsync(name);
-    await setGroup.mutateAsync({ repositoryId: repository.id, groupId: group.id });
+    await setGroups.mutateAsync({
+      repositoryId: repository.id,
+      groupIds: [...groupIdsOf(repository), group.id],
+    });
   };
 
   const confirmUnlink = () => {
@@ -177,35 +246,63 @@ export function RepositoryRow({ repository, groups }) {
     });
   };
 
+  const hasGroups = groupIdsOf(repository).length > 0;
   const groupItems = [
     ...groups.map((group) => ({
       key: `group-${group.id}`,
       label: group.name,
-      disabled: group.id === repository.groupId,
-      onClick: () => moveToGroup(group.id),
+      icon: isInGroup(repository, group.id) ? <CheckOutlined /> : <span className={styles.blank} />,
+      onClick: () => saveGroups(toggleGroup(repository, group.id)),
     })),
     ...(groups.length > 0 ? [{ type: 'divider' }] : []),
-    ...(repository.groupId
-      ? [{ key: 'ungroup', label: 'Remove from group', onClick: () => moveToGroup(null) }]
+    ...(hasGroups
+      ? [{ key: 'ungroup', label: 'Remove from all groups', onClick: () => saveGroups([]) }]
       : []),
     { key: 'new-group', label: 'New group…', onClick: () => setNaming(true) },
   ];
 
+  const colorItems = [
+    ...REPOSITORY_COLORS.map((color) => ({
+      key: `color-${color.id}`,
+      label: color.label,
+      icon: <Swatch value={color.value} />,
+      disabled: repository.color === color.id,
+      onClick: () => saveColor(color.id),
+    })),
+    { type: 'divider' },
+    {
+      key: 'no-color',
+      label: 'No color',
+      icon: <Swatch />,
+      disabled: !colorValue,
+      onClick: () => saveColor(null),
+    },
+  ];
+
   const menuItems = [
-    { key: 'group', label: 'Move to group', icon: <FolderOutlined />, children: groupItems },
+    { key: 'groups', label: 'Groups', icon: <FolderOutlined />, children: groupItems },
+    { key: 'color', label: 'Color', icon: <BgColorsOutlined />, children: colorItems },
     { key: 'unlink', label: 'Unlink', icon: <DisconnectOutlined />, onClick: confirmUnlink },
   ];
 
   const row = (
     <article
+      ref={rowRef}
       className={clsx(
         styles.row,
+        condensed && styles.condensed,
+        colorValue && styles.colored,
         !repository.available && styles.unavailable,
         isSelected && styles.selected,
+        isDragging && styles.dragging,
       )}
+      style={colorValue ? { '--repository-color': colorValue } : undefined}
+      draggable={canDrag}
+      onDragStart={canDrag ? handleDragStart : undefined}
+      onDragEnd={canDrag ? () => setDrag(null) : undefined}
     >
       {isStub ? (
-        <StubBody repository={repository} />
+        <StubBody repository={repository} condensed={condensed} />
       ) : (
         <Link
           className={clsx(styles.body, styles.link)}
@@ -219,9 +316,9 @@ export function RepositoryRow({ repository, groups }) {
             if (event.button === MIDDLE_BUTTON || event.shiftKey) event.preventDefault();
           }}
         >
-          <Identity repository={repository} />
+          <Identity repository={repository} condensed={condensed} />
           {repository.available ? (
-            <RowStatus summary={repository.summary} />
+            <RowStatus summary={repository.summary} condensed={condensed} />
           ) : (
             <p className={styles.missing}>
               <WarningOutlined /> Folder not found
@@ -233,6 +330,7 @@ export function RepositoryRow({ repository, groups }) {
         <Button
           className={styles.menu}
           type="text"
+          size={condensed ? 'small' : 'middle'}
           icon={<MoreOutlined />}
           aria-label={`Options for ${repository.name}`}
         />
@@ -240,8 +338,8 @@ export function RepositoryRow({ repository, groups }) {
       {naming && (
         <GroupNameDialog
           title="New group"
-          okText="Create and move"
-          onSave={moveToNewGroup}
+          okText="Create and add"
+          onSave={addToNewGroup}
           onClose={() => setNaming(false)}
         />
       )}
