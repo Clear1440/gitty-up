@@ -173,7 +173,13 @@ export function ActionBar() {
       />
       <SplitActionButton
         label="Push"
-        hint={needsPublishing ? 'Publish this branch' : `Push to ${status.upstream}`}
+        hint={
+          needsPublishing
+            ? 'Publish this branch'
+            : StatusHelper.tracksOtherName(status)
+              ? `Push to ${status.upstream}, which is named differently from ${status.branch}`
+              : `Push to ${status.upstream}`
+        }
         icon={<CloudUploadOutlined />}
         count={status.ahead}
         loading={pendingAction === 'push'}

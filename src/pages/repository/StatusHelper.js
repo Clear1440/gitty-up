@@ -17,6 +17,14 @@ export class StatusHelper {
     return !upstream || upstreamGone;
   }
 
+  /**
+   * Whether the branch tracks a remote branch of another name, as one made from
+   * origin/main does. Remote names can hold slashes, so this goes by the end.
+   */
+  static tracksOtherName({ branch, upstream }) {
+    return Boolean(branch && upstream) && !upstream.endsWith(`/${branch}`);
+  }
+
   /** The checked out branch's name, or HEAD when no branch is checked out. */
   static currentBranchName(status) {
     return status.branch ?? 'HEAD';

@@ -14,7 +14,11 @@ const GIT_ACTIONS = {
   fetch: { run: gitApi.fetch, title: 'Fetch', success: () => 'Fetched from all remotes' },
   // A pull or push can legitimately do nothing, so these don't claim anything moved.
   pull: { run: gitApi.pull, title: 'Pull', success: () => 'Pull complete' },
-  push: { run: gitApi.push, title: 'Push', success: () => 'Push complete' },
+  push: {
+    run: gitApi.push,
+    title: 'Push',
+    success: ({ toUpstream, target }) => (toUpstream && target ? `Pushed into ${target}` : 'Push complete'),
+  },
   publishBranch: {
     run: gitApi.push,
     title: 'Publish',
@@ -134,8 +138,10 @@ export function useGitActions(repositoryId) {
       // A retry that worked has dealt with whatever this action last left unfinished.
       notification.destroy(partialKey(repositoryId, name));
     },
-    onError: (error, { name }) => {
+    onError: (error, { name, handledCodes = [] }) => {
       const { title } = GIT_ACTIONS[name];
+      // The caller asked to deal with this one itself, as it has a question to ask.
+      if (handledCodes.includes(error.code)) return;
       if (error.code === 'CONFLICTS') {
         notification.warning({
           title: `${title} paused`,
@@ -189,5 +195,26 @@ export function useGitActions(repositoryId) {
     [mutateAsync],
   );
 
-  return { run, pendingAction: pendingActions[0] ?? null, isBusy: pendingActions.length > 0 };
+  /**
+   * Like `run`, but resolves with `{ ok, error }`, and leaves errors whose code is in
+   * `handledCodes` unreported, for the caller to deal with. Others are reported as usual.
+   */
+  const attempt = useCallback(
+    async (name, input, { handledCodes = [] } = {}) => {
+      try {
+        await mutateAsync({ name, input, handledCodes });
+        return { ok: true, error: null };
+      } catch (error) {
+        return { ok: error.code === 'CONFLICTS', error };
+      }
+    },
+    [mutateAsync],
+  );
+
+  return {
+    run,
+    attempt,
+    pendingAction: pendingActions[0] ?? null,
+    isBusy: pendingActions.length > 0,
+  };
 }

@@ -102,6 +102,21 @@ describe('paths', () => {
   });
 });
 
+describe('StatusHelper.tracksOtherName', () => {
+  it('spots a branch tracking a remote branch of another name', () => {
+    expect(StatusHelper.tracksOtherName({ branch: 'feature', upstream: 'origin/main' })).toBe(true);
+    expect(StatusHelper.tracksOtherName({ branch: 'feature/x', upstream: 'origin/feature/x' })).toBe(
+      false,
+    );
+    expect(StatusHelper.tracksOtherName({ branch: 'x', upstream: 'my/remote/x' })).toBe(false);
+  });
+
+  it('says nothing without a branch or an upstream', () => {
+    expect(StatusHelper.tracksOtherName({ branch: null, upstream: 'origin/main' })).toBe(false);
+    expect(StatusHelper.tracksOtherName({ branch: 'main', upstream: null })).toBe(false);
+  });
+});
+
 describe('StatusHelper', () => {
   const status = (overrides) => ({
     branch: 'main',
