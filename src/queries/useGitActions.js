@@ -118,6 +118,23 @@ const GIT_ACTIONS = {
   stashApply: { run: gitApi.stashApply, title: 'Apply stash', success: () => 'Stash applied' },
   stashPop: { run: gitApi.stashPop, title: 'Pop stash', success: () => 'Stash restored' },
   stashDrop: { run: gitApi.stashDrop, title: 'Delete stash', success: () => 'Stash deleted' },
+  addWorktree: {
+    run: gitApi.addWorktree,
+    title: 'Create worktree',
+    success: ({ path }) => `Created a worktree at ${path}`,
+  },
+  removeWorktree: {
+    run: gitApi.removeWorktree,
+    title: 'Remove worktree',
+    success: ({ name }) => `Removed ${name}`,
+  },
+  lockWorktree: { run: gitApi.lockWorktree, title: 'Lock worktree', success: () => 'Locked' },
+  unlockWorktree: { run: gitApi.unlockWorktree, title: 'Unlock worktree', success: () => 'Unlocked' },
+  pruneWorktrees: {
+    run: gitApi.pruneWorktrees,
+    title: 'Prune worktrees',
+    success: () => 'Cleared away missing worktrees',
+  },
   applyPatch: {
     run: gitApi.applyPatch,
     title: 'Apply patch',
