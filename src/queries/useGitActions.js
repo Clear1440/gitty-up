@@ -85,6 +85,24 @@ const GIT_ACTIONS = {
     success: ({ path, remove }) => (remove ? `Deleted ${path}` : `Resolved ${path}`),
   },
   discard: { run: gitApi.discard, title: 'Discard', success: () => 'Changes discarded' },
+  discardAll: {
+    run: gitApi.discardAll,
+    title: 'Discard all',
+    success: () => 'All changes discarded',
+  },
+  ignore: {
+    run: gitApi.ignore,
+    title: 'Ignore',
+    success: ({ paths, kind }) =>
+      kind === 'file' && paths.length === 1
+        ? `Added ${paths[0]} to .gitignore`
+        : 'Updated .gitignore',
+  },
+  rewordLastCommit: {
+    run: gitApi.rewordLastCommit,
+    title: 'Edit message',
+    success: () => 'Commit message updated',
+  },
   commit: {
     run: gitApi.commit,
     title: 'Commit',

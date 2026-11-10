@@ -75,6 +75,14 @@
       "identity": "-",
       "hardenedRuntime": false
     },
+    "linux": {
+      "target": {
+        "target": "AppImage",
+        "arch": "x64"
+      },
+      "category": "Development",
+      "synopsis": "A git client with a liquid glass UI."
+    },
     "publish": {
       "provider": "github",
       "releaseType": "draft"

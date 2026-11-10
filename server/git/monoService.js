@@ -387,6 +387,19 @@ export async function discard(mono, { paths }) {
   await onPaths(mono, paths, ({ path }, ownPaths) => git.discard(path, { paths: ownPaths }));
 }
 
+export async function discardAll(mono) {
+  await forEachMember(mono.members, ({ path }) => git.discardAll(path));
+}
+
+/** Each file goes in its own repository's .gitignore. */
+export async function ignore(mono, { paths, kind }) {
+  await onPaths(mono, paths, ({ path }, ownPaths) => git.ignore(path, { paths: ownPaths, kind }));
+}
+
+export async function rewordLastCommit() {
+  throw ApiError.badRequest('Open the repository on its own to edit a commit message.');
+}
+
 /**
  * Commits to every member with something to commit, all with the same message. Whatever
  * can be checked is checked first, so a commit only ever stops halfway on a hook. Then

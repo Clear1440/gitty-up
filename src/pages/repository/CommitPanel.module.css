@@ -14,6 +14,12 @@
   gap: var(--space-1) var(--space-3);
 }
 
+.amendNote {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
 .commitButton {
   display: flex;
   min-width: 0;

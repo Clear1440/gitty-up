@@ -586,6 +586,90 @@ export async function discard(repoPath, { paths }) {
   }
 }
 
+/**
+ * Throws away every uncommitted change, staged or not, and deletes untracked files.
+ * Ignored files stay, as they are usually builds and local settings, not changes.
+ */
+export async function discardAll(repoPath) {
+  const { operation } = await getStatus(repoPath);
+  if (operation) {
+    throw ApiError.gitFailure(`Abort the ${operation} instead, to go back to before it started.`);
+  }
+  if (await refExists(repoPath, 'HEAD')) {
+    await runGit(repoPath, ['reset', '--hard', '--quiet', 'HEAD']);
+  } else {
+    // Before the first commit there is nothing to go back to, only an index to empty.
+    await runGit(repoPath, ['read-tree', '--empty']);
+  }
+  await runGit(repoPath, ['clean', '--force', '-d', '--quiet']);
+}
+
+const IGNORE_KINDS = ['file', 'folder', 'extension'];
+
+/** The .gitignore line that covers `filePath` in the way `kind` says, or null if none can. */
+export function ignorePattern(filePath, kind) {
+  // Ignore files treat these as special, so they are escaped to mean themselves.
+  const escape = (text) => text.replace(/[\\*?[\]!#]/g, (char) => `\\${char}`);
+  const slash = filePath.lastIndexOf('/');
+  if (kind === 'file') return `/${escape(filePath)}`;
+  if (kind === 'folder') return slash === -1 ? null : `/${escape(filePath.slice(0, slash))}/`;
+  if (kind === 'extension') {
+    const name = filePath.slice(slash + 1);
+    const dot = name.lastIndexOf('.');
+    return dot > 0 ? `*${escape(name.slice(dot))}` : null;
+  }
+  throw ApiError.badRequest(`Unknown kind of ignore: ${kind}`);
+}
+
+/**
+ * Adds lines to the repository's top .gitignore so these paths stop showing as changes.
+ * `kind` ignores just each file, its whole folder, or every file with its extension.
+ * Lines already in the file are not added twice.
+ */
+export async function ignore(repoPath, { paths, kind = 'file' }) {
+  if (!IGNORE_KINDS.includes(kind)) throw ApiError.badRequest(`Unknown kind of ignore: ${kind}`);
+  // Each pattern is one line, so a line break in a path could add a rule of its own.
+  if (paths.some((filePath) => /[\r\n]/.test(filePath))) {
+    throw ApiError.badRequest('A path with a line break cannot be ignored.');
+  }
+  const patterns = [...new Set(paths.map((filePath) => ignorePattern(filePath, kind)))];
+  if (patterns.includes(null)) {
+    throw ApiError.badRequest(
+      kind === 'folder'
+        ? 'A file at the top of the repository has no folder to ignore.'
+        : 'That file has no extension to ignore.',
+    );
+  }
+
+  const ignorePath = path.join(repoPath, '.gitignore');
+  const current = await fs.readFile(ignorePath, 'utf8').catch(() => '');
+  const existing = new Set(current.split(/\r?\n/).map((line) => line.trim()));
+  const added = patterns.filter((pattern) => !existing.has(pattern));
+  if (added.length === 0) return;
+
+  const newline = current.includes('\r\n') ? '\r\n' : '\n';
+  const separator = current && !current.endsWith('\n') ? newline : '';
+  await fs.appendFile(ignorePath, `${separator}${added.join(newline)}${newline}`);
+}
+
+/**
+ * Rewrites the latest commit's message and nothing else, even with changes staged.
+ * `hash` is the commit the user meant, so one made elsewhere since is never touched.
+ */
+export async function rewordLastCommit(repoPath, { hash, message }) {
+  assertCommitHash(hash);
+  const trimmed = message?.trim();
+  if (!trimmed) throw ApiError.badRequest('A commit message is required.');
+  await assertNoOperation(repoPath, 'editing a commit message');
+
+  const head = (await runGit(repoPath, ['rev-parse', 'HEAD'])).trim();
+  if (!head.startsWith(hash.toLowerCase())) {
+    throw ApiError.gitFailure('Only the latest commit can have its message edited here.');
+  }
+  // --only with no paths leaves whatever is staged out of the amended commit.
+  await runGit(repoPath, ['commit', '--amend', '--only', '--allow-empty', '--message', trimmed]);
+}
+
 export async function commit(repoPath, { message, amend = false, stageAll = false }) {
   const trimmed = message?.trim();
   const { operation, conflicted } = await getStatus(repoPath);
@@ -692,11 +776,17 @@ export async function undoCommit(repoPath, { hash, allowPushed = false }) {
   );
 }
 
-export async function stashSave(repoPath, { message }) {
+/** Stashes every change, or with `paths` only those files' changes. */
+export async function stashSave(repoPath, { message, paths }) {
   // Git exits 0 on a clean tree, which would read as a stash that never happened.
   const { staged, unstaged, conflicted } = await getStatus(repoPath);
-  if (staged.length + unstaged.length + conflicted.length === 0) {
-    throw ApiError.gitFailure('There are no changes to stash.');
+  const changed = [...staged, ...unstaged, ...conflicted].filter(
+    (file) => !paths || paths.includes(file.path),
+  );
+  if (changed.length === 0) {
+    throw ApiError.gitFailure(
+      paths ? 'Those files have no changes to stash.' : 'There are no changes to stash.',
+    );
   }
 
   const trimmed = message?.trim();
@@ -705,6 +795,8 @@ export async function stashSave(repoPath, { message }) {
     'push',
     '--include-untracked',
     ...(trimmed ? ['--message', trimmed] : []),
+    // Per path rather than --literal-pathspecs, which would break stash's own ":/".
+    ...(paths ? ['--', ...paths.map((filePath) => `:(literal)${filePath}`)] : []),
   ]);
 }
 

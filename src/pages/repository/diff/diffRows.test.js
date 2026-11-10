@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRows, parseDiff, selectableIds } from './diffRows.js';
+import { buildRows, parseDiff, selectableIds, toDiffView } from './diffRows.js';
 
 const DIFF = [
   'diff --git a/file.txt b/file.txt',
@@ -88,8 +88,29 @@ describe('buildRows', () => {
     ]);
   });
 
+  it('can show git\'s hunks side by side', () => {
+    const rows = buildRows(hunks, { context: 'hunk', layout: 'split' });
+    expect(rows[0]).toMatchObject({ type: 'hunk', text: '@@ -10,4 +10,4 @@ function example' });
+    expect(rows.filter((row) => row.type === 'hunk')).toHaveLength(1);
+    expect(rows.slice(1).every((row) => row.type === 'pair')).toBe(true);
+  });
+
+  it('reads the single words older versions stored', () => {
+    expect(toDiffView('split')).toEqual({ context: 'full', layout: 'split' });
+    expect(toDiffView('nonsense')).toEqual({ context: 'hunk', layout: 'inline' });
+    expect(toDiffView({ context: 'full', layout: 'inline' })).toEqual({
+      context: 'full',
+      layout: 'inline',
+    });
+  });
+
   it('gives every row a unique key', () => {
-    for (const view of ['hunk', 'inline', 'split']) {
+    for (const view of [
+      'hunk',
+      'inline',
+      'split',
+      { context: 'hunk', layout: 'split' },
+    ]) {
       const keys = buildRows(hunks, view).map((row) => row.key);
       expect(new Set(keys).size).toBe(keys.length);
     }

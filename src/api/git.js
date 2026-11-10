@@ -59,11 +59,15 @@ export const gitApi = {
   resolveConflict: (id, { path, content, side, remove }) =>
     http.post(route(id, '/resolve-conflict'), { path, content, side, remove }),
   discard: (id, { paths }) => http.post(route(id, '/discard'), { paths }),
+  discardAll: (id) => http.post(route(id, '/discard-all')),
+  /** `kind` is "file", "folder" or "extension". */
+  ignore: (id, { paths, kind }) => http.post(route(id, '/ignore'), { paths, kind }),
+  rewordLastCommit: (id, { hash, message }) => http.post(route(id, '/reword'), { hash, message }),
   commit: (id, { message, amend, stageAll }) =>
     http.post(route(id, '/commit'), { message, amend, stageAll }),
   undoCommit: (id, { hash, allowPushed }) =>
     http.post(route(id, '/undo-commit'), { hash, allowPushed }),
-  stash: (id, { message } = {}) => http.post(route(id, '/stash'), { message }),
+  stash: (id, { message, paths } = {}) => http.post(route(id, '/stash'), { message, paths }),
   stashApply: (id, { ref }) => http.post(route(id, '/stash/apply'), { ref }),
   stashPop: (id, { ref } = {}) => http.post(route(id, '/stash/pop'), { ref }),
   stashDrop: (id, { ref }) => http.post(route(id, '/stash/drop'), { ref }),

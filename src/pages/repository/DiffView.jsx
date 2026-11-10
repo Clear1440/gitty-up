@@ -62,6 +62,7 @@ export function DiffView({ file }) {
         selected={selected}
         onToggle={toggleLine}
         hunkLabel={`${verb} hunk`}
+        lineLabel={verb}
         disabled={isBusy}
         onApply={applyLines}
       />
