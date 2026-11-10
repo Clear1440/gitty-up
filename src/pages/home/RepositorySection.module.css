@@ -94,6 +94,27 @@
   background: var(--color-surface-hover);
 }
 
+/* Muted until the group has a color, which is then set inline. */
+.folder {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-md);
+}
+
+/* Color choices in the group menu. "No color" shows as a dashed ring. */
+.swatch {
+  display: inline-block;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin-inline-end: var(--space-2);
+  border: 1px dashed var(--color-text-muted);
+  border-radius: 50%;
+}
+
+.swatch[style] {
+  border: 0;
+}
+
 .caret {
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);

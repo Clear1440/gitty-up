@@ -126,7 +126,7 @@
   gap: var(--space-2);
 }
 
-/* A color label shows as a bar down the left edge. */
+/* In a colored group, the group's color shows as a bar down the left edge. */
 .colored::before {
   content: '';
   position: absolute;
@@ -135,7 +135,7 @@
   left: 0;
   width: 3px;
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  background: var(--repository-color);
+  background: var(--group-color);
 }
 
 .dragging {
@@ -187,21 +187,21 @@
   right: var(--space-1);
 }
 
-/* Menu icons: a color sample, or a blank the width of a tick to line labels up. */
-.swatch {
-  display: inline-block;
+/* The groups menu: each name with a dot in its group's color. */
+.groupLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.groupDot {
   flex: none;
-  margin-inline-end: var(--space-2);
-  width: 12px;
-  height: 12px;
-  border: 1px dashed var(--color-text-muted);
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
 }
 
-.swatch[style] {
-  border: 0;
-}
-
+/* A blank the width of a tick, to line up the names that have none. */
 .blank {
   display: inline-block;
   width: 12px;

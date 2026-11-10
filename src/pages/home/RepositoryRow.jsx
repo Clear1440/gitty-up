@@ -1,5 +1,4 @@
 import {
-  BgColorsOutlined,
   BranchesOutlined,
   CheckOutlined,
   CloseOutlined,
@@ -21,15 +20,14 @@ import { RelativeTime } from '../../components/RelativeTime.jsx';
 import { paths } from '../../paths.js';
 import {
   useCreateGroup,
-  useSetRepositoryColor,
   useSetRepositoryGroups,
   useUnlinkRepository,
 } from '../../queries/repositories.js';
 import { useTabs } from '../../tabs/TabsContext.jsx';
 import { KeyboardHelper } from '../../utils/KeyboardHelper.js';
+import { colorValueOf } from './groupColors.js';
 import { groupIdsOf, isInGroup, toggleGroup, UNGROUPED } from './groupMembership.js';
 import { GroupNameDialog } from './GroupNameDialog.jsx';
-import { colorValueOf, REPOSITORY_COLORS } from './repositoryColors.js';
 import styles from './RepositoryRow.module.css';
 import { CloneRepositoryDialog, LocateRepositoryDialog } from './StubDialogs.jsx';
 import { DRAG_TYPE, useRepositoryList } from './useRepositoryList.js';
@@ -136,19 +134,26 @@ function StubBody({ repository, condensed }) {
   );
 }
 
-const Swatch = ({ value }) => (
-  <span className={styles.swatch} style={value ? { background: value } : undefined} />
-);
+/** A group's name in a menu, after a dot in its color when it has one. */
+function GroupLabel({ group }) {
+  const color = colorValueOf(group.color);
+  return (
+    <span className={styles.groupLabel}>
+      {group.name}
+      {color && <span className={styles.groupDot} style={{ background: color }} />}
+    </span>
+  );
+}
 
 /**
  * One repository on the home page. `sectionId` is the section it shows in, which
  * matters when it is dragged out: a repository in many groups shows in each.
+ * `color` is that section's group color, shown as a bar down the row's edge.
  */
-export function RepositoryRow({ repository, groups, sectionId = UNGROUPED }) {
+export function RepositoryRow({ repository, groups, sectionId = UNGROUPED, color = null }) {
   const { modal, notification } = App.useApp();
   const unlink = useUnlinkRepository();
   const setGroups = useSetRepositoryGroups();
-  const setColor = useSetRepositoryColor();
   const createGroup = useCreateGroup();
   const [naming, setNaming] = useState(false);
   const { closeTab, openTab } = useTabs();
@@ -162,7 +167,6 @@ export function RepositoryRow({ repository, groups, sectionId = UNGROUPED }) {
     drag?.kind === 'repository' &&
     drag.repositoryId === repository.id &&
     drag.fromSectionId === sectionId;
-  const colorValue = colorValueOf(repository.color);
 
   const openInBackground = (event) => {
     event.preventDefault();
@@ -211,14 +215,6 @@ export function RepositoryRow({ repository, groups, sectionId = UNGROUPED }) {
     }
   };
 
-  const saveColor = async (color) => {
-    try {
-      await setColor.mutateAsync({ repositoryId: repository.id, color });
-    } catch (error) {
-      notification.error({ title: 'Could not change the color', description: error.message });
-    }
-  };
-
   const addToNewGroup = async (name) => {
     const group = await createGroup.mutateAsync(name);
     await setGroups.mutateAsync({
@@ -250,7 +246,7 @@ export function RepositoryRow({ repository, groups, sectionId = UNGROUPED }) {
   const groupItems = [
     ...groups.map((group) => ({
       key: `group-${group.id}`,
-      label: group.name,
+      label: <GroupLabel group={group} />,
       icon: isInGroup(repository, group.id) ? <CheckOutlined /> : <span className={styles.blank} />,
       onClick: () => saveGroups(toggleGroup(repository, group.id)),
     })),
@@ -261,27 +257,8 @@ export function RepositoryRow({ repository, groups, sectionId = UNGROUPED }) {
     { key: 'new-group', label: 'New group…', onClick: () => setNaming(true) },
   ];
 
-  const colorItems = [
-    ...REPOSITORY_COLORS.map((color) => ({
-      key: `color-${color.id}`,
-      label: color.label,
-      icon: <Swatch value={color.value} />,
-      disabled: repository.color === color.id,
-      onClick: () => saveColor(color.id),
-    })),
-    { type: 'divider' },
-    {
-      key: 'no-color',
-      label: 'No color',
-      icon: <Swatch />,
-      disabled: !colorValue,
-      onClick: () => saveColor(null),
-    },
-  ];
-
   const menuItems = [
     { key: 'groups', label: 'Groups', icon: <FolderOutlined />, children: groupItems },
-    { key: 'color', label: 'Color', icon: <BgColorsOutlined />, children: colorItems },
     { key: 'unlink', label: 'Unlink', icon: <DisconnectOutlined />, onClick: confirmUnlink },
   ];
 
@@ -291,12 +268,12 @@ export function RepositoryRow({ repository, groups, sectionId = UNGROUPED }) {
       className={clsx(
         styles.row,
         condensed && styles.condensed,
-        colorValue && styles.colored,
+        color && styles.colored,
         !repository.available && styles.unavailable,
         isSelected && styles.selected,
         isDragging && styles.dragging,
       )}
-      style={colorValue ? { '--repository-color': colorValue } : undefined}
+      style={color ? { '--group-color': color } : undefined}
       draggable={canDrag}
       onDragStart={canDrag ? handleDragStart : undefined}
       onDragEnd={canDrag ? () => setDrag(null) : undefined}
