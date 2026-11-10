@@ -240,8 +240,13 @@ function createGitRouter() {
   // Syncing
   action(router, '/fetch', (service, target) => service.fetchAll(target));
   action(router, '/pull', (service, target, { mode }) => service.pull(target, { mode }));
-  action(router, '/push', (service, target, { force, remote, upstreamName }) =>
-    service.push(target, { force: force === true, remote, upstreamName }),
+  action(router, '/push', (service, target, { force, remote, upstreamName, toUpstream }) =>
+    service.push(target, {
+      force: force === true,
+      remote,
+      upstreamName,
+      toUpstream: toUpstream === true,
+    }),
   );
 
   // Branches and commits

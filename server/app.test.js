@@ -784,6 +784,67 @@ describe('syncing with the remote', () => {
     expect(git(repo.remote, 'branch', '--list', 'topic')).toBe('');
   });
 
+  describe('a branch that tracks another branch’s upstream', () => {
+    /** As `git switch -c feature origin/main` leaves it: feature, tracking origin/main. */
+    async function featureTrackingMain() {
+      git(repo.work, 'remote', 'set-head', 'origin', 'main');
+      git(repo.work, 'switch', '-c', 'feature', '--track', 'origin/main');
+      await writeAndCommit(repo.work, 'f.txt', 'f\n', 'Feature work');
+      return git(repo.work, 'rev-parse', 'HEAD');
+    }
+    const remoteHead = (name) =>
+      git(repo.remote, 'rev-parse', '--verify', '--quiet', name);
+
+    it('refuses to push into it, and says which branches are involved', async () => {
+      await featureTrackingMain();
+      const before = remoteHead('main');
+
+      const { status, body } = await request('POST', `${repo.api}/push`, {});
+
+      expect(status).toBe(409);
+      expect(body.error.code).toBe('UPSTREAM_MISMATCH');
+      expect(body.error.details).toEqual({
+        branch: 'feature',
+        remote: 'origin',
+        upstreamName: 'main',
+      });
+      expect(remoteHead('main')).toBe(before);
+    });
+
+    it('also refuses a force push', async () => {
+      await featureTrackingMain();
+      const { body } = await request('POST', `${repo.api}/push`, { force: true });
+      expect(body.error.code).toBe('UPSTREAM_MISMATCH');
+    });
+
+    it('pushes to a branch of its own name instead, and tracks that from then on', async () => {
+      const head = await featureTrackingMain();
+      const before = remoteHead('main');
+
+      const { status } = await request('POST', `${repo.api}/push`, { upstreamName: 'feature' });
+
+      expect(status).toBe(204);
+      expect(remoteHead('feature')).toBe(head);
+      expect(remoteHead('main')).toBe(before);
+      const { body } = await request('GET', `${repo.api}/status`);
+      expect(body.upstream).toBe('origin/feature');
+    });
+
+    it('pushes into it when asked to on purpose', async () => {
+      const head = await featureTrackingMain();
+      const { status } = await request('POST', `${repo.api}/push`, { toUpstream: true });
+      expect(status).toBe(204);
+      expect(remoteHead('main')).toBe(head);
+    });
+
+    it('still refuses when the remote has no default branch set, as main exists here', async () => {
+      await featureTrackingMain();
+      git(repo.work, 'remote', 'set-head', 'origin', '--delete');
+      const { body } = await request('POST', `${repo.api}/push`, {});
+      expect(body.error.code).toBe('UPSTREAM_MISMATCH');
+    });
+  });
+
   it('publishes again once the upstream is gone', async () => {
     await request('POST', `${repo.api}/branches`, { name: 'topic' });
     await request('POST', `${repo.api}/push`, {});

@@ -47,6 +47,14 @@ export class ApiError extends Error {
     return new ApiError(409, 'BRANCH_BEHIND', message);
   }
 
+  /**
+   * A push would land on a remote branch that belongs to another branch, such as main.
+   * `details` names both, `{ branch, remote, upstreamName }`, so the client can ask.
+   */
+  static upstreamMismatch(message, details) {
+    return new ApiError(409, 'UPSTREAM_MISMATCH', message, details);
+  }
+
   /** Anything unexpected. The real error is logged, never sent. */
   static internal() {
     return new ApiError(500, 'INTERNAL', 'Unexpected server error.');

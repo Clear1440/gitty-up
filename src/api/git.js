@@ -29,8 +29,9 @@ export const gitApi = {
   // Syncing
   fetch: (id) => http.post(route(id, '/fetch')),
   pull: (id, { mode }) => http.post(route(id, '/pull'), { mode }),
-  push: (id, { force = false, remote, upstreamName } = {}) =>
-    http.post(route(id, '/push'), { force, remote, upstreamName }),
+  /** `toUpstream` pushes into an upstream that belongs to another branch, on purpose. */
+  push: (id, { force = false, remote, upstreamName, toUpstream } = {}) =>
+    http.post(route(id, '/push'), { force, remote, upstreamName, toUpstream }),
 
   // Branches
   checkout: (id, { branch, remote }) => http.post(route(id, '/checkout'), { branch, remote }),

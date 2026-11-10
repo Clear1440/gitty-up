@@ -7,6 +7,7 @@ import { MergeDialog } from './MergeDialog.jsx';
 import { MergeIntoDialog } from './MergeIntoDialog.jsx';
 import { PruneBranchesDialog } from './PruneBranchesDialog.jsx';
 import { PublishBranchDialog } from './PublishBranchDialog.jsx';
+import { PushTargetDialog } from './PushTargetDialog.jsx';
 import { RewordCommitDialog } from './RewordCommitDialog.jsx';
 import { StashDialog } from './StashDialog.jsx';
 
@@ -20,6 +21,7 @@ const DIALOGS = {
   mergeInto: MergeIntoDialog,
   pruneBranches: PruneBranchesDialog,
   publishBranch: PublishBranchDialog,
+  pushTarget: PushTargetDialog,
   rewordCommit: RewordCommitDialog,
   stash: StashDialog,
 };

@@ -386,11 +386,41 @@ async function resolvePushRemote(repoPath, requested) {
   return remote;
 }
 
+/** The branch a remote's HEAD points at, such as main, or null if it doesn't say. */
+async function remoteDefaultBranch(repoPath, remote) {
+  const output = await runGit(
+    repoPath,
+    ['symbolic-ref', '--quiet', '--short', `refs/remotes/${remote}/HEAD`],
+    { allowedExitCodes: [0, 1, 128] },
+  );
+  const name = output.trim();
+  return name.startsWith(`${remote}/`) ? name.slice(remote.length + 1) : null;
+}
+
+/**
+ * Whether an upstream named differently from its branch looks taken by mistake rather
+ * than chosen: a branch made from origin/main tracks main, which belongs to the local
+ * main branch and is the remote's default. A name chosen when publishing, as in
+ * topic → shared/topic, is neither, and is pushed to as usual.
+ */
+async function isOtherBranchesUpstream(repoPath, { branch, remote, upstreamName }) {
+  if (upstreamName === branch) return false;
+  if (await hasLocalBranch(repoPath, upstreamName)) return true;
+  return remote !== '.' && (await remoteDefaultBranch(repoPath, remote)) === upstreamName;
+}
+
 /**
  * Pushes the current branch. Naming `upstreamName` publishes it under that name, as does
  * having no upstream at all, which uses the branch's own name.
+ *
+ * A branch tracking a remote branch that belongs to another, such as feature tracking
+ * origin/main, is refused with UPSTREAM_MISMATCH rather than pushed into main. Pushing
+ * there anyway takes `toUpstream`, and pushing to its own name takes `upstreamName`.
  */
-export async function push(repoPath, { force = false, remote, upstreamName } = {}) {
+export async function push(
+  repoPath,
+  { force = false, remote, upstreamName, toUpstream = false } = {},
+) {
   const { branch, upstream } = await getStatus(repoPath);
   if (!branch) throw ApiError.gitFailure('Check out a branch before pushing.');
   if (upstreamName !== undefined) await assertValidBranchName(repoPath, upstreamName);
@@ -400,9 +430,20 @@ export async function push(repoPath, { force = false, remote, upstreamName } = {
     const target = await resolvePushRemote(repoPath, remote);
     args.push('--set-upstream', target, `HEAD:${GitRefHelper.toLocalRef(upstreamName ?? branch)}`);
   } else {
-    // By default git refuses to push to an upstream named differently from the branch.
-    const merge = await runGit(repoPath, ['config', `branch.${branch}.merge`]);
-    if (merge.trim() !== GitRefHelper.toLocalRef(branch)) {
+    const [merge, trackedRemote] = await Promise.all(
+      ['merge', 'remote'].map((key) =>
+        runGit(repoPath, ['config', `branch.${branch}.${key}`]).then((value) => value.trim()),
+      ),
+    );
+    if (merge !== GitRefHelper.toLocalRef(branch)) {
+      const mismatch = { branch, remote: trackedRemote, upstreamName: GitRefHelper.fromLocalRef(merge) };
+      if (!toUpstream && (await isOtherBranchesUpstream(repoPath, mismatch))) {
+        throw ApiError.upstreamMismatch(
+          `${branch} tracks ${upstream}, so pushing would update ${upstream} instead of a branch of its own.`,
+          mismatch,
+        );
+      }
+      // By default git refuses to push to an upstream named differently from the branch.
       args.unshift('-c', 'push.default=upstream');
     }
   }
