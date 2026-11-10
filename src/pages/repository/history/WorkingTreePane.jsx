@@ -1,16 +1,18 @@
 import {
   CheckOutlined,
   CloseOutlined,
+  DeleteOutlined,
   FileTextOutlined,
   InboxOutlined,
   MinusOutlined,
   PlusOutlined,
   UndoOutlined,
 } from '@ant-design/icons';
-import { Button, Empty, Popconfirm, Tooltip } from 'antd';
-import { useState } from 'react';
+import { App, Button, Empty, Popconfirm, Tooltip } from 'antd';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { paths } from '../../../paths.js';
+import { EMPTY_SELECTION, clickSelection, selectedInOrder } from '../../home/selection.js';
 import { TextHelper } from '../../../utils/TextHelper.js';
 import { CommitHelper } from '../CommitHelper.js';
 import { CommitPanel } from '../CommitPanel.jsx';
@@ -22,6 +24,7 @@ import { usePatchActions } from '../usePatchActions.js';
 import styles from './CommitPane.module.css';
 import { FilesAndDiff } from './FilesAndDiff.jsx';
 import stashStyles from './StashPane.module.css';
+import { useFileMenu } from './useFileMenu.js';
 
 function IconAction({ label, icon, ...buttonProps }) {
   return (
@@ -58,22 +61,70 @@ function findSelectedFile({ staged, unstaged, conflicted }, choice) {
   return null;
 }
 
+const NO_PICKS = { area: null, ...EMPTY_SELECTION };
+
+/**
+ * Files picked with shift and ctrl clicks, as on the repositories page. A pick stays
+ * in its own list: picking in another list starts over there.
+ */
+function useFilePicks(status) {
+  const [picks, setPicks] = useState(NO_PICKS);
+  const listFor = (area) => status[area].map((file) => file.path);
+  const pickedIn = (area) =>
+    picks.area === area ? selectedInOrder(picks, listFor(area)) : [];
+
+  useEffect(() => {
+    if (picks.ids.length < 2) return undefined;
+    const clearOnEscape = (event) => {
+      if (event.key === 'Escape') setPicks(NO_PICKS);
+    };
+    document.addEventListener('keydown', clearOnEscape);
+    return () => document.removeEventListener('keydown', clearOnEscape);
+  }, [picks.ids.length]);
+
+  const click = (area, path, event) => {
+    const toggle = event.ctrlKey || event.metaKey;
+    const range = event.shiftKey;
+    setPicks((current) => {
+      if (!(toggle || range) || current.area !== area) return { area, ids: [path], anchor: path };
+      return { area, ...clickSelection(current, path, listFor(area), { toggle, range }) };
+    });
+  };
+
+  return { pickedIn, click };
+}
+
 function WorkingTreeFiles({ selected, onSelect }) {
   const { repository, status, run, isBusy } = useRepositoryContext();
   const navigate = useNavigate();
   const { staged, unstaged, conflicted } = status;
+  const picks = useFilePicks(status);
+  const menus = useFileMenu();
 
-  const select = (isStaged) => (file) => onSelect({ path: file.path, staged: isStaged });
-  const isSelected = (isStaged) => (file) =>
-    selected.path === file.path && selected.staged === isStaged;
+  const select = (area, isStaged) => (file, event) => {
+    picks.click(area, file.path, event);
+    onSelect({ path: file.path, staged: isStaged });
+  };
+  const isSelected = (area, isStaged) => (file) => {
+    const picked = picks.pickedIn(area);
+    if (picked.length > 1) return picked.includes(file.path);
+    return selected.path === file.path && selected.staged === isStaged;
+  };
+  /** The files a right-click acts on: every pick, if it was on one of them. */
+  const targetsFor = (area, file) => {
+    const picked = picks.pickedIn(area);
+    if (!picked.includes(file.path)) return [file];
+    return status[area].filter((candidate) => picked.includes(candidate.path));
+  };
 
   return (
     <>
       <FileSection
         title="Conflicted"
         files={conflicted}
-        isSelected={isSelected(false)}
-        onSelect={select(false)}
+        isSelected={isSelected('conflicted', false)}
+        onSelect={select('conflicted', false)}
+        getMenuItems={(file) => menus.copyItems([file])}
         renderActions={(file) => (
           <>
             <Button
@@ -97,8 +148,9 @@ function WorkingTreeFiles({ selected, onSelect }) {
       <FileSection
         title="Unstaged"
         files={unstaged}
-        isSelected={isSelected(false)}
-        onSelect={select(false)}
+        isSelected={isSelected('unstaged', false)}
+        onSelect={select('unstaged', false)}
+        getMenuItems={(file) => menus.unstagedItems(targetsFor('unstaged', file))}
         headerAction={
           <Button size="small" type="text" disabled={isBusy} onClick={() => run('stage')}>
             Stage all
@@ -127,8 +179,9 @@ function WorkingTreeFiles({ selected, onSelect }) {
       <FileSection
         title="Staged"
         files={staged}
-        isSelected={isSelected(true)}
-        onSelect={select(true)}
+        isSelected={isSelected('staged', true)}
+        onSelect={select('staged', true)}
+        getMenuItems={(file) => menus.stagedItems(targetsFor('staged', file))}
         headerAction={
           <Button size="small" type="text" disabled={isBusy} onClick={() => run('unstage')}>
             Unstage all
@@ -149,9 +202,23 @@ function WorkingTreeFiles({ selected, onSelect }) {
 
 /** The uncommitted changes: the commit pane's counterpart for work not yet in a commit. */
 export function WorkingTreePane({ onClose, resizeHandle }) {
-  const { repository, status, openDialog, isBusy, pendingAction } = useRepositoryContext();
+  const { repository, status, run, openDialog, isBusy, pendingAction } = useRepositoryContext();
   const { savePatch } = usePatchActions();
-  const hasFiles = StatusHelper.countChangedFiles(status) > 0;
+  const { modal } = App.useApp();
+  const fileCount = StatusHelper.countChangedFiles(status);
+  const hasFiles = fileCount > 0;
+
+  const confirmDiscardAll = () =>
+    modal.confirm({
+      title: `Discard all changes to ${TextHelper.countOf(fileCount, 'file')}?`,
+      content: repository.isMono
+        ? 'In every repository here, staged and unstaged changes are thrown away and new files deleted. Ignored files stay. This cannot be undone.'
+        : 'Staged and unstaged changes are thrown away and new files deleted. Ignored files stay. This cannot be undone.',
+      okText: 'Discard all',
+      okButtonProps: { danger: true },
+      focusable: { autoFocusButton: 'cancel' },
+      onOk: () => run('discardAll'),
+    });
   const [choice, setChoice] = useState(null);
   const selected = findSelectedFile(status, choice);
   const place = status.branch
@@ -175,24 +242,39 @@ export function WorkingTreePane({ onClose, resizeHandle }) {
           {place}
           {status.mono && ` across ${TextHelper.countOf(memberCount, 'repository', 'repositories')}`}
         </p>
-        {/* Stashes and patches belong to one repository, so a mono repo leaves them out. */}
-        {!repository.isMono && hasFiles && (
+        {hasFiles && (
           <div className={stashStyles.actions}>
+            {/* Stashes and patches belong to one repository, so a mono repo leaves them out. */}
+            {!repository.isMono && (
+              <>
+                <Button
+                  size="small"
+                  icon={<InboxOutlined />}
+                  loading={pendingAction === 'stash'}
+                  disabled={isBusy || Boolean(status.operation)}
+                  onClick={() => openDialog('stash')}
+                >
+                  Stash all changes
+                </Button>
+                <Button
+                  size="small"
+                  icon={<FileTextOutlined />}
+                  onClick={() => savePatch({ source: 'uncommitted' })}
+                >
+                  Save as patch
+                </Button>
+              </>
+            )}
             <Button
               size="small"
-              icon={<InboxOutlined />}
-              loading={pendingAction === 'stash'}
+              danger
+              icon={<DeleteOutlined />}
+              loading={pendingAction === 'discardAll'}
               disabled={isBusy || Boolean(status.operation)}
-              onClick={() => openDialog('stash')}
+              title={status.operation ? `Abort the ${status.operation} instead` : undefined}
+              onClick={confirmDiscardAll}
             >
-              Stash all changes
-            </Button>
-            <Button
-              size="small"
-              icon={<FileTextOutlined />}
-              onClick={() => savePatch({ source: 'uncommitted' })}
-            >
-              Save as patch
+              Discard all…
             </Button>
           </div>
         )}

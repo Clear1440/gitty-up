@@ -1428,6 +1428,112 @@ describe('managing individual stashes', () => {
   });
 });
 
+describe('stashing chosen files', () => {
+  it('stashes only the files asked for, untracked ones included', async () => {
+    await fs.writeFile(path.join(repo.work, 'readme.txt'), 'changed\n');
+    await fs.writeFile(path.join(repo.work, 'keep [me].txt'), 'stay\n');
+    await fs.writeFile(path.join(repo.work, 'park.txt'), 'park\n');
+
+    const { status } = await request('POST', `${repo.api}/stash`, {
+      message: 'some',
+      paths: ['readme.txt', 'park.txt'],
+    });
+    expect(status).toBe(204);
+
+    const { body } = await request('GET', `${repo.api}/status`);
+    expect(body.unstaged.map((file) => file.path)).toEqual(['keep [me].txt']);
+    const { body: stashes } = await request('GET', `${repo.api}/stashes`);
+    expect(stashes[0].message).toBe('some');
+  });
+
+  it('refuses files with nothing to stash', async () => {
+    const { status } = await request('POST', `${repo.api}/stash`, { paths: ['readme.txt'] });
+    expect(status).toBe(409);
+  });
+});
+
+describe('discarding everything', () => {
+  it('drops staged, unstaged and untracked changes but keeps ignored files', async () => {
+    await writeAndCommit(repo.work, '.gitignore', 'build/\n', 'Ignore build');
+    await fs.mkdir(path.join(repo.work, 'build'));
+    await fs.writeFile(path.join(repo.work, 'build', 'out.js'), 'built\n');
+    await fs.writeFile(path.join(repo.work, 'readme.txt'), 'staged\n');
+    git(repo.work, 'add', 'readme.txt');
+    await fs.writeFile(path.join(repo.work, 'readme.txt'), 'unstaged\n');
+    await fs.mkdir(path.join(repo.work, 'new'));
+    await fs.writeFile(path.join(repo.work, 'new', 'file.txt'), 'new\n');
+
+    expect((await request('POST', `${repo.api}/discard-all`, {})).status).toBe(204);
+
+    const { body } = await request('GET', `${repo.api}/status`);
+    expect([...body.staged, ...body.unstaged]).toEqual([]);
+    expect(await fs.readFile(path.join(repo.work, 'readme.txt'), 'utf8')).toBe('one\n');
+    expect(await fs.readFile(path.join(repo.work, 'build', 'out.js'), 'utf8')).toBe('built\n');
+  });
+});
+
+describe('ignoring files', () => {
+  async function readIgnore() {
+    return fs.readFile(path.join(repo.work, '.gitignore'), 'utf8');
+  }
+
+  it('adds a file, its folder or its extension to .gitignore, once each', async () => {
+    await fs.mkdir(path.join(repo.work, 'logs'));
+    await fs.writeFile(path.join(repo.work, 'logs', 'today.log'), 'x\n');
+    await fs.writeFile(path.join(repo.work, 'secret.env'), 'x\n');
+
+    await request('POST', `${repo.api}/ignore`, { paths: ['secret.env'], kind: 'file' });
+    await request('POST', `${repo.api}/ignore`, { paths: ['secret.env'], kind: 'file' });
+    await request('POST', `${repo.api}/ignore`, { paths: ['logs/today.log'], kind: 'extension' });
+
+    expect(await readIgnore()).toBe('/secret.env\n*.log\n');
+    const { body } = await request('GET', `${repo.api}/status`);
+    expect(body.unstaged.map((file) => file.path)).toEqual(['.gitignore']);
+  });
+
+  it('adds to an existing .gitignore without a trailing newline', async () => {
+    await fs.writeFile(path.join(repo.work, '.gitignore'), 'node_modules');
+    await fs.mkdir(path.join(repo.work, 'tmp'));
+    await fs.writeFile(path.join(repo.work, 'tmp', 'a.txt'), 'x\n');
+
+    await request('POST', `${repo.api}/ignore`, { paths: ['tmp/a.txt'], kind: 'folder' });
+    expect(await readIgnore()).toBe('node_modules\n/tmp/\n');
+  });
+
+  it('refuses kinds it does not know and paths that would add rules', async () => {
+    for (const body of [
+      { paths: ['a.txt'], kind: 'everything' },
+      { paths: ['a.txt\n*'], kind: 'file' },
+      { paths: ['readme'], kind: 'extension' },
+    ]) {
+      expect((await request('POST', `${repo.api}/ignore`, body)).status).toBe(400);
+    }
+  });
+});
+
+describe('editing the latest commit message', () => {
+  it('rewords it and leaves staged changes out of it', async () => {
+    const hash = git(repo.work, 'rev-parse', 'HEAD');
+    await fs.writeFile(path.join(repo.work, 'readme.txt'), 'staged\n');
+    git(repo.work, 'add', 'readme.txt');
+
+    const { status } = await request('POST', `${repo.api}/reword`, {
+      hash,
+      message: 'Better message',
+    });
+    expect(status).toBe(204);
+    expect(git(repo.work, 'log', '-1', '--format=%s')).toBe('Better message');
+    expect(git(repo.work, 'diff', '--cached', '--name-only')).toBe('readme.txt');
+  });
+
+  it('refuses any commit but the latest', async () => {
+    await writeAndCommit(repo.work, 'b.txt', 'b\n', 'Second');
+    const older = git(repo.work, 'rev-parse', 'HEAD~1');
+    const { status } = await request('POST', `${repo.api}/reword`, { hash: older, message: 'x' });
+    expect(status).toBe(409);
+  });
+});
+
 describe('previewing a stash', () => {
   it('lists tracked and untracked files and shows each one’s diff', async () => {
     await fs.writeFile(path.join(repo.work, 'readme.txt'), 'two\n');

@@ -297,6 +297,16 @@ function createGitRouter() {
   action(router, '/discard', (service, target, { paths }) =>
     service.discard(target, { paths: ValidationHelper.requirePaths(paths) }),
   );
+  action(router, '/discard-all', (service, target) => service.discardAll(target));
+  action(router, '/ignore', (service, target, { paths, kind }) =>
+    service.ignore(target, { paths: ValidationHelper.requirePaths(paths), kind }),
+  );
+  action(router, '/reword', (service, target, { hash, message }) =>
+    service.rewordLastCommit(target, {
+      hash: ValidationHelper.requireString(hash, 'hash'),
+      message: ValidationHelper.requireString(message, 'message'),
+    }),
+  );
   action(router, '/commit', (service, target, { message, amend, stageAll }) =>
     service.commit(target, { message, amend: amend === true, stageAll: stageAll === true }),
   );
@@ -308,8 +318,8 @@ function createGitRouter() {
   );
 
   // Stashes
-  action(router, '/stash', (service, target, { message }) =>
-    service.stashSave(target, { message }),
+  action(router, '/stash', (service, target, { message, paths }) =>
+    service.stashSave(target, { message, paths: ValidationHelper.optionalPaths(paths) }),
   );
   action(router, '/stash/apply', (service, target, { ref }) => service.stashApply(target, { ref }));
   action(router, '/stash/pop', (service, target, { ref }) => service.stashPop(target, { ref }));
