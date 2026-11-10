@@ -13,11 +13,12 @@ export const repositoriesApi = {
   locate: (repositoryId, path) => http.post(`/repositories/${repositoryId}/locate`, { path }),
   setGroups: (repositoryId, groupIds) =>
     http.put(`/repositories/${repositoryId}/groups`, { groupIds }),
-  setColor: (repositoryId, color) => http.put(`/repositories/${repositoryId}/color`, { color }),
   listGroups: () => http.get('/repositories/groups'),
   reorderGroups: (ids) => http.put('/repositories/groups/order', { ids }),
   createGroup: (name) => http.post('/repositories/groups', { name }),
   renameGroup: (groupId, name) => http.patch(`/repositories/groups/${groupId}`, { name }),
+  setGroupColor: (groupId, color) =>
+    http.put(`/repositories/groups/${groupId}/color`, { color }),
   deleteGroup: (groupId) => http.delete(`/repositories/groups/${groupId}`),
   openMono: (groupId, branch) => http.post(`/repositories/groups/${groupId}/mono`, { branch }),
 };
