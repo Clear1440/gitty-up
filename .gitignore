@@ -31,3 +31,4 @@ coverage/
 
 # Desktop installers
 release/
+.claude
