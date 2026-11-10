@@ -482,6 +482,8 @@ export async function deleteBranch(repoPath, { name, force = false, deleteRemote
   assertRef(name);
   // Read first, as git forgets the upstream along with the branch.
   const upstream = deleteRemote ? await findLiveUpstream(repoPath, name) : null;
+  // Checked before the local branch goes, so a refusal leaves everything as it was.
+  if (upstream) await findDeletableRemoteBranch(repoPath, upstream);
   await runGit(repoPath, ['branch', force ? '-D' : '-d', name]);
   if (!upstream) return;
 
@@ -504,12 +506,23 @@ async function findLiveUpstream(repoPath, name) {
   return branch.upstream;
 }
 
-/** Deletes a branch from its remote, which also removes the local tracking ref. */
-export async function deleteRemoteBranch(repoPath, { name }) {
-  assertRef(name);
+/** A remote branch by its name, such as origin/topic, as long as it may be deleted. */
+async function findDeletableRemoteBranch(repoPath, name) {
   const { remote: remoteBranches } = await getBranches(repoPath);
   const target = remoteBranches.find((candidate) => candidate.name === name);
   if (!target?.remote) throw ApiError.badRequest(`Unknown remote branch: ${name}`);
+  if (GitRefHelper.isProtectedOnRemote(target.localName)) {
+    throw ApiError.badRequest(
+      `${target.localName} is protected and can't be deleted from ${target.remote}.`,
+    );
+  }
+  return target;
+}
+
+/** Deletes a branch from its remote, which also removes the local tracking ref. */
+export async function deleteRemoteBranch(repoPath, { name }) {
+  assertRef(name);
+  const target = await findDeletableRemoteBranch(repoPath, name);
 
   // The full ref can't be mistaken for a tag of the same name, or for an option.
   const ref = GitRefHelper.toLocalRef(target.localName);

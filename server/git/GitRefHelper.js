@@ -4,6 +4,12 @@ const REMOTE_PREFIX = 'refs/remotes/';
 /** Remote preferred whenever a repository has it, as git's own default name. */
 const PREFERRED_REMOTE = 'origin';
 
+/**
+ * Branches never deleted from a remote, matched without regard to case. The client has
+ * its own copy in src/utils/BranchHelper.js, to disable the action before it is tried.
+ */
+const PROTECTED_REMOTE_BRANCHES = new Set(['main', 'master', 'prod', 'production']);
+
 /** Names of branches, remotes and commits, as git spells them. */
 export class GitRefHelper {
   /** refs/heads/name: the full name, which can't be mistaken for a tag or an option. */
@@ -46,6 +52,11 @@ export class GitRefHelper {
   /** The remote to use when none is named: origin if there is one, else the first. */
   static pickDefaultRemote(remotes) {
     return remotes.includes(PREFERRED_REMOTE) ? PREFERRED_REMOTE : (remotes[0] ?? null);
+  }
+
+  /** Whether a branch, named as it is on its remote (main, not origin/main), is protected. */
+  static isProtectedOnRemote(localName) {
+    return PROTECTED_REMOTE_BRANCHES.has(localName.toLowerCase());
   }
 
   /** The abbreviated hash git shows by default. */

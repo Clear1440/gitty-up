@@ -102,6 +102,12 @@ describe('settings', () => {
     expect(status).toBe(400);
   });
 
+  it('can follow the system mode', async () => {
+    const saved = await request('PUT', '/api/settings/appearance', { scheme: 'coral', mode: 'system' });
+    expect(saved.status).toBe(200);
+    expect(saved.body.appearance).toEqual({ scheme: 'coral', mode: 'system' });
+  });
+
   it('turns down an unknown mode', async () => {
     const { status } = await request('PUT', '/api/settings/appearance', {
       scheme: 'coral',

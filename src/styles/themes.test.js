@@ -4,6 +4,7 @@ import {
   DEFAULT_APPEARANCE,
   DEFAULT_CUSTOM_COLORS,
   SCHEMES,
+  SYSTEM_MODE,
   isDarkAppearance,
   mixColors,
   normalizeAppearance,
@@ -25,6 +26,14 @@ describe('color schemes', () => {
 
   it('has unique ids', () => {
     expect(new Set(SCHEMES.map((scheme) => scheme.id)).size).toBe(SCHEMES.length);
+  });
+
+  it('keeps the system mode, and shows the dark palette where the OS cannot be asked', () => {
+    expect(normalizeAppearance({ scheme: 'coral', mode: SYSTEM_MODE }).mode).toBe(SYSTEM_MODE);
+    expect(paletteOf({ scheme: 'coral', mode: SYSTEM_MODE })).toEqual(
+      paletteOf({ scheme: 'coral', mode: 'dark' }),
+    );
+    expect(isDarkAppearance({ scheme: 'coral', mode: SYSTEM_MODE })).toBe(true);
   });
 
   it('falls back to the default for anything unknown', () => {

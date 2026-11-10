@@ -1,4 +1,10 @@
-import { FolderOpenOutlined, MoonOutlined, SunOutlined, UndoOutlined } from '@ant-design/icons';
+import {
+  DesktopOutlined,
+  FolderOpenOutlined,
+  MoonOutlined,
+  SunOutlined,
+  UndoOutlined,
+} from '@ant-design/icons';
 import { App, Button, ColorPicker, Result, Segmented, Select, Spin, Typography } from 'antd';
 import { useState } from 'react';
 import { useAppearance } from '../../appearance/AppearanceContext.jsx';
@@ -8,6 +14,7 @@ import {
   CUSTOM_SCHEME_ID,
   DEFAULT_CUSTOM_COLORS,
   SCHEMES,
+  SYSTEM_MODE,
   paletteOf,
 } from '../../styles/themes.js';
 import { DataFolderDialog, MOVE_OUTCOMES } from './DataFolderDialog.jsx';
@@ -16,6 +23,7 @@ import styles from './SettingsPage.module.css';
 const MODE_OPTIONS = [
   { value: 'dark', label: 'Dark', icon: <MoonOutlined /> },
   { value: 'light', label: 'Light', icon: <SunOutlined /> },
+  { value: SYSTEM_MODE, label: 'System', icon: <DesktopOutlined /> },
 ];
 
 /** The colors that give a scheme its character, drawn as a row of dots. */
@@ -41,12 +49,13 @@ function SchemeOption({ palette, label, description }) {
   );
 }
 
-function schemeOptions(appearance) {
+/** `mode` is the one on show, 'dark' or 'light'. */
+function schemeOptions(appearance, mode) {
   const builtIn = SCHEMES.map((scheme) => ({
     value: scheme.id,
     label: (
       <SchemeOption
-        palette={scheme[appearance.mode]}
+        palette={scheme[mode]}
         label={scheme.label}
         description={scheme.description}
       />
@@ -69,8 +78,8 @@ function schemeOptions(appearance) {
  * The four colors of the custom scheme, for the mode being shown. Dragging previews
  * a color across the app, and letting go saves it.
  */
-function CustomColors({ appearance, onChange }) {
-  const { mode, custom } = appearance;
+function CustomColors({ appearance, mode, onChange }) {
+  const { custom } = appearance;
   const colors = custom[mode];
   const isDefault = CUSTOM_COLORS.every(({ key }) => colors[key] === DEFAULT_CUSTOM_COLORS[mode][key]);
 
@@ -125,7 +134,7 @@ function Setting({ label, description, children }) {
 
 function AppearanceSection() {
   const { notification } = App.useApp();
-  const { appearance, setAppearance } = useAppearance();
+  const { appearance, resolvedMode, setAppearance } = useAppearance();
 
   const change = async (changes, options) => {
     try {
@@ -146,16 +155,19 @@ function AppearanceSection() {
           className={styles.schemeSelect}
           value={appearance.scheme}
           onChange={(scheme) => change({ scheme })}
-          options={schemeOptions(appearance)}
+          options={schemeOptions(appearance, resolvedMode)}
           popupMatchSelectWidth={false}
           // Tall enough for every scheme, so Custom at the end never needs a scroll.
           listHeight={360}
         />
       </Setting>
       {appearance.scheme === CUSTOM_SCHEME_ID && (
-        <CustomColors appearance={appearance} onChange={change} />
+        <CustomColors appearance={appearance} mode={resolvedMode} onChange={change} />
       )}
-      <Setting label="Mode" description="Every color scheme comes in light and dark.">
+      <Setting
+        label="Mode"
+        description="Every color scheme comes in light and dark. System follows your computer’s setting."
+      >
         <Segmented
           aria-label="Mode"
           options={MODE_OPTIONS}
