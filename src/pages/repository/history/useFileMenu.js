@@ -1,30 +1,14 @@
-import { App } from 'antd';
+import { useConfirmDanger } from '../../../components/useConfirmDanger.js';
+import { PathHelper } from '../../../utils/PathHelper.js';
 import { TextHelper } from '../../../utils/TextHelper.js';
+import { useCopyToClipboard } from '../../../utils/useCopyToClipboard.js';
 import { useRepositoryContext } from '../RepositoryContext.js';
 import { StatusHelper } from '../StatusHelper.js';
-
-const extensionOf = (filePath) => {
-  const name = filePath.slice(filePath.lastIndexOf('/') + 1);
-  const dot = name.lastIndexOf('.');
-  return dot > 0 ? name.slice(dot) : null;
-};
-
-const folderOf = (filePath) => {
-  const slash = filePath.lastIndexOf('/');
-  return slash === -1 ? null : filePath.slice(0, slash);
-};
 
 /** The one value every item shares, or null if they differ or any has none. */
 function shared(values) {
   const [first] = values;
   return first && values.every((value) => value === first) ? first : null;
-}
-
-/** A path as the operating system writes it, inside the repository's folder. */
-function fullPath(repositoryPath, filePath) {
-  const separator = repositoryPath.includes('\\') ? '\\' : '/';
-  const base = repositoryPath.replace(/[\\/]+$/, '');
-  return `${base}${separator}${filePath.split('/').join(separator)}`;
 }
 
 /**
@@ -33,20 +17,12 @@ function fullPath(repositoryPath, filePath) {
  */
 export function useFileMenu() {
   const { repository, status, run, openDialog, isBusy } = useRepositoryContext();
-  const { message, modal } = App.useApp();
+  const confirmDanger = useConfirmDanger();
+  const copy = useCopyToClipboard();
   const blocked = StatusHelper.isBlocked(status, isBusy);
 
   const describe = (files) =>
     files.length === 1 ? files[0].path : TextHelper.countOf(files.length, 'file');
-
-  const copy = async (text, what) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      message.success(`Copied ${what}`);
-    } catch {
-      message.error('Could not reach the clipboard');
-    }
-  };
 
   const copyItems = (files) => {
     const paths = files.map((file) => file.path);
@@ -65,7 +41,7 @@ export function useFileMenu() {
               label: plural ? 'Copy full paths' : 'Copy full path',
               onClick: () =>
                 copy(
-                  paths.map((filePath) => fullPath(repository.path, filePath)).join('\n'),
+                  paths.map((filePath) => PathHelper.join(repository.path, filePath)).join('\n'),
                   plural ? 'full paths' : 'full path',
                 ),
             },
@@ -75,23 +51,21 @@ export function useFileMenu() {
   };
 
   const confirmDiscard = (files) =>
-    modal.confirm({
+    confirmDanger({
       title: `Discard changes to ${describe(files)}?`,
       content:
         files.length === 1
           ? `${files[0].path} goes back to its last commit. This cannot be undone.`
           : 'These files go back to their last commit, and new ones are deleted. This cannot be undone.',
       okText: 'Discard',
-      okButtonProps: { danger: true },
-      focusable: { autoFocusButton: 'cancel' },
       onOk: () => run('discard', { paths: files.map((file) => file.path) }),
     });
 
   const ignoreItem = (files) => {
     const paths = files.map((file) => file.path);
     const tracked = files.some((file) => file.status !== 'untracked');
-    const extension = shared(paths.map(extensionOf));
-    const folder = shared(paths.map(folderOf));
+    const extension = shared(paths.map(PathHelper.extensionOf));
+    const folder = shared(paths.map(PathHelper.folderOf));
     const ignore = (kind) => run('ignore', { paths, kind });
     return {
       key: 'ignore',

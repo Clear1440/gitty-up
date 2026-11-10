@@ -2,11 +2,11 @@ import {
   CheckCircleFilled,
   FolderOutlined,
   LockOutlined,
-  MoreOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
-import { Button, Dropdown, Tag } from 'antd';
+import { Button, Tag } from 'antd';
 import clsx from 'clsx';
+import { MenuRow } from '../../components/MenuRow.jsx';
 import { CommitHelper } from './CommitHelper.js';
 import { useWorktreeActions } from './useWorktreeActions.jsx';
 import styles from './WorktreeList.module.css';
@@ -27,46 +27,40 @@ function WorktreeRow({ worktree, actions }) {
   const canOpen = !worktree.isCurrent && !worktree.prunable;
 
   return (
-    <Dropdown menu={{ items }} trigger={['contextMenu']}>
-      <li className={clsx(styles.row, worktree.isCurrent && styles.current)}>
-        <button
-          type="button"
-          className={styles.button}
-          title={[
-            worktree.path,
-            worktree.lockReason && `Locked: ${worktree.lockReason}`,
-            worktree.prunable && 'Its folder is gone. Prune to clear it away.',
-            canOpen && 'Click to open it in a tab',
-          ]
-            .filter(Boolean)
-            .join('\n')}
-          disabled={!canOpen}
-          onClick={() => actions.open(worktree.path)}
-        >
-          <WorktreeIcon worktree={worktree} />
-          <span className={styles.text}>
-            <span className={styles.name}>{worktree.name}</span>
-            <span className={styles.meta}>{describe(worktree)}</span>
-          </span>
-          {worktree.isMain && <Tag className={styles.tag}>main</Tag>}
-          {worktree.locked && <LockOutlined className={styles.icon} aria-label="Locked" />}
-          {worktree.prunable && (
-            <Tag color="warning" className={styles.tag}>
-              missing
-            </Tag>
-          )}
-        </button>
-        <Dropdown menu={{ items }} trigger={['click']}>
-          <Button
-            className={styles.menu}
-            type="text"
-            size="small"
-            icon={<MoreOutlined />}
-            aria-label={`Actions for worktree ${worktree.name}`}
-          />
-        </Dropdown>
-      </li>
-    </Dropdown>
+    <MenuRow
+      items={items}
+      className={clsx(styles.row, worktree.isCurrent && styles.current)}
+      menuLabel={`Actions for worktree ${worktree.name}`}
+      menuClassName={styles.menu}
+    >
+      <button
+        type="button"
+        className={styles.button}
+        title={[
+          worktree.path,
+          worktree.lockReason && `Locked: ${worktree.lockReason}`,
+          worktree.prunable && 'Its folder is gone. Prune to clear it away.',
+          canOpen && 'Click to open it in a tab',
+        ]
+          .filter(Boolean)
+          .join('\n')}
+        disabled={!canOpen}
+        onClick={() => actions.open(worktree.path)}
+      >
+        <WorktreeIcon worktree={worktree} />
+        <span className={styles.text}>
+          <span className={styles.name}>{worktree.name}</span>
+          <span className={styles.meta}>{describe(worktree)}</span>
+        </span>
+        {worktree.isMain && <Tag className={styles.tag}>main</Tag>}
+        {worktree.locked && <LockOutlined className={styles.icon} aria-label="Locked" />}
+        {worktree.prunable && (
+          <Tag color="warning" className={styles.tag}>
+            missing
+          </Tag>
+        )}
+      </button>
+    </MenuRow>
   );
 }
 

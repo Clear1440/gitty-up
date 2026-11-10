@@ -8,6 +8,7 @@ import {
 import { App, Button, Dropdown } from 'antd';
 import clsx from 'clsx';
 import { useRef, useState } from 'react';
+import { useConfirmDanger } from '../../components/useConfirmDanger.js';
 import {
   useDeleteGroup,
   useRenameGroup,
@@ -135,18 +136,18 @@ function GroupHandle({ group, sectionRef }) {
 }
 
 function GroupMenu({ group }) {
-  const { modal, notification } = App.useApp();
+  const { notification } = App.useApp();
+  const confirmDanger = useConfirmDanger();
   const [renaming, setRenaming] = useState(false);
   const rename = useRenameGroup();
   const remove = useDeleteGroup();
   const { closeTab } = useTabs();
 
   const confirmDelete = () => {
-    modal.confirm({
+    confirmDanger({
       title: `Delete the ${group.name} group?`,
       content: 'Its repositories stay linked, and in any other groups they are in.',
       okText: 'Delete group',
-      okButtonProps: { danger: true },
       onOk: async () => {
         try {
           await remove.mutateAsync(group.id);

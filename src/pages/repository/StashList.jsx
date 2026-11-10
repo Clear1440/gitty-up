@@ -1,7 +1,7 @@
-import { InboxOutlined, MoreOutlined } from '@ant-design/icons';
-import { Button, Dropdown } from 'antd';
+import { InboxOutlined } from '@ant-design/icons';
 import clsx from 'clsx';
 import { useMatch, useNavigate, useSearchParams } from 'react-router';
+import { MenuRow } from '../../components/MenuRow.jsx';
 import { RelativeTime } from '../../components/RelativeTime.jsx';
 import { StashSelection, paths } from '../../paths.js';
 import { useRepositoryContext } from './RepositoryContext.js';
@@ -40,43 +40,32 @@ function useStashPreview() {
 
 function StashRow({ stash, selected, onPreview }) {
   const items = useStashMenu(stash);
-  // React bubbles events out of the menu to here, though it is elsewhere on the page.
-  const isInRow = (event) => event.currentTarget.contains(event.target);
 
   return (
-    <Dropdown menu={{ items }} trigger={['contextMenu']}>
-      <li
-        className={clsx(styles.row, selected && styles.selected)}
-        onClick={(event) => isInRow(event) && onPreview(stash.hash)}
+    <MenuRow
+      items={items}
+      className={clsx(styles.row, selected && styles.selected)}
+      onActivate={() => onPreview(stash.hash)}
+      menuLabel={`Actions for stash ${stash.message}`}
+      menuClassName={styles.menu}
+    >
+      <InboxOutlined className={styles.icon} />
+      {/* The whole row is clickable. This is what keyboards and screen readers use. */}
+      <button
+        type="button"
+        className={styles.text}
+        title={stash.message}
+        aria-pressed={selected}
+        aria-label={`Preview stash ${stash.message}`}
       >
-        <InboxOutlined className={styles.icon} />
-        {/* The whole row is clickable. This is what keyboards and screen readers use. */}
-        <button
-          type="button"
-          className={styles.text}
-          title={stash.message}
-          aria-pressed={selected}
-          aria-label={`Preview stash ${stash.message}`}
-        >
-          <span className={styles.message}>{stash.message}</span>
-          <span className={styles.meta}>
-            {stash.repository && `${stash.repository} · `}
-            {stash.branch && `${stash.branch} · `}
-            <RelativeTime date={stash.date} />
-          </span>
-        </button>
-        <Dropdown menu={{ items }} trigger={['click']}>
-          <Button
-            className={styles.menu}
-            type="text"
-            size="small"
-            icon={<MoreOutlined />}
-            aria-label={`Actions for stash ${stash.message}`}
-            onClick={(event) => event.stopPropagation()}
-          />
-        </Dropdown>
-      </li>
-    </Dropdown>
+        <span className={styles.message}>{stash.message}</span>
+        <span className={styles.meta}>
+          {stash.repository && `${stash.repository} · `}
+          {stash.branch && `${stash.branch} · `}
+          <RelativeTime date={stash.date} />
+        </span>
+      </button>
+    </MenuRow>
   );
 }
 

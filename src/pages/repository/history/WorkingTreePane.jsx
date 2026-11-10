@@ -8,9 +8,10 @@ import {
   PlusOutlined,
   UndoOutlined,
 } from '@ant-design/icons';
-import { App, Button, Empty, Popconfirm, Tooltip } from 'antd';
+import { Button, Empty, Popconfirm, Tooltip } from 'antd';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { useConfirmDanger } from '../../../components/useConfirmDanger.js';
 import { paths } from '../../../paths.js';
 import { EMPTY_SELECTION, clickSelection, selectedInOrder } from '../../home/selection.js';
 import { TextHelper } from '../../../utils/TextHelper.js';
@@ -204,19 +205,17 @@ function WorkingTreeFiles({ selected, onSelect }) {
 export function WorkingTreePane({ onClose, resizeHandle }) {
   const { repository, status, run, openDialog, isBusy, pendingAction } = useRepositoryContext();
   const { savePatch } = usePatchActions();
-  const { modal } = App.useApp();
+  const confirmDanger = useConfirmDanger();
   const fileCount = StatusHelper.countChangedFiles(status);
   const hasFiles = fileCount > 0;
 
   const confirmDiscardAll = () =>
-    modal.confirm({
+    confirmDanger({
       title: `Discard all changes to ${TextHelper.countOf(fileCount, 'file')}?`,
       content: repository.isMono
         ? 'In every repository here, staged and unstaged changes are thrown away and new files deleted. Ignored files stay. This cannot be undone.'
         : 'Staged and unstaged changes are thrown away and new files deleted. Ignored files stay. This cannot be undone.',
       okText: 'Discard all',
-      okButtonProps: { danger: true },
-      focusable: { autoFocusButton: 'cancel' },
       onOk: () => run('discardAll'),
     });
   const [choice, setChoice] = useState(null);

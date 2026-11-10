@@ -10,6 +10,7 @@ import { BranchHelper } from './BranchHelper.js';
 import { KeyboardHelper } from './KeyboardHelper.js';
 import { ListHelper } from './ListHelper.js';
 import { MonoIdHelper } from './MonoIdHelper.js';
+import { PathHelper } from './PathHelper.js';
 import { SetHelper } from './SetHelper.js';
 import { readStored, writeStored } from './storage.js';
 import { StorageHelper } from './StorageHelper.js';
@@ -209,5 +210,26 @@ describe('StorageHelper', () => {
     vi.stubGlobal('localStorage', { getItem: blocked, setItem: blocked });
     expect(StorageHelper.read('key', 'fallback')).toBe('fallback');
     expect(() => StorageHelper.write('key', { a: 1 })).not.toThrow();
+  });
+});
+
+describe('PathHelper', () => {
+  it('finds a file’s extension and folder', () => {
+    expect(PathHelper.extensionOf('logs/today.log')).toBe('.log');
+    expect(PathHelper.extensionOf('.env')).toBeNull();
+    expect(PathHelper.extensionOf('src.d/readme')).toBeNull();
+    expect(PathHelper.folderOf('logs/today.log')).toBe('logs');
+    expect(PathHelper.folderOf('readme.txt')).toBeNull();
+  });
+
+  it('joins a repository path onto a folder with that folder’s own separator', () => {
+    expect(PathHelper.join('D:\\code\\app\\', 'src/main.js')).toBe('D:\\code\\app\\src\\main.js');
+    expect(PathHelper.join('/home/me/app', 'src/main.js')).toBe('/home/me/app/src/main.js');
+  });
+
+  it('compares folders ignoring case, slash style and a trailing slash', () => {
+    expect(PathHelper.isSame('D:\\Code\\App\\', 'd:/code/app')).toBe(true);
+    expect(PathHelper.isSame('/a/b', '/a/c')).toBe(false);
+    expect(PathHelper.isSame(null, '')).toBe(true);
   });
 });
