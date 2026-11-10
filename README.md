@@ -69,8 +69,8 @@ will do and asks before changing anything.
 - `-m "message"` gives the commit message for uncommitted changes, and `-y` skips the question.
 
 The tag starts [the Release workflow](.github/workflows/release.yml). It builds a Windows
-installer (`.exe`) and a macOS disk image (`.dmg`, for both Intel and Apple Silicon) and attaches
-them to a **draft** GitHub release, which you then publish.
+installer (`.exe`), a macOS disk image (`.dmg`, for both Intel and Apple Silicon) and a Linux
+AppImage (`.AppImage`, x64) and attaches them to a **draft** GitHub release, which you then publish.
 
 ### Code signing
 
@@ -81,6 +81,9 @@ Nothing is signed yet, so:
 - **macOS:** the app is signed ad hoc only, so Gatekeeper blocks the first launch. Open it, then
   allow it under **System Settings → Privacy & Security → Open Anyway**. You can also run
   `xattr -cr "/Applications/Gitty Up.app"`.
+- **Linux:** AppImages aren't signed. Make the file executable (`chmod +x gitty-up-*.AppImage`)
+  and run it. Distributions without FUSE 2 (such as Ubuntu 22.04 and later) need `libfuse2`
+  (`libfuse2t64` on Ubuntu 24.04) installed first.
 
 To sign later, add these secrets to the repository and the workflow's env:
 
