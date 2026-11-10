@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router';
 import { paths } from '../../paths.js';
 import { useLinkRepository, useRepositories, useUnlinkRepository } from '../../queries/repositories.js';
 import { useTabs } from '../../tabs/TabsContext.jsx';
+import { useConfirmDanger } from '../../components/useConfirmDanger.js';
+import { PathHelper } from '../../utils/PathHelper.js';
+import { useCopyToClipboard } from '../../utils/useCopyToClipboard.js';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { StatusHelper } from './StatusHelper.js';
-import { samePath } from './worktrees.js';
 
 /**
  * Opening, removing and the menu of a repository's working trees. Opening one links its
@@ -13,7 +15,9 @@ import { samePath } from './worktrees.js';
  */
 export function useWorktreeActions() {
   const { status, run, openDialog, isBusy } = useRepositoryContext();
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
+  const confirmDanger = useConfirmDanger();
+  const copy = useCopyToClipboard();
   const navigate = useNavigate();
   const { openTab, closeTab } = useTabs();
   const link = useLinkRepository();
@@ -33,7 +37,7 @@ export function useWorktreeActions() {
 
   /** A removed working tree's folder is gone, so its tab and listing would only fail. */
   const forget = async (folder) => {
-    const linked = repositories.find((repository) => samePath(repository.path, folder));
+    const linked = repositories.find((repository) => PathHelper.isSame(repository.path, folder));
     if (!linked) return;
     closeTab(linked.id);
     await unlink.mutateAsync(linked.id).catch(() => {});
@@ -41,14 +45,12 @@ export function useWorktreeActions() {
 
   const remove = (worktree) => {
     let force = false;
-    modal.confirm({
+    confirmDanger({
       title: `Remove the worktree ${worktree.name}?`,
       content: (
         <RemoveWorktreeContent worktree={worktree} onForceChange={(value) => (force = value)} />
       ),
       okText: 'Remove',
-      okButtonProps: { danger: true },
-      focusable: { autoFocusButton: 'cancel' },
       onOk: async () => {
         const removed = await run('removeWorktree', {
           path: worktree.path,
@@ -60,15 +62,6 @@ export function useWorktreeActions() {
     });
   };
 
-  const copyPath = async (folder) => {
-    try {
-      await navigator.clipboard.writeText(folder);
-      message.success('Copied the path');
-    } catch {
-      message.error('Could not reach the clipboard');
-    }
-  };
-
   const menuItems = (worktree) => [
     {
       key: 'open',
@@ -76,7 +69,7 @@ export function useWorktreeActions() {
       disabled: worktree.isCurrent || worktree.prunable,
       onClick: () => open(worktree.path),
     },
-    { key: 'copy', label: 'Copy path', onClick: () => copyPath(worktree.path) },
+    { key: 'copy', label: 'Copy path', onClick: () => copy(worktree.path, 'the path') },
     ...(worktree.isMain
       ? []
       : [

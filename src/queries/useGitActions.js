@@ -168,7 +168,8 @@ export function useGitActions(repositoryId) {
     mutationKey,
     mutationFn: ({ name, input }) => GIT_ACTIONS[name].run(repositoryId, input),
     onSuccess: (result, { name, input }) => {
-      const text = GIT_ACTIONS[name].success?.(input, result);
+      // Many actions run with no input, such as a plain push, and messages read from it.
+      const text = GIT_ACTIONS[name].success?.(input ?? {}, result);
       if (text) message.success(text);
       // A retry that worked has dealt with whatever this action last left unfinished.
       notification.destroy(partialKey(repositoryId, name));

@@ -146,7 +146,11 @@ export function useReorderGroups() {
   return useOptimisticMutation(
     queryKeys.repositoryGroups(),
     repositoriesApi.reorderGroups,
-    (groups, ids) => ids.flatMap((id) => groups.find((group) => group.id === id) ?? []),
+    // As the server does: groups left out keep their order after those named.
+    (groups, ids) => [
+      ...ids.flatMap((id) => groups.find((group) => group.id === id) ?? []),
+      ...groups.filter((group) => !ids.includes(group.id)),
+    ],
   );
 }
 

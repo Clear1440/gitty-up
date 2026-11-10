@@ -1,7 +1,7 @@
-import { App } from 'antd';
 import { useNavigate } from 'react-router';
 import { paths } from '../../paths.js';
 import { BranchHelper } from '../../utils/BranchHelper.js';
+import { useCopyToClipboard } from '../../utils/useCopyToClipboard.js';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { StatusHelper } from './StatusHelper.js';
 import { useWorktreeActions } from './useWorktreeActions.jsx';
@@ -14,7 +14,7 @@ export function useBranchMenu(branch, kind) {
   const navigate = useNavigate();
   const { repository, status, run, openDialog, isBusy } = useRepositoryContext();
   const { open: openWorktree, createWorktree } = useWorktreeActions();
-  const { message } = App.useApp();
+  const copy = useCopyToClipboard();
 
   const isRemote = kind === 'remote';
   const isProtected = isRemote && BranchHelper.isProtectedOnRemote(branch.localName);
@@ -32,14 +32,7 @@ export function useBranchMenu(branch, kind) {
     else run('checkout', { branch: branch.name, remote: isRemote });
   };
 
-  const copyName = async () => {
-    try {
-      await navigator.clipboard.writeText(branch.name);
-      message.success(`Copied ${branch.name}`);
-    } catch {
-      message.error('Could not reach the clipboard');
-    }
-  };
+  const copyName = () => copy(branch.name);
 
   const worktreeItems = repository.isMono
     ? []

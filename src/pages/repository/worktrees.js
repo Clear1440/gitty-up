@@ -1,9 +1,4 @@
-/** Compares folders loosely, as Windows ignores case and slash style. */
-export function samePath(a, b) {
-  const normalize = (folder) =>
-    (folder ?? '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-  return normalize(a) === normalize(b);
-}
+import { PathHelper } from '../../utils/PathHelper.js';
 
 /** A branch name made fit for a folder name, as in feature/login → feature-login. */
 const folderSafe = (text) =>
@@ -18,13 +13,8 @@ const folderSafe = (text) =>
  */
 export function suggestWorktreeFolder(mainPath, branch) {
   if (!mainPath) return '';
-  const separator = mainPath.includes('\\') ? '\\' : '/';
-  const trimmed = mainPath.replace(/[\\/]+$/, '');
-  const cut = trimmed.lastIndexOf(separator);
-  const parent = trimmed.slice(0, cut);
-  const name = trimmed.slice(cut + 1);
-  const suffix = branch ? folderSafe(branch) : 'worktree';
-  return `${parent}${separator}${name}-${suffix || 'worktree'}`;
+  const suffix = (branch && folderSafe(branch)) || 'worktree';
+  return `${PathHelper.trimEnd(mainPath)}-${suffix}`;
 }
 
 /** The name of the local branch a branch name would check out: origin/x becomes x. */

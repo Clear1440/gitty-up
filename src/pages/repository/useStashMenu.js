@@ -1,4 +1,4 @@
-import { App } from 'antd';
+import { useConfirmDanger } from '../../components/useConfirmDanger.js';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { StatusHelper } from './StatusHelper.js';
 import { usePatchActions } from './usePatchActions.js';
@@ -10,16 +10,14 @@ import { usePatchActions } from './usePatchActions.js';
 export function useStashMenu(stash, { extraItems = [] } = {}) {
   const { status, run, isBusy } = useRepositoryContext();
   const { savePatch } = usePatchActions();
-  const { modal } = App.useApp();
+  const confirmDanger = useConfirmDanger();
   const blocked = StatusHelper.isBlocked(status, isBusy);
 
   const confirmDelete = () => {
-    modal.confirm({
+    confirmDanger({
       title: 'Delete this stash?',
       content: `"${stash.message}" will be deleted. This cannot be undone.`,
       okText: 'Delete',
-      okButtonProps: { danger: true },
-      focusable: { autoFocusButton: 'cancel' },
       onOk: () => run('stashDrop', { ref: stash.ref }),
     });
   };

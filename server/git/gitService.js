@@ -175,13 +175,24 @@ async function getCheckouts(repoPath) {
   return parseCheckouts(output);
 }
 
-export async function getBranches(repoPath) {
-  const [output, remotes, checkouts] = await Promise.all([
+/**
+ * The local and remote branches, without when each was last checked out. Reading the
+ * reflog for that only matters to the sidebar's sort, so lookups and checks use this.
+ */
+async function listBranchRefs(repoPath) {
+  const [output, remotes] = await Promise.all([
     runGit(repoPath, ['for-each-ref', `--format=${BRANCH_FORMAT}`, 'refs/heads', 'refs/remotes']),
     getRemotes(repoPath),
+  ]);
+  return parseBranches(output, remotes);
+}
+
+/** Every branch, each with `lastCheckout`, for showing and sorting the branch list. */
+export async function getBranches(repoPath) {
+  const [{ local, remote }, checkouts] = await Promise.all([
+    listBranchRefs(repoPath),
     getCheckouts(repoPath),
   ]);
-  const { local, remote } = parseBranches(output, remotes);
   return {
     local: local.map((branch) => ({
       ...branch,
@@ -231,7 +242,7 @@ export async function getSummary(repoPath) {
   const [status, commits, branches, remoteUrl] = await Promise.all([
     getStatus(repoPath),
     getCommits(repoPath, { limit: 1 }),
-    getBranches(repoPath),
+    listBranchRefs(repoPath),
     getRemoteUrl(repoPath),
   ]);
   // A file both staged and unstaged counts once.
@@ -457,7 +468,7 @@ export async function checkout(repoPath, { branch, remote = false }) {
     return;
   }
 
-  const branches = await getBranches(repoPath);
+  const branches = await listBranchRefs(repoPath);
   const target = branches.remote.find((candidate) => candidate.name === branch);
   if (!target) throw ApiError.badRequest(`Unknown remote branch: ${branch}`);
 
@@ -498,7 +509,7 @@ export async function deleteBranch(repoPath, { name, force = false, deleteRemote
 }
 
 async function findLiveUpstream(repoPath, name) {
-  const { local } = await getBranches(repoPath);
+  const { local } = await listBranchRefs(repoPath);
   const branch = local.find((candidate) => candidate.name === name);
   if (!branch?.upstream || branch.upstreamGone) {
     throw ApiError.badRequest(`${name} has no branch on a remote to delete.`);
@@ -508,7 +519,7 @@ async function findLiveUpstream(repoPath, name) {
 
 /** A remote branch by its name, such as origin/topic, as long as it may be deleted. */
 async function findDeletableRemoteBranch(repoPath, name) {
-  const { remote: remoteBranches } = await getBranches(repoPath);
+  const { remote: remoteBranches } = await listBranchRefs(repoPath);
   const target = remoteBranches.find((candidate) => candidate.name === name);
   if (!target?.remote) throw ApiError.badRequest(`Unknown remote branch: ${name}`);
   if (GitRefHelper.isProtectedOnRemote(target.localName)) {
@@ -536,7 +547,7 @@ export async function deleteRemoteBranch(repoPath, { name }) {
  * limits it to those branches.
  */
 export async function pruneGoneBranches(repoPath, { force = false, names } = {}) {
-  const { local } = await getBranches(repoPath);
+  const { local } = await listBranchRefs(repoPath);
   const result = { deleted: [], kept: [] };
 
   for (const { name, upstreamGone, isCurrent } of local) {
@@ -553,7 +564,7 @@ export async function pruneGoneBranches(repoPath, { force = false, names } = {})
 
 /** A merge from or into a stale branch would leave out what is already on the remote. */
 async function assertNotBehind(repoPath, names) {
-  const { local } = await getBranches(repoPath);
+  const { local } = await listBranchRefs(repoPath);
   const stale = local.filter(({ name, behind }) => names.includes(name) && behind > 0);
   if (stale.length === 0) return;
 
@@ -664,13 +675,15 @@ const IGNORE_KINDS = ['file', 'folder', 'extension'];
 export function ignorePattern(filePath, kind) {
   // Ignore files treat these as special, so they are escaped to mean themselves.
   const escape = (text) => text.replace(/[\\*?[\]!#]/g, (char) => `\\${char}`);
+  // Git also drops spaces at the end of a line unless each is escaped.
+  const keepTrailingSpaces = (line) => line.replace(/ +$/, (spaces) => '\\ '.repeat(spaces.length));
   const slash = filePath.lastIndexOf('/');
-  if (kind === 'file') return `/${escape(filePath)}`;
+  if (kind === 'file') return keepTrailingSpaces(`/${escape(filePath)}`);
   if (kind === 'folder') return slash === -1 ? null : `/${escape(filePath.slice(0, slash))}/`;
   if (kind === 'extension') {
     const name = filePath.slice(slash + 1);
     const dot = name.lastIndexOf('.');
-    return dot > 0 ? `*${escape(name.slice(dot))}` : null;
+    return dot > 0 ? keepTrailingSpaces(`*${escape(name.slice(dot))}`) : null;
   }
   throw ApiError.badRequest(`Unknown kind of ignore: ${kind}`);
 }
@@ -697,8 +710,10 @@ export async function ignore(repoPath, { paths, kind = 'file' }) {
 
   const ignorePath = path.join(repoPath, '.gitignore');
   const current = await fs.readFile(ignorePath, 'utf8').catch(() => '');
-  const existing = new Set(current.split(/\r?\n/).map((line) => line.trim()));
-  const added = patterns.filter((pattern) => !existing.has(pattern));
+  // Compared without trailing whitespace, which git ignores, but with any leading, which
+  // it keeps. Both sides are trimmed the same way, so an escaped trailing space matches.
+  const existing = new Set(current.split(/\r?\n/).map((line) => line.trimEnd()));
+  const added = patterns.filter((pattern) => !existing.has(pattern.trimEnd()));
   if (added.length === 0) return;
 
   const newline = current.includes('\r\n') ? '\r\n' : '\n';
@@ -999,7 +1014,7 @@ export async function addWorktree(repoPath, { folder, branch, newBranch, startPo
     args = ['-b', newBranch, '--', target, ...(startPoint ? [startPoint] : [])];
   } else {
     assertRef(branch);
-    const remote = (await getBranches(repoPath)).remote.find(({ name }) => name === branch);
+    const remote = (await listBranchRefs(repoPath)).remote.find(({ name }) => name === branch);
     // Checking out a remote branch by its local name makes git set up tracking.
     const local = remote?.localName;
     args =
@@ -1065,8 +1080,6 @@ export async function pruneWorktrees(repoPath) {
 
 // Patches
 
-const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
-
 /** A file name made from free text, such as a commit subject. */
 function patchFileName(...parts) {
   const slug = parts
@@ -1084,9 +1097,11 @@ function patchFileName(...parts) {
  * Staging everything into a throwaway copy of the index leaves the real one alone.
  */
 async function diffUncommitted(repoPath) {
-  const [indexPath, hasHead] = await Promise.all([
-    runGit(repoPath, ['rev-parse', '--path-format=absolute', '--git-path', 'index']),
-    refExists(repoPath, 'HEAD'),
+  const indexPath = await runGit(repoPath, [
+    'rev-parse',
+    '--path-format=absolute',
+    '--git-path',
+    'index',
   ]);
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'gitty-patch-'));
   const tempIndex = path.join(tempDir, 'index');
@@ -1094,11 +1109,9 @@ async function diffUncommitted(repoPath) {
     await fs.copyFile(indexPath.trim(), tempIndex).catch(() => {});
     const env = { GIT_INDEX_FILE: tempIndex };
     await runGit(repoPath, ['add', '--all'], { env });
-    return await runGit(
-      repoPath,
-      ['diff', '--cached', '--binary', ...diffFlags(false), hasHead ? 'HEAD' : EMPTY_TREE],
-      { env },
-    );
+    // With no commit named, --cached compares with HEAD, or before the first commit
+    // with nothing at all, whichever hash function the repository uses.
+    return await runGit(repoPath, ['diff', '--cached', '--binary', ...diffFlags(false)], { env });
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
@@ -1142,7 +1155,18 @@ export async function createPatch(repoPath, { source, hash, ref }) {
 
 /** Whether a patch came from git format-patch, which git am can turn back into commits. */
 export function isMailboxPatch(patch) {
-  return /^From [0-9a-f]{40} /m.test(patch);
+  // 40 hex digits for SHA-1 repositories, 64 for SHA-256 ones.
+  return /^From (?:[0-9a-f]{40}|[0-9a-f]{64}) /m.test(patch);
+}
+
+/**
+ * The patch with CRLF line endings turned to LF, but only when every line has them,
+ * as when an editor saved the whole file that way. A patch that mixes the two is left
+ * alone: its CRs belong to the files it changes, and removing them would break it.
+ */
+function normalizeLineEndings(patch) {
+  const hasBareLf = /(^|[^\r])\n/.test(patch);
+  return patch.includes('\r\n') && !hasBareLf ? patch.replace(/\r\n/g, '\n') : patch;
 }
 
 /**
@@ -1155,9 +1179,7 @@ export async function applyPatch(repoPath, { patch, mode = 'changes' }) {
     throw ApiError.badRequest('The patch is empty.');
   }
   // Windows editors may have saved it with CRLF, which git apply would reject.
-  const input = patch.includes('\r\n') && !patch.includes('GIT binary patch')
-    ? patch.replace(/\r\n/g, '\n')
-    : patch;
+  const input = normalizeLineEndings(patch);
 
   if (mode === 'commit') {
     if (!isMailboxPatch(input)) {
@@ -1165,6 +1187,8 @@ export async function applyPatch(repoPath, { patch, mode = 'changes' }) {
         'This patch has no commit details. Apply it as changes, then commit them.',
       );
     }
+    // The abort below would otherwise end a git am or rebase that was already under way.
+    await assertNoOperation(repoPath, 'applying a patch');
     try {
       await runGit(repoPath, ['am', '--3way', '--keep-cr'], { input });
     } catch (error) {

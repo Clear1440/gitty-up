@@ -1,4 +1,4 @@
-import { App } from 'antd';
+import { useConfirmDanger } from '../../../components/useConfirmDanger.js';
 import { CommitHelper } from '../CommitHelper.js';
 import { useRepositoryContext } from '../RepositoryContext.js';
 import { StatusHelper } from '../StatusHelper.js';
@@ -12,7 +12,7 @@ import { groupRefs } from './groupRefs.js';
  */
 export function useCommitMenu(commit) {
   const { repository, status, run, openDialog, isBusy } = useRepositoryContext();
-  const { modal } = App.useApp();
+  const confirmDanger = useConfirmDanger();
   const { savePatch } = usePatchActions();
 
   // Each of a mono repo's commits belongs to one member, so these act on that repository.
@@ -33,13 +33,11 @@ export function useCommitMenu(commit) {
   };
 
   const confirmHardReset = () =>
-    modal.confirm({
+    confirmDanger({
       title: `Reset ${current} to ${shortHash}?`,
       content:
         'Discards every commit after it and all uncommitted changes. Files git has never tracked stay.',
       okText: 'Reset',
-      okButtonProps: { danger: true },
-      focusable: { autoFocusButton: 'cancel' },
       onOk: () => run('resetToCommit', { hash, shortHash, mode: 'hard' }),
     });
 

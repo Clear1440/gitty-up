@@ -173,7 +173,7 @@ export function parseWorktrees(output) {
     });
 }
 
-const CHECKOUT_ENTRY =/^checkout: moving from (.+) to (.+)$/;
+const CHECKOUT_ENTRY = /^checkout: moving from (.+) to (.+)$/;
 
 // The selector carries the entry's own time, unlike %ct, which is its commit's.
 export const CHECKOUT_FORMAT = ['%gd', '%gs'].join('%x00');

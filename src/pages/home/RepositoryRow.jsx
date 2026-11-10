@@ -17,6 +17,7 @@ import { useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { AheadBehind } from '../../components/AheadBehind.jsx';
 import { RelativeTime } from '../../components/RelativeTime.jsx';
+import { useConfirmDanger } from '../../components/useConfirmDanger.js';
 import { paths } from '../../paths.js';
 import {
   useCreateGroup,
@@ -151,7 +152,8 @@ function GroupLabel({ group }) {
  * `color` is that section's group color, shown as a bar down the row's edge.
  */
 export function RepositoryRow({ repository, groups, sectionId = UNGROUPED, color = null }) {
-  const { modal, notification } = App.useApp();
+  const { notification } = App.useApp();
+  const confirmDanger = useConfirmDanger();
   const unlink = useUnlinkRepository();
   const setGroups = useSetRepositoryGroups();
   const createGroup = useCreateGroup();
@@ -224,13 +226,12 @@ export function RepositoryRow({ repository, groups, sectionId = UNGROUPED, color
   };
 
   const confirmUnlink = () => {
-    modal.confirm({
+    confirmDanger({
       title: `Unlink ${repository.name}?`,
       content: isStub
         ? 'It leaves this list. Nothing on the remote changes.'
         : 'It leaves this list. The folder and its files stay on disk.',
       okText: 'Unlink',
-      okButtonProps: { danger: true },
       onOk: async () => {
         try {
           await unlink.mutateAsync(repository.id);

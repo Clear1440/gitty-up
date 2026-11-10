@@ -1,15 +1,18 @@
 /** File types offered when picking a patch, and recognised when one is dropped. */
 export const PATCH_EXTENSIONS = ['.patch', '.diff'];
 
+/** The line git format-patch starts each commit with: a SHA-1 or SHA-256 hash. */
+const MAILBOX_START = /^From (?:[0-9a-f]{40}|[0-9a-f]{64}) /gm;
+
 export const PatchHelper = {
   /** Whether git format-patch made it, so git am can turn it back into commits. */
-  isMailbox: (patch) => /^From [0-9a-f]{40} /m.test(patch),
+  isMailbox: (patch) => PatchHelper.countCommits(patch) > 0,
 
   /** How many files a patch changes, counted from its per-file headers. */
   countFiles: (patch) => new Set(patch.match(/^diff --git .+$/gm) ?? []).size,
 
   /** How many commits a format-patch file holds. */
-  countCommits: (patch) => (patch.match(/^From [0-9a-f]{40} /gm) ?? []).length,
+  countCommits: (patch) => (patch.match(MAILBOX_START) ?? []).length,
 
   isPatchFile: (file) =>
     PATCH_EXTENSIONS.some((extension) => file.name.toLowerCase().endsWith(extension)),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { localNameOf, samePath, suggestWorktreeFolder } from './worktrees.js';
+import { localNameOf, suggestWorktreeFolder } from './worktrees.js';
 
 describe('suggestWorktreeFolder', () => {
   it('puts it beside the main working tree, named after the branch', () => {
@@ -12,13 +12,6 @@ describe('suggestWorktreeFolder', () => {
   it('falls back to a plain name without a branch', () => {
     expect(suggestWorktreeFolder('/srv/app', '')).toBe('/srv/app-worktree');
     expect(suggestWorktreeFolder('', 'x')).toBe('');
-  });
-});
-
-describe('samePath', () => {
-  it('ignores case, slash style and a trailing slash', () => {
-    expect(samePath('D:\\Code\\App\\', 'd:/code/app')).toBe(true);
-    expect(samePath('/a/b', '/a/c')).toBe(false);
   });
 });
 

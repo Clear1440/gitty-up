@@ -4,10 +4,11 @@ import {
   LaptopOutlined,
   PullRequestOutlined,
 } from '@ant-design/icons';
-import { Avatar, Button, Dropdown, Empty, Result, Spin, Tag } from 'antd';
+import { Avatar, Button, Empty, Result, Spin, Tag } from 'antd';
 import clsx from 'clsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router';
+import { MenuRow } from '../../components/MenuRow.jsx';
 import { RelativeTime } from '../../components/RelativeTime.jsx';
 import { ResizeHandle } from '../../components/ResizeHandle.jsx';
 import { useResizableSizes } from '../../components/useResizableSizes.js';
@@ -165,40 +166,33 @@ function UncommittedRow({ graphRow, columnCount, fileCount, selected, onSelect, 
 function StashRow({ entry, graphRow, columnCount, selected, onSelect, searchState }) {
   const { stash } = entry;
   const items = useStashMenu(stash);
-  // React bubbles events out of a menu to here, though it is elsewhere on the page.
-  const isInRow = (event) => event.currentTarget.contains(event.target);
 
   return (
-    <Dropdown menu={{ items }} trigger={['contextMenu']}>
-      <li
-        className={clsx(
-          styles.commit,
-          selected && styles.selectedCommit,
-          SEARCH_STYLES[searchState],
-        )}
-        onClick={(event) => isInRow(event) && onSelect(entry.hash)}
+    <MenuRow
+      items={items}
+      className={clsx(styles.commit, selected && styles.selectedCommit, SEARCH_STYLES[searchState])}
+      onActivate={() => onSelect(entry.hash)}
+    >
+      <div className={styles.tree}>
+        <CommitGraphCell row={graphRow} columnCount={columnCount} isStash />
+      </div>
+      <span className={styles.author}>
+        <InboxOutlined className={styles.stashIcon} />
+        <span className={styles.authorName}>Stash</span>
+      </span>
+      <button
+        type="button"
+        className={clsx(styles.subject, styles.stash)}
+        title={stash.message}
+        aria-pressed={selected}
       >
-        <div className={styles.tree}>
-          <CommitGraphCell row={graphRow} columnCount={columnCount} isStash />
-        </div>
-        <span className={styles.author}>
-          <InboxOutlined className={styles.stashIcon} />
-          <span className={styles.authorName}>Stash</span>
-        </span>
-        <button
-          type="button"
-          className={clsx(styles.subject, styles.stash)}
-          title={stash.message}
-          aria-pressed={selected}
-        >
-          {stash.message}
-        </button>
-        <RelativeTime className={styles.time} date={stash.date} />
-        <code className={styles.hash} title={stash.hash}>
-          {stash.ref}
-        </code>
-      </li>
-    </Dropdown>
+        {stash.message}
+      </button>
+      <RelativeTime className={styles.time} date={stash.date} />
+      <code className={styles.hash} title={stash.hash}>
+        {stash.ref}
+      </code>
+    </MenuRow>
   );
 }
 
@@ -214,16 +208,15 @@ function CommitRow({
 }) {
   const groups = groupRefs(commit.refs);
   const { items, checkout } = useCommitMenu(commit);
-  // React bubbles events out of a menu to here, though it is elsewhere on the page.
-  const isInRow = (event) => event.currentTarget.contains(event.target);
 
-  const row = (
-    <li
+  return (
+    <MenuRow
+      items={items}
       className={clsx(styles.commit, selected && styles.selectedCommit, SEARCH_STYLES[searchState])}
       data-hash={commit.hash}
       // The second click of a double click would close the commit again.
-      onClick={(event) => isInRow(event) && event.detail < 2 && onSelect(commit.hash)}
-      onDoubleClick={(event) => isInRow(event) && checkout()}
+      onActivate={(event) => event.detail < 2 && onSelect(commit.hash)}
+      onDoubleActivate={checkout}
     >
       <div className={styles.tree}>
         <CommitGraphCell
@@ -268,14 +261,7 @@ function CommitRow({
       <code className={styles.hash} title={commit.hash}>
         {commit.shortHash}
       </code>
-    </li>
-  );
-
-  if (!items) return row;
-  return (
-    <Dropdown menu={{ items }} trigger={['contextMenu']}>
-      {row}
-    </Dropdown>
+    </MenuRow>
   );
 }
 

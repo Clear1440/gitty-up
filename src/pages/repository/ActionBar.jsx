@@ -16,6 +16,7 @@ import { App, Button, Divider, Dropdown, Space, Tooltip } from 'antd';
 import clsx from 'clsx';
 import { useNavigate } from 'react-router';
 import { AheadBehind } from '../../components/AheadBehind.jsx';
+import { useConfirmDanger } from '../../components/useConfirmDanger.js';
 import { paths } from '../../paths.js';
 import { useStashes } from '../../queries/git.js';
 import { queryKeys } from '../../queries/queryKeys.js';
@@ -83,7 +84,8 @@ export function ActionBar() {
   const { data: stashes = [] } = useStashes(repository.id);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
+  const confirmDanger = useConfirmDanger();
   const push = usePush();
   const { savePatch, pickPatchFile } = usePatchActions();
   useUndoCommitShortcut();
@@ -116,13 +118,12 @@ export function ActionBar() {
       push();
       return;
     }
-    modal.confirm({
+    confirmDanger({
       title: `Force push ${status.branch}?`,
       content: repository.isMono
         ? 'In every repository here, this replaces the branch on the remote with yours. Each one stops if someone else has pushed since your last fetch.'
         : 'This replaces the branch on the remote with yours. It stops if someone else has pushed since your last fetch.',
       okText: 'Force push',
-      okButtonProps: { danger: true },
       onOk: () => run('push', { force: true }),
     });
   };

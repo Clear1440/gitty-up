@@ -1,6 +1,7 @@
 import { App } from 'antd';
 import { useEffect, useRef } from 'react';
 import { gitApi } from '../../api';
+import { useConfirmDanger } from '../../components/useConfirmDanger.js';
 import { KeyboardHelper } from '../../utils/KeyboardHelper.js';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { restoreCommitMessage } from './useCommitDraft.js';
@@ -27,7 +28,8 @@ export function isUndoCommitKey(event) {
  */
 export function useUndoCommitShortcut() {
   const { repository, run, isBusy } = useRepositoryContext();
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
+  const confirmDanger = useConfirmDanger();
   const isChecking = useRef(false);
 
   useEffect(() => {
@@ -53,13 +55,11 @@ export function useUndoCommitShortcut() {
         await undoCommit();
         return;
       }
-      modal.confirm({
+      confirmDanger({
         title: `Undo "${subject}"?`,
         content:
           'This commit is already on a remote. Undoing it here leaves it there, so you would need to force push to replace it.',
         okText: 'Undo commit',
-        okButtonProps: { danger: true },
-        focusable: { autoFocusButton: 'cancel' },
         onOk: () => undoCommit({ allowPushed: true }),
       });
     };
@@ -82,5 +82,5 @@ export function useUndoCommitShortcut() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [repository.id, repository.isMono, run, isBusy, message, modal]);
+  }, [repository.id, repository.isMono, run, isBusy, message, confirmDanger]);
 }

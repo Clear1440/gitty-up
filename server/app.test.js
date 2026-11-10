@@ -5,6 +5,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from './app.js';
+import { ignorePattern } from './git/gitService.js';
 import { RepositoryStore } from './store/repositoryStore.js';
 
 let sandbox;
@@ -1595,6 +1596,14 @@ describe('ignoring files', () => {
     expect(await readIgnore()).toBe('node_modules\n/tmp/\n');
   });
 
+  it('escapes what ignore files treat as special, trailing spaces included', () => {
+    expect(ignorePattern('a[1]*.txt', 'file')).toBe('/a\\[1\\]\\*.txt');
+    expect(ignorePattern('#notes', 'file')).toBe('/\\#notes');
+    // Git drops unescaped spaces at the end of a line.
+    expect(ignorePattern('notes  ', 'file')).toBe('/notes\\ \\ ');
+    expect(ignorePattern('dir /a.txt', 'folder')).toBe('/dir /');
+  });
+
   it('refuses kinds it does not know and paths that would add rules', async () => {
     for (const body of [
       { paths: ['a.txt'], kind: 'everything' },
@@ -1702,6 +1711,47 @@ describe('patches', () => {
     const { body } = await request('GET', `${repo.api}/patch?source=stash&ref=stash@{0}`);
     expect(body.fileName).toBe('stash-0.patch');
     expect(body.patch).toContain('+stashed');
+  });
+
+  it('keeps the CRs of a file with CRLF line endings when applying its patch', async () => {
+    await writeAndCommit(repo.work, 'windows.txt', 'first\r\nsecond\r\n', 'Add windows file');
+    await fs.writeFile(path.join(repo.work, 'windows.txt'), 'first\r\nchanged\r\n');
+    const { body } = await request('GET', `${repo.api}/patch?source=uncommitted`);
+    expect(body.patch).toContain('+changed\r\n');
+
+    git(repo.work, 'checkout', '--', 'windows.txt');
+    const { status } = await request('POST', `${repo.api}/patch/apply`, { patch: body.patch });
+    expect(status).toBe(204);
+    expect(await fs.readFile(path.join(repo.work, 'windows.txt'), 'utf8')).toBe(
+      'first\r\nchanged\r\n',
+    );
+  });
+
+  it('applies a patch an editor saved with CRLF on every line', async () => {
+    await fs.writeFile(path.join(repo.work, 'readme.txt'), 'two\n');
+    const { body } = await request('GET', `${repo.api}/patch?source=uncommitted`);
+    git(repo.work, 'checkout', '--', 'readme.txt');
+
+    const { status } = await request('POST', `${repo.api}/patch/apply`, {
+      patch: body.patch.replace(/\n/g, '\r\n'),
+    });
+    expect(status).toBe(204);
+    expect(await fs.readFile(path.join(repo.work, 'readme.txt'), 'utf8')).toBe('two\n');
+  });
+
+  it('makes a patch of the changes in a repository with no commits yet', async () => {
+    const empty = path.join(sandbox, `unborn-${repositoryCount}`);
+    await fs.mkdir(empty);
+    git(empty, 'init', '--initial-branch=main');
+    await fs.writeFile(path.join(empty, 'first.txt'), 'hello\n');
+    const { body: linked } = await request('POST', '/api/repositories', { path: empty });
+
+    const { status, body } = await request(
+      'GET',
+      `/api/repositories/${linked.id}/patch?source=uncommitted`,
+    );
+    expect(status).toBe(200);
+    expect(body.patch).toContain('+hello');
   });
 
   it('refuses to apply commits from a patch without commit details', async () => {
