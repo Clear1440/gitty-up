@@ -99,6 +99,8 @@ export const BRANCH_FORMAT = [
   '%(authorname)',
   '%(subject)',
   '%(symref)',
+  // Where the branch is checked out, if anywhere: this working tree or another one.
+  '%(worktreepath)',
 ].join('%00');
 
 function parseTracking(track) {
@@ -114,7 +116,7 @@ export function parseBranches(output, remoteNames) {
   const branches = { local: [], remote: [] };
 
   for (const line of output.split('\n').filter(Boolean)) {
-    const [ref, shortHash, upstream, track, head, date, author, subject, symref] =
+    const [ref, shortHash, upstream, track, head, date, author, subject, symref, worktreePath] =
       line.split('\0');
     // Skip aliases such as refs/remotes/origin/HEAD.
     if (symref) continue;
@@ -124,6 +126,8 @@ export function parseBranches(output, remoteNames) {
       branches.local.push({
         name: GitRefHelper.fromLocalRef(ref),
         isCurrent: head === '*',
+        // Set on another working tree's branch too, which git won't check out twice.
+        worktreePath: worktreePath || null,
         upstream: upstream || null,
         ...parseTracking(track),
         lastCommit,
@@ -137,7 +141,39 @@ export function parseBranches(output, remoteNames) {
   return branches;
 }
 
-const CHECKOUT_ENTRY = /^checkout: moving from (.+) to (.+)$/;
+/**
+ * Parses `git worktree list --porcelain`: one block per working tree, the main one
+ * first, separated by blank lines. A branch is null when HEAD is detached or bare.
+ */
+export function parseWorktrees(output) {
+  return output
+    .split(/\r?\n\r?\n/)
+    .map((block) => block.split(/\r?\n/).filter(Boolean))
+    .filter((lines) => lines.length > 0 && lines[0].startsWith('worktree '))
+    .map((lines, index) => {
+      const fields = new Map(
+        lines.map((line) => {
+          const space = line.indexOf(' ');
+          return space === -1 ? [line, ''] : [line.slice(0, space), line.slice(space + 1)];
+        }),
+      );
+      const branchRef = fields.get('branch');
+      return {
+        path: fields.get('worktree'),
+        head: fields.get('HEAD') ?? null,
+        branch: branchRef ? GitRefHelper.fromLocalRef(branchRef) : null,
+        isMain: index === 0,
+        isBare: fields.has('bare'),
+        isDetached: fields.has('detached'),
+        locked: fields.has('locked'),
+        lockReason: fields.get('locked') || null,
+        // Its folder is gone, so `git worktree prune` would clear it away.
+        prunable: fields.has('prunable'),
+      };
+    });
+}
+
+const CHECKOUT_ENTRY =/^checkout: moving from (.+) to (.+)$/;
 
 // The selector carries the entry's own time, unlike %ct, which is its commit's.
 export const CHECKOUT_FORMAT = ['%gd', '%gs'].join('%x00');

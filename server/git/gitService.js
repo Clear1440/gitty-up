@@ -17,6 +17,7 @@ import {
   parseNameStatus,
   parseStashes,
   parseStatus,
+  parseWorktrees,
 } from './parsers.js';
 import { buildPatch } from './patch.js';
 import { listPullRequests } from './pullRequests.js';
@@ -626,6 +627,90 @@ export async function discard(repoPath, { paths }) {
   }
 }
 
+/**
+ * Throws away every uncommitted change, staged or not, and deletes untracked files.
+ * Ignored files stay, as they are usually builds and local settings, not changes.
+ */
+export async function discardAll(repoPath) {
+  const { operation } = await getStatus(repoPath);
+  if (operation) {
+    throw ApiError.gitFailure(`Abort the ${operation} instead, to go back to before it started.`);
+  }
+  if (await refExists(repoPath, 'HEAD')) {
+    await runGit(repoPath, ['reset', '--hard', '--quiet', 'HEAD']);
+  } else {
+    // Before the first commit there is nothing to go back to, only an index to empty.
+    await runGit(repoPath, ['read-tree', '--empty']);
+  }
+  await runGit(repoPath, ['clean', '--force', '-d', '--quiet']);
+}
+
+const IGNORE_KINDS = ['file', 'folder', 'extension'];
+
+/** The .gitignore line that covers `filePath` in the way `kind` says, or null if none can. */
+export function ignorePattern(filePath, kind) {
+  // Ignore files treat these as special, so they are escaped to mean themselves.
+  const escape = (text) => text.replace(/[\\*?[\]!#]/g, (char) => `\\${char}`);
+  const slash = filePath.lastIndexOf('/');
+  if (kind === 'file') return `/${escape(filePath)}`;
+  if (kind === 'folder') return slash === -1 ? null : `/${escape(filePath.slice(0, slash))}/`;
+  if (kind === 'extension') {
+    const name = filePath.slice(slash + 1);
+    const dot = name.lastIndexOf('.');
+    return dot > 0 ? `*${escape(name.slice(dot))}` : null;
+  }
+  throw ApiError.badRequest(`Unknown kind of ignore: ${kind}`);
+}
+
+/**
+ * Adds lines to the repository's top .gitignore so these paths stop showing as changes.
+ * `kind` ignores just each file, its whole folder, or every file with its extension.
+ * Lines already in the file are not added twice.
+ */
+export async function ignore(repoPath, { paths, kind = 'file' }) {
+  if (!IGNORE_KINDS.includes(kind)) throw ApiError.badRequest(`Unknown kind of ignore: ${kind}`);
+  // Each pattern is one line, so a line break in a path could add a rule of its own.
+  if (paths.some((filePath) => /[\r\n]/.test(filePath))) {
+    throw ApiError.badRequest('A path with a line break cannot be ignored.');
+  }
+  const patterns = [...new Set(paths.map((filePath) => ignorePattern(filePath, kind)))];
+  if (patterns.includes(null)) {
+    throw ApiError.badRequest(
+      kind === 'folder'
+        ? 'A file at the top of the repository has no folder to ignore.'
+        : 'That file has no extension to ignore.',
+    );
+  }
+
+  const ignorePath = path.join(repoPath, '.gitignore');
+  const current = await fs.readFile(ignorePath, 'utf8').catch(() => '');
+  const existing = new Set(current.split(/\r?\n/).map((line) => line.trim()));
+  const added = patterns.filter((pattern) => !existing.has(pattern));
+  if (added.length === 0) return;
+
+  const newline = current.includes('\r\n') ? '\r\n' : '\n';
+  const separator = current && !current.endsWith('\n') ? newline : '';
+  await fs.appendFile(ignorePath, `${separator}${added.join(newline)}${newline}`);
+}
+
+/**
+ * Rewrites the latest commit's message and nothing else, even with changes staged.
+ * `hash` is the commit the user meant, so one made elsewhere since is never touched.
+ */
+export async function rewordLastCommit(repoPath, { hash, message }) {
+  assertCommitHash(hash);
+  const trimmed = message?.trim();
+  if (!trimmed) throw ApiError.badRequest('A commit message is required.');
+  await assertNoOperation(repoPath, 'editing a commit message');
+
+  const head = (await runGit(repoPath, ['rev-parse', 'HEAD'])).trim();
+  if (!head.startsWith(hash.toLowerCase())) {
+    throw ApiError.gitFailure('Only the latest commit can have its message edited here.');
+  }
+  // --only with no paths leaves whatever is staged out of the amended commit.
+  await runGit(repoPath, ['commit', '--amend', '--only', '--allow-empty', '--message', trimmed]);
+}
+
 export async function commit(repoPath, { message, amend = false, stageAll = false }) {
   const trimmed = message?.trim();
   const { operation, conflicted } = await getStatus(repoPath);
@@ -732,11 +817,17 @@ export async function undoCommit(repoPath, { hash, allowPushed = false }) {
   );
 }
 
-export async function stashSave(repoPath, { message }) {
+/** Stashes every change, or with `paths` only those files' changes. */
+export async function stashSave(repoPath, { message, paths }) {
   // Git exits 0 on a clean tree, which would read as a stash that never happened.
   const { staged, unstaged, conflicted } = await getStatus(repoPath);
-  if (staged.length + unstaged.length + conflicted.length === 0) {
-    throw ApiError.gitFailure('There are no changes to stash.');
+  const changed = [...staged, ...unstaged, ...conflicted].filter(
+    (file) => !paths || paths.includes(file.path),
+  );
+  if (changed.length === 0) {
+    throw ApiError.gitFailure(
+      paths ? 'Those files have no changes to stash.' : 'There are no changes to stash.',
+    );
   }
 
   const trimmed = message?.trim();
@@ -745,6 +836,8 @@ export async function stashSave(repoPath, { message }) {
     'push',
     '--include-untracked',
     ...(trimmed ? ['--message', trimmed] : []),
+    // Per path rather than --literal-pathspecs, which would break stash's own ":/".
+    ...(paths ? ['--', ...paths.map((filePath) => `:(literal)${filePath}`)] : []),
   ]);
 }
 
@@ -829,6 +922,132 @@ export async function getStashDiff(
     ...(originalPath ? [originalPath] : []),
     filePath,
   ]);
+}
+
+// Worktrees
+
+/** Compares folders the way the file system does: Windows ignores case and slash style. */
+function samePath(a, b) {
+  const normalize = (folder) => {
+    const resolved = path.resolve(folder);
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  };
+  return normalize(a) === normalize(b);
+}
+
+/**
+ * Every working tree of the repository, the main one first. `isCurrent` marks the one
+ * at `repoPath`, and `name` is its folder's name. `parent` is the main working tree's
+ * own folder, where new ones go by default, beside it.
+ */
+export async function getWorktrees(repoPath) {
+  const worktrees = parseWorktrees(await runGit(repoPath, ['worktree', 'list', '--porcelain']));
+  return worktrees
+    .filter((worktree) => !worktree.isBare)
+    .map((worktree) => ({
+      ...worktree,
+      // Git prints forward slashes everywhere, which Windows folders are shown without.
+      path: path.resolve(worktree.path),
+      name: path.basename(worktree.path),
+      isCurrent: samePath(worktree.path, repoPath),
+    }));
+}
+
+/** One of the repository's own working trees, so nothing else on disk can be touched. */
+async function requireWorktree(repoPath, folder) {
+  if (typeof folder !== 'string' || !folder.trim()) {
+    throw ApiError.badRequest('"path" must be a working tree folder.');
+  }
+  const worktree = (await getWorktrees(repoPath)).find((candidate) =>
+    samePath(candidate.path, folder),
+  );
+  if (!worktree) throw ApiError.badRequest(`${folder} is not a working tree of this repository.`);
+  return worktree;
+}
+
+/**
+ * Adds a working tree at `folder`, which must be new or empty. It checks out `branch`,
+ * or with `newBranch` creates that branch from `startPoint`. A remote branch gets a
+ * local branch that tracks it, as a checkout would. Resolves with its full path.
+ */
+export async function addWorktree(repoPath, { folder, branch, newBranch, startPoint }) {
+  if (typeof folder !== 'string' || !path.isAbsolute(folder)) {
+    throw ApiError.badRequest('Choose a full folder path for the working tree.');
+  }
+  const target = path.resolve(folder);
+  const entries = await fs.readdir(target).catch((error) => (error.code === 'ENOENT' ? [] : null));
+  if (entries === null) throw ApiError.badRequest(`${target} is not a folder that can be used.`);
+  if (entries.length > 0) throw ApiError.badRequest(`${target} already has files in it.`);
+
+  let args;
+  if (newBranch) {
+    await assertValidBranchName(repoPath, newBranch);
+    if (startPoint) assertRef(startPoint);
+    args = ['-b', newBranch, '--', target, ...(startPoint ? [startPoint] : [])];
+  } else {
+    assertRef(branch);
+    const remote = (await getBranches(repoPath)).remote.find(({ name }) => name === branch);
+    // Checking out a remote branch by its local name makes git set up tracking.
+    const local = remote?.localName;
+    args =
+      local && !(await hasLocalBranch(repoPath, local))
+        ? ['--track', '-b', local, '--', target, branch]
+        : ['--', target, local ?? branch];
+  }
+  await runGit(repoPath, ['worktree', 'add', ...args]);
+  return { path: target };
+}
+
+/**
+ * Deletes a working tree's folder and forgets it. Git refuses when it has changes,
+ * unless `force`. The main working tree, and the one open here, can't be removed.
+ */
+export async function removeWorktree(repoPath, { folder, force = false }) {
+  const worktree = await requireWorktree(repoPath, folder);
+  if (worktree.isMain) throw ApiError.badRequest('The main working tree cannot be removed.');
+  if (worktree.isCurrent) {
+    throw ApiError.badRequest('Open another working tree to remove this one.');
+  }
+  try {
+    await runGit(repoPath, [
+      'worktree',
+      'remove',
+      // Twice, as a locked working tree needs it doubled.
+      ...(force ? ['--force', '--force'] : []),
+      worktree.path,
+    ]);
+  } catch (error) {
+    if (!force && /modified or untracked|is dirty|locked/i.test(error.details ?? error.message)) {
+      throw ApiError.gitFailure(
+        `${worktree.name} has uncommitted changes or is locked. Remove it anyway to delete them.`,
+        error.details,
+      );
+    }
+    throw error;
+  }
+}
+
+/** Locking keeps git from pruning a working tree whose folder is away, such as on a USB drive. */
+export async function lockWorktree(repoPath, { folder, reason }) {
+  const worktree = await requireWorktree(repoPath, folder);
+  if (worktree.isMain) throw ApiError.badRequest('The main working tree cannot be locked.');
+  const trimmed = typeof reason === 'string' ? reason.trim() : '';
+  await runGit(repoPath, [
+    'worktree',
+    'lock',
+    ...(trimmed ? ['--reason', trimmed] : []),
+    worktree.path,
+  ]);
+}
+
+export async function unlockWorktree(repoPath, { folder }) {
+  const worktree = await requireWorktree(repoPath, folder);
+  await runGit(repoPath, ['worktree', 'unlock', worktree.path]);
+}
+
+/** Forgets working trees whose folders were deleted without git. */
+export async function pruneWorktrees(repoPath) {
+  await runGit(repoPath, ['worktree', 'prune']);
 }
 
 // Patches

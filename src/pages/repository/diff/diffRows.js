@@ -76,26 +76,49 @@ function pairChanges(lines) {
   );
 }
 
+/** The views older versions stored as one word, as the two choices they stood for. */
+const LEGACY_VIEWS = {
+  hunk: { context: 'hunk', layout: 'inline' },
+  inline: { context: 'full', layout: 'inline' },
+  split: { context: 'full', layout: 'split' },
+};
+
 /**
- * Turns hunks into the rows of a view. The hunk view has git's own hunks. A whole-file
- * diff is a single hunk, so the other views treat each run of changes as a hunk.
+ * A diff view: `context` is "hunk" (just the changes, with a few lines around them) or
+ * "full" (the whole file), and `layout` is "inline" or "split" (old and new side by side).
+ * Also takes the single words older versions stored.
+ */
+export function toDiffView(view) {
+  if (typeof view === 'string') return LEGACY_VIEWS[view] ?? LEGACY_VIEWS.hunk;
+  return {
+    context: view?.context === 'full' ? 'full' : 'hunk',
+    layout: view?.layout === 'split' ? 'split' : 'inline',
+  };
+}
+
+function bodyRows(lines, changed, layout) {
+  if (layout !== 'split') return lines.map(lineRow);
+  return changed ? pairChanges(lines) : lines.map((line) => pairRow(line, line));
+}
+
+/**
+ * Turns hunks into the rows of a view. With hunk context each of git's hunks is headed
+ * by its header. A whole-file diff is a single hunk, so there each run of changes is
+ * treated as a hunk of its own, headed by a row with no text that holds its action.
  */
 export function buildRows(hunks, view) {
-  if (view === 'hunk') {
+  const { context, layout } = toDiffView(view);
+
+  if (context === 'hunk') {
     return hunks.flatMap(({ id, header, lines }) => [
       hunkRow(id, header, lines),
-      ...lines.map(lineRow),
+      ...toRuns(lines).flatMap(({ changed, lines: run }) => bodyRows(run, changed, layout)),
     ]);
   }
 
   return hunks.flatMap((hunk) =>
     toRuns(hunk.lines).flatMap(({ changed, lines }) => {
-      const body =
-        view === 'split'
-          ? changed
-            ? pairChanges(lines)
-            : lines.map((line) => pairRow(line, line))
-          : lines.map(lineRow);
+      const body = bodyRows(lines, changed, layout);
       return changed ? [hunkRow(lines[0].id, '', lines), ...body] : body;
     }),
   );

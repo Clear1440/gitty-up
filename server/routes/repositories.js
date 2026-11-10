@@ -160,6 +160,22 @@ function createGitRouter() {
     response.json(await runScript(request.target, script));
   });
 
+  router.get('/worktrees', async (request, response) => {
+    response.json(await request.service.getWorktrees(request.target));
+  });
+
+  router.post('/worktrees', async (request, response) => {
+    const { path: folder, branch, newBranch, startPoint } = request.body ?? {};
+    response.status(201).json(
+      await request.service.addWorktree(request.target, {
+        folder: ValidationHelper.requireString(folder, 'path'),
+        branch: newBranch ? undefined : ValidationHelper.requireString(branch, 'branch'),
+        newBranch: newBranch || undefined,
+        startPoint: startPoint || undefined,
+      }),
+    );
+  });
+
   router.get('/stashes', async (request, response) => {
     response.json(await request.service.getStashes(request.target));
   });
@@ -302,6 +318,16 @@ function createGitRouter() {
   action(router, '/discard', (service, target, { paths }) =>
     service.discard(target, { paths: ValidationHelper.requirePaths(paths) }),
   );
+  action(router, '/discard-all', (service, target) => service.discardAll(target));
+  action(router, '/ignore', (service, target, { paths, kind }) =>
+    service.ignore(target, { paths: ValidationHelper.requirePaths(paths), kind }),
+  );
+  action(router, '/reword', (service, target, { hash, message }) =>
+    service.rewordLastCommit(target, {
+      hash: ValidationHelper.requireString(hash, 'hash'),
+      message: ValidationHelper.requireString(message, 'message'),
+    }),
+  );
   action(router, '/commit', (service, target, { message, amend, stageAll }) =>
     service.commit(target, { message, amend: amend === true, stageAll: stageAll === true }),
   );
@@ -313,12 +339,24 @@ function createGitRouter() {
   );
 
   // Stashes
-  action(router, '/stash', (service, target, { message }) =>
-    service.stashSave(target, { message }),
+  action(router, '/stash', (service, target, { message, paths }) =>
+    service.stashSave(target, { message, paths: ValidationHelper.optionalPaths(paths) }),
   );
   action(router, '/stash/apply', (service, target, { ref }) => service.stashApply(target, { ref }));
   action(router, '/stash/pop', (service, target, { ref }) => service.stashPop(target, { ref }));
   action(router, '/stash/drop', (service, target, { ref }) => service.stashDrop(target, { ref }));
+
+  // Worktrees
+  action(router, '/worktrees/remove', (service, target, { path: folder, force }) =>
+    service.removeWorktree(target, { folder, force: force === true }),
+  );
+  action(router, '/worktrees/lock', (service, target, { path: folder, reason }) =>
+    service.lockWorktree(target, { folder, reason }),
+  );
+  action(router, '/worktrees/unlock', (service, target, { path: folder }) =>
+    service.unlockWorktree(target, { folder }),
+  );
+  action(router, '/worktrees/prune', (service, target) => service.pruneWorktrees(target));
 
   // Patches
   action(router, '/patch/apply', (service, target, { patch, mode }) =>

@@ -1,5 +1,6 @@
 import { ApplyPatchDialog } from './ApplyPatchDialog.jsx';
 import { CreateBranchDialog } from './CreateBranchDialog.jsx';
+import { CreateWorktreeDialog } from './CreateWorktreeDialog.jsx';
 import { DeleteBranchDialog } from './DeleteBranchDialog.jsx';
 import { DeleteRemoteBranchDialog } from './DeleteRemoteBranchDialog.jsx';
 import { MergeDialog } from './MergeDialog.jsx';
@@ -7,11 +8,13 @@ import { MergeIntoDialog } from './MergeIntoDialog.jsx';
 import { PruneBranchesDialog } from './PruneBranchesDialog.jsx';
 import { PublishBranchDialog } from './PublishBranchDialog.jsx';
 import { PushTargetDialog } from './PushTargetDialog.jsx';
+import { RewordCommitDialog } from './RewordCommitDialog.jsx';
 import { StashDialog } from './StashDialog.jsx';
 
 const DIALOGS = {
   applyPatch: ApplyPatchDialog,
   createBranch: CreateBranchDialog,
+  createWorktree: CreateWorktreeDialog,
   deleteBranch: DeleteBranchDialog,
   deleteRemoteBranch: DeleteRemoteBranchDialog,
   merge: MergeDialog,
@@ -19,6 +22,7 @@ const DIALOGS = {
   pruneBranches: PruneBranchesDialog,
   publishBranch: PublishBranchDialog,
   pushTarget: PushTargetDialog,
+  rewordCommit: RewordCommitDialog,
   stash: StashDialog,
 };
 

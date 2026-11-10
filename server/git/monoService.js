@@ -387,6 +387,19 @@ export async function discard(mono, { paths }) {
   await onPaths(mono, paths, ({ path }, ownPaths) => git.discard(path, { paths: ownPaths }));
 }
 
+export async function discardAll(mono) {
+  await forEachMember(mono.members, ({ path }) => git.discardAll(path));
+}
+
+/** Each file goes in its own repository's .gitignore. */
+export async function ignore(mono, { paths, kind }) {
+  await onPaths(mono, paths, ({ path }, ownPaths) => git.ignore(path, { paths: ownPaths, kind }));
+}
+
+export async function rewordLastCommit() {
+  throw ApiError.badRequest('Open the repository on its own to edit a commit message.');
+}
+
 /**
  * Commits to every member with something to commit, all with the same message. Whatever
  * can be checked is checked first, so a commit only ever stops halfway on a hook. Then
@@ -463,6 +476,20 @@ export async function stashApply() {
 export async function stashPop() {
   throw ApiError.badRequest('Open the repository on its own to restore a stash.');
 }
+
+/** Each repository has its own working trees, so a mono repo lists none. */
+export async function getWorktrees() {
+  return [];
+}
+
+const notForMono = () => {
+  throw ApiError.badRequest('Open the repository on its own to manage its working trees.');
+};
+export const addWorktree = notForMono;
+export const removeWorktree = notForMono;
+export const lockWorktree = notForMono;
+export const unlockWorktree = notForMono;
+export const pruneWorktrees = notForMono;
 
 export async function stashDrop() {
   throw ApiError.badRequest('Open the repository on its own to delete a stash.');

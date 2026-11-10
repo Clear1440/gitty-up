@@ -50,6 +50,11 @@
   white-space: nowrap;
 }
 
+.worktree {
+  flex: none;
+  color: var(--color-text-muted);
+}
+
 .menu {
   flex: none;
   margin-right: var(--space-1);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   parseBranches,
+  parseWorktrees,
   parseCheckouts,
   parseCommits,
   parseNameStatus,
@@ -101,6 +102,64 @@ describe('parseBranches', () => {
       remote: 'origin',
       localName: 'feature/x',
     });
+  });
+
+  it('says where a branch is checked out', () => {
+    const output = [
+      line('refs/heads/main', 'abc', '', '', '*', ...commit, '', 'D:/work/repo'),
+      line('refs/heads/side', 'def', '', '', ' ', ...commit, '', 'D:/work/repo-side'),
+      line('refs/heads/idle', 'def', '', '', ' ', ...commit, '', ''),
+    ].join('\n');
+
+    const { local } = parseBranches(output, []);
+    expect(local.map((branch) => branch.worktreePath)).toEqual([
+      'D:/work/repo',
+      'D:/work/repo-side',
+      null,
+    ]);
+  });
+});
+
+describe('parseWorktrees', () => {
+  it('reads each working tree, the main one first', () => {
+    const output = [
+      'worktree D:/work/repo',
+      'HEAD 1111111111111111111111111111111111111111',
+      'branch refs/heads/main',
+      '',
+      'worktree D:/work/repo-side',
+      'HEAD 2222222222222222222222222222222222222222',
+      'branch refs/heads/feature/side',
+      'locked on a USB drive',
+      '',
+      'worktree D:/work/gone',
+      'HEAD 3333333333333333333333333333333333333333',
+      'detached',
+      'prunable gitdir file points to non-existent location',
+      '',
+    ].join('\n');
+
+    expect(parseWorktrees(output)).toEqual([
+      {
+        path: 'D:/work/repo',
+        head: '1111111111111111111111111111111111111111',
+        branch: 'main',
+        isMain: true,
+        isBare: false,
+        isDetached: false,
+        locked: false,
+        lockReason: null,
+        prunable: false,
+      },
+      expect.objectContaining({
+        path: 'D:/work/repo-side',
+        branch: 'feature/side',
+        isMain: false,
+        locked: true,
+        lockReason: 'on a USB drive',
+      }),
+      expect.objectContaining({ branch: null, isDetached: true, prunable: true }),
+    ]);
   });
 });
 

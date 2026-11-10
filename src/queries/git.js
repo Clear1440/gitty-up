@@ -89,6 +89,14 @@ export function useStashes(repositoryId) {
   return useQuery(stashesQuery(repositoryId));
 }
 
+/** The repository's working trees, the main one first. */
+export function useWorktrees(repositoryId) {
+  return useQuery({
+    queryKey: queryKeys.worktrees(repositoryId),
+    queryFn: () => gitApi.getWorktrees(repositoryId),
+  });
+}
+
 /** A stash's files. A stash never changes, so its hash is enough to cache it by. */
 export function useStashDetails(repositoryId, hash) {
   return useQuery({

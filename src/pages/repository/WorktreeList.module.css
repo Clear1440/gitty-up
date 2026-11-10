@@ -1,0 +1,107 @@
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-md);
+}
+
+.row:hover,
+.row:focus-within,
+.row:global(.ant-dropdown-open) {
+  background: var(--color-surface-hover);
+}
+
+.button {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The one open here can't be opened again, but still reads as an ordinary row. */
+.button:disabled {
+  color: var(--color-text);
+  cursor: default;
+}
+
+.icon {
+  flex: none;
+  color: var(--color-text-muted);
+}
+
+.iconCurrent {
+  flex: none;
+  color: var(--color-primary);
+}
+
+.iconWarning {
+  flex: none;
+  color: var(--color-warning);
+}
+
+.text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.name,
+.meta {
+  overflow: hidden;
+  line-height: var(--line-height-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.tag {
+  flex: none;
+  margin: 0;
+}
+
+.menu {
+  flex: none;
+  margin-right: var(--space-1);
+  opacity: 0;
+}
+
+.row:hover .menu,
+.row:focus-within .menu,
+.row:global(.ant-dropdown-open) .menu,
+.menu:global(.ant-dropdown-open) {
+  opacity: 1;
+}
+
+.hint {
+  margin: var(--space-1) 0 0;
+  padding: 0 var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-1) 0;
+}
