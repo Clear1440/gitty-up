@@ -1,8 +1,8 @@
 /**
- * The labels a repository can be colored with. The ids are what the server keeps.
+ * The labels a group can be colored with. The ids are what the server keeps.
  * The shades sit mid-way in lightness, so they read on dark and light schemes alike.
  */
-export const REPOSITORY_COLORS = [
+export const GROUP_COLORS = [
   { id: 'red', label: 'Red', value: '#e5484d' },
   { id: 'orange', label: 'Orange', value: '#f76b15' },
   { id: 'yellow', label: 'Yellow', value: '#e2a336' },
@@ -15,4 +15,4 @@ export const REPOSITORY_COLORS = [
 
 /** The shade for a color id, or null for none or one no longer offered. */
 export const colorValueOf = (colorId) =>
-  REPOSITORY_COLORS.find((color) => color.id === colorId)?.value ?? null;
+  GROUP_COLORS.find((color) => color.id === colorId)?.value ?? null;

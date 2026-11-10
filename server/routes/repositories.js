@@ -13,8 +13,8 @@ import { ValidationHelper } from '../utils/ValidationHelper.js';
 
 const DEFAULT_COMMIT_PAGE_SIZE = 100;
 const MAX_COMMIT_PAGE_SIZE = 500;
-/** The labels a repository can be colored with. The page picks the shade for each. */
-const REPOSITORY_COLORS = ['red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'pink'];
+/** The labels a group can be colored with. The page picks the shade for each. */
+const GROUP_COLORS =['red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'pink'];
 
 async function assertGroupsExist(store, groupIds) {
   const groups = await store.listGroups();
@@ -399,6 +399,14 @@ function createGroupsRouter(store) {
     response.json(await store.renameGroup(request.params.groupId, name));
   });
 
+  router.put('/:groupId/color', async (request, response) => {
+    const color = request.body?.color ?? null;
+    if (color !== null && !GROUP_COLORS.includes(color)) {
+      throw ApiError.badRequest(`"color" must be one of ${GROUP_COLORS.join(', ')}.`);
+    }
+    response.json(await store.setGroupColor(request.params.groupId, color));
+  });
+
   router.post('/:groupId/mono', async (request, response) => {
     const branch = ValidationHelper.requireTrimmedString(request.body?.branch, 'branch');
     const group = await store.getGroup(request.params.groupId);
@@ -513,15 +521,6 @@ export function createRepositoriesRouter(store) {
     }
     await assertGroupsExist(store, groupIds);
     await store.setGroups(request.repository.id, groupIds);
-    response.status(204).end();
-  });
-
-  router.put('/:repositoryId/color', async (request, response) => {
-    const color = request.body?.color ?? null;
-    if (color !== null && !REPOSITORY_COLORS.includes(color)) {
-      throw ApiError.badRequest(`"color" must be one of ${REPOSITORY_COLORS.join(', ')}.`);
-    }
-    await store.setColor(request.repository.id, color);
     response.status(204).end();
   });
 

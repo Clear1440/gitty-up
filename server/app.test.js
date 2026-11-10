@@ -196,16 +196,31 @@ describe('repository groups', () => {
     expect(groups.map(({ id }) => id)).toEqual(body.map(({ id }) => id));
   });
 
-  it('colors a repository and clears the color', async () => {
-    expect((await request('PUT', `${repo.api}/color`, { color: 'teal' })).status).toBe(204);
-    expect((await entryOf(repo.id)).color).toBe('teal');
+  it('colors a group and clears the color', async () => {
+    const group = await createGroup(`Colored ${repositoryCount}`);
+    const colorOf = async () =>
+      (await request('GET', '/api/repositories/groups')).body.find(({ id }) => id === group.id)
+        .color;
+    const route = `/api/repositories/groups/${group.id}/color`;
 
-    await request('PUT', `${repo.api}/color`, { color: null });
-    expect((await entryOf(repo.id)).color).toBeUndefined();
+    const { status, body } = await request('PUT', route, { color: 'teal' });
+    expect(status).toBe(200);
+    expect(body.color).toBe('teal');
+    expect(await colorOf()).toBe('teal');
+
+    await request('PUT', route, { color: null });
+    expect(await colorOf()).toBeUndefined();
   });
 
-  it('refuses a color it does not know', async () => {
-    expect((await request('PUT', `${repo.api}/color`, { color: '#ff0000' })).status).toBe(400);
+  it('refuses a group color it does not know', async () => {
+    const group = await createGroup(`Bad color ${repositoryCount}`);
+    const route = `/api/repositories/groups/${group.id}/color`;
+    expect((await request('PUT', route, { color: '#ff0000' })).status).toBe(400);
+    expect((await request('PUT', '/api/repositories/groups/nope/color', {})).status).toBe(404);
+  });
+
+  it('no longer colors a repository itself', async () => {
+    expect((await request('PUT', `${repo.api}/color`, { color: 'teal' })).status).toBe(404);
   });
 
   it('reuses a group when its name is added again', async () => {
@@ -237,13 +252,12 @@ describe('repository groups', () => {
     expect(status).toBe(404);
   });
 
-  it('keeps a stub in its groups, with its color, once it is located', async () => {
+  it('keeps a stub in its groups once it is located', async () => {
     const { body: stub } = await request('POST', '/api/repositories/stubs', {
       url: `https://example.com/owner/grouped-${repositoryCount}.git`,
     });
     const group = await createGroup('Stubs');
     await request('PUT', `/api/repositories/${stub.id}/group`, { groupId: group.id });
-    await request('PUT', `/api/repositories/${stub.id}/color`, { color: 'purple' });
 
     const other = path.join(path.dirname(repo.work), 'other');
     await fs.mkdir(other);
@@ -251,7 +265,6 @@ describe('repository groups', () => {
     const { body } = await request('POST', `/api/repositories/${stub.id}/locate`, { path: other });
 
     expect(body.groupIds).toEqual([group.id]);
-    expect(body.color).toBe('purple');
   });
 
   it('reads the single group kept by older files', async () => {
@@ -259,7 +272,7 @@ describe('repository groups', () => {
     await fs.writeFile(
       RepositoryStore.fileIn(dataDir),
       JSON.stringify({
-        repositories: [{ id: 'old', name: 'old', path: '/old', groupId: 'g1' }],
+        repositories: [{ id: 'old', name: 'old', path: '/old', groupId: 'g1', color: 'red' }],
         groups: [{ id: 'g1', name: 'Legacy' }],
       }),
     );
@@ -267,6 +280,8 @@ describe('repository groups', () => {
     const [entry] = await store.list();
     expect(entry.groupIds).toEqual(['g1']);
     expect(entry).not.toHaveProperty('groupId');
+    // Colors belong to groups now.
+    expect(entry).not.toHaveProperty('color');
   });
 });
 

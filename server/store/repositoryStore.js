@@ -40,21 +40,25 @@ function withGroups(repository, groupIds) {
   return unique.length > 0 ? { ...updated, groupIds: unique } : updated;
 }
 
-/** Brings an entry from an older file up to date. */
-const normalize = (repository) => withGroups(repository, groupIdsOf(repository));
+/**
+ * Brings an entry from an older file up to date. Colors used to belong to repositories;
+ * they belong to groups now, so a repository's own is dropped.
+ */
+function normalize(repository) {
+  const updated = { ...repository };
+  delete updated.color;
+  return withGroups(updated, groupIdsOf(repository));
+}
 
 /** Carries the user's choices over from one entry to the one that replaces it. */
-function keepChoices(from, to) {
-  const withColor = from.color ? { ...to, color: from.color } : to;
-  return withGroups(withColor, groupIdsOf(from));
-}
+const keepChoices = (from, to) => withGroups(to, groupIdsOf(from));
 
 /**
  * Persists the linked repositories and their groups as a JSON file in the data directory.
  * A stub is an entry known only by its remote URL. Its `path` stays null until
  * it is cloned or located, when `resolveStub` swaps it for a real entry.
- * A repository can belong to any number of groups, through its optional `groupIds`,
- * and can carry a `color` label. Groups are kept in the order they are shown. A group
+ * A repository can belong to any number of groups, through its optional `groupIds`.
+ * Groups are kept in the order they are shown, and can carry a `color` label. A group
  * opened as a mono repo also remembers the branch it is on, as `monoBranch`.
  */
 export class RepositoryStore {
@@ -130,7 +134,7 @@ export class RepositoryStore {
     return stub;
   }
 
-  /** Turns a stub into a linked repository, keeping its place, groups and color. */
+  /** Turns a stub into a linked repository, keeping its place and its groups. */
   async resolveStub(stubId, repositoryPath) {
     const repository = createEntry(repositoryPath);
     const existing = await this.get(repository.id);
@@ -179,6 +183,19 @@ export class RepositoryStore {
     return renamed.find((group) => group.id === id);
   }
 
+  /** Labels a group with a color, or clears the label when `color` is null. */
+  async setGroupColor(id, color) {
+    const groups = await this.listGroups();
+    const updated = groups.map((group) => {
+      if (group.id !== id) return group;
+      const uncolored = { ...group };
+      delete uncolored.color;
+      return color ? { ...uncolored, color } : uncolored;
+    });
+    await this.#save({ groups: updated });
+    return updated.find((group) => group.id === id);
+  }
+
   /** Sets the branch a group opens on as a mono repo. Having one is what marks it opened. */
   async setMonoBranch(id, monoBranch) {
     const groups = await this.listGroups();
@@ -216,15 +233,6 @@ export class RepositoryStore {
   /** Puts a repository in exactly these groups. An empty list leaves it ungrouped. */
   async setGroups(id, groupIds) {
     await this.#update(id, (repository) => withGroups(repository, groupIds));
-  }
-
-  /** Labels a repository with a color, or clears the label when `color` is null. */
-  async setColor(id, color) {
-    await this.#update(id, (repository) => {
-      const updated = { ...repository };
-      delete updated.color;
-      return color ? { ...updated, color } : updated;
-    });
   }
 
   async #update(id, change) {

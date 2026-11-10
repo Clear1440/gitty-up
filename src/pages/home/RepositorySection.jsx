@@ -1,6 +1,8 @@
 import {
+  BgColorsOutlined,
   DeleteOutlined,
   EditOutlined,
+  FolderFilled,
   HolderOutlined,
   MoreOutlined,
   RightOutlined,
@@ -14,10 +16,12 @@ import {
   useRenameGroup,
   useReorderGroups,
   useRepositories,
+  useSetGroupColor,
   useSetRepositoryGroups,
 } from '../../queries/repositories.js';
 import { useTabs } from '../../tabs/TabsContext.jsx';
 import { MonoIdHelper } from '../../utils/MonoIdHelper.js';
+import { colorValueOf, GROUP_COLORS } from './groupColors.js';
 import { groupIdsAfterDrop, reorderIds, UNGROUPED } from './groupMembership.js';
 import { GroupNameDialog } from './GroupNameDialog.jsx';
 import { OpenMonoButton } from './OpenMonoButton.jsx';
@@ -135,13 +139,26 @@ function GroupHandle({ group, sectionRef }) {
   );
 }
 
+const Swatch = ({ value }) => (
+  <span className={styles.swatch} style={value ? { background: value } : undefined} />
+);
+
 function GroupMenu({ group }) {
   const { notification } = App.useApp();
   const confirmDanger = useConfirmDanger();
   const [renaming, setRenaming] = useState(false);
   const rename = useRenameGroup();
   const remove = useDeleteGroup();
+  const setColor = useSetGroupColor();
   const { closeTab } = useTabs();
+
+  const saveColor = async (color) => {
+    try {
+      await setColor.mutateAsync({ groupId: group.id, color });
+    } catch (error) {
+      notification.error({ title: 'Could not change the color', description: error.message });
+    }
+  };
 
   const confirmDelete = () => {
     confirmDanger({
@@ -159,8 +176,27 @@ function GroupMenu({ group }) {
     });
   };
 
+  const colorItems = [
+    ...GROUP_COLORS.map((color) => ({
+      key: `color-${color.id}`,
+      label: color.label,
+      icon: <Swatch value={color.value} />,
+      disabled: group.color === color.id,
+      onClick: () => saveColor(color.id),
+    })),
+    { type: 'divider' },
+    {
+      key: 'no-color',
+      label: 'No color',
+      icon: <Swatch />,
+      disabled: !colorValueOf(group.color),
+      onClick: () => saveColor(null),
+    },
+  ];
+
   const items = [
     { key: 'rename', label: 'Rename', icon: <EditOutlined />, onClick: () => setRenaming(true) },
+    { key: 'color', label: 'Color', icon: <BgColorsOutlined />, children: colorItems },
     { key: 'delete', label: 'Delete group', icon: <DeleteOutlined />, onClick: confirmDelete },
   ];
 
@@ -187,9 +223,13 @@ function GroupMenu({ group }) {
   );
 }
 
-/** A collapsible group of repositories on the home page. */
+/**
+ * A collapsible group of repositories on the home page. A group's color tints its
+ * folder icon and marks the edge of every repository in it.
+ */
 export function RepositorySection({ section, groups, collapsed, onToggle }) {
   const { group, name, repositories } = section;
+  const color = colorValueOf(group?.color);
   const { condensed } = useRepositoryList();
   const sectionRef = useRef(null);
   const { dropAt, dropProps } = useSectionDrop(section, groups);
@@ -215,6 +255,13 @@ export function RepositorySection({ section, groups, collapsed, onToggle }) {
             onClick={onToggle}
           >
             <RightOutlined className={clsx(styles.caret, !collapsed && styles.caretOpen)} />
+            {group && (
+              <FolderFilled
+                className={styles.folder}
+                style={color ? { color } : undefined}
+                aria-hidden
+              />
+            )}
             <span className={styles.name}>{name}</span>
             <span className={styles.count}>{repositories.length}</span>
           </button>
@@ -231,6 +278,7 @@ export function RepositorySection({ section, groups, collapsed, onToggle }) {
                 repository={repository}
                 groups={groups}
                 sectionId={section.id}
+                color={color}
               />
             ))}
           </div>

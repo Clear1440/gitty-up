@@ -129,13 +129,15 @@ export function useSetRepositoryGroups() {
   );
 }
 
-/** Labels a repository with a color, or clears it with null. */
-export function useSetRepositoryColor() {
+/** Labels a group with a color, or clears it with null. */
+export function useSetGroupColor() {
   return useOptimisticMutation(
-    queryKeys.repositoryList(),
-    ({ repositoryId, color }) => repositoriesApi.setColor(repositoryId, color),
-    (repositories, { repositoryId, color }) =>
-      updateRepository(repositories, repositoryId, { color: color ?? undefined }),
+    queryKeys.repositoryGroups(),
+    ({ groupId, color }) => repositoriesApi.setGroupColor(groupId, color),
+    (groups, { groupId, color }) =>
+      groups.map((group) =>
+        group.id === groupId ? { ...group, color: color ?? undefined } : group,
+      ),
   );
 }
 
