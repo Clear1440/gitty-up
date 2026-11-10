@@ -6,10 +6,18 @@ import {
   useLayoutEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { useSaveAppearance, useSettings } from '../queries/settings.js';
 import { createAntdTheme } from '../styles/antdTheme.js';
-import { DEFAULT_APPEARANCE, applyTheme, normalizeAppearance } from '../styles/themes.js';
+import {
+  DEFAULT_APPEARANCE,
+  applyTheme,
+  normalizeAppearance,
+  SYSTEM_MODE,
+  systemPrefersDark,
+  watchSystemMode,
+} from '../styles/themes.js';
 import { StorageHelper } from '../utils/StorageHelper.js';
 
 const STORAGE_KEY = 'gitty-up.appearance';
@@ -43,11 +51,19 @@ export function AppearanceProvider({ children }) {
     setAppearanceState(serverAppearance);
   }
 
+  // Subscribing re-renders when the OS switches, so following the system repaints too.
+  const systemMode = useSyncExternalStore(watchSystemMode, () =>
+    systemPrefersDark() ? 'dark' : 'light',
+  );
+  const resolvedMode = appearance.mode === SYSTEM_MODE ? systemMode : appearance.mode;
+  /** What is on show: the appearance with 'system' swapped for the OS's mode. */
+  const shown = useMemo(() => ({ ...appearance, mode: resolvedMode }), [appearance, resolvedMode]);
+
   // Before paint, so the page and Ant's components change colors in the same frame.
   useLayoutEffect(() => {
-    applyTheme(appearance);
+    applyTheme(shown);
     StorageHelper.write(STORAGE_KEY, appearance);
-  }, [appearance]);
+  }, [shown, appearance]);
 
   /**
    * Shows the new appearance at once, and goes back if the server cannot save it.
@@ -70,8 +86,12 @@ export function AppearanceProvider({ children }) {
     [saveAppearance],
   );
 
-  const antdTheme = useMemo(() => createAntdTheme(appearance), [appearance]);
-  const value = useMemo(() => ({ appearance, setAppearance }), [appearance, setAppearance]);
+  const antdTheme = useMemo(() => createAntdTheme(shown), [shown]);
+  /** `resolvedMode` is the mode on show, 'dark' or 'light', even when following the system. */
+  const value = useMemo(
+    () => ({ appearance, resolvedMode, setAppearance }),
+    [appearance, resolvedMode, setAppearance],
+  );
 
   return (
     <AppearanceContext value={value}>

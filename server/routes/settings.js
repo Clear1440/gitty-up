@@ -7,6 +7,8 @@ import { FileSystemHelper } from '../utils/FileSystemHelper.js';
 import { ValidationHelper } from '../utils/ValidationHelper.js';
 
 const MODES = new Set(['light', 'dark']);
+/** What the mode can be set to: one of the modes, or 'system' to follow the OS. */
+const MODE_CHOICES = new Set([...MODES, 'system']);
 const CUSTOM_COLOR_KEYS = new Set(['bg', 'text', 'primary', 'accent']);
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
@@ -90,7 +92,9 @@ export function createSettingsRouter({ settings, store }) {
   router.put('/appearance', async (request, response) => {
     const scheme = ValidationHelper.requireTrimmedString(request.body.scheme, 'scheme');
     const { mode } = request.body;
-    if (!MODES.has(mode)) throw ApiError.badRequest('"mode" must be "light" or "dark".');
+    if (!MODE_CHOICES.has(mode)) {
+      throw ApiError.badRequest('"mode" must be "light", "dark" or "system".');
+    }
     // Kept when another scheme is picked, so going back to custom finds the same colors.
     const custom =
       optionalCustomColors(request.body.custom) ?? (await settings.get()).appearance.custom;

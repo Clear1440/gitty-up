@@ -1,6 +1,7 @@
 import { Checkbox, Flex } from 'antd';
 import { useState } from 'react';
 import { ActionDialog } from '../../../components/ActionDialog.jsx';
+import { BranchHelper } from '../../../utils/BranchHelper.js';
 import { useRepositoryContext } from '../RepositoryContext.js';
 
 function describeDelete({ isMono, upstream, deleteRemote }) {
@@ -36,7 +37,7 @@ export function DeleteBranchDialog({ name, upstream, onClose }) {
         <Checkbox checked={force} onChange={(event) => setForce(event.target.checked)}>
           Delete even if it has unmerged commits
         </Checkbox>
-        {upstream && (
+        {upstream && !BranchHelper.isProtectedUpstream(upstream) && (
           <Checkbox
             checked={deleteRemote}
             onChange={(event) => setDeleteRemote(event.target.checked)}

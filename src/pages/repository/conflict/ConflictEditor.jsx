@@ -2,11 +2,14 @@ import {
   ArrowLeftOutlined,
   ArrowRightOutlined,
   CheckOutlined,
+  RedoOutlined,
+  UndoOutlined,
   VerticalAlignBottomOutlined,
 } from '@ant-design/icons';
 import { Button, Space, Tooltip } from 'antd';
 import clsx from 'clsx';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { KeyboardHelper } from '../../../utils/KeyboardHelper.js';
 import { TextHelper } from '../../../utils/TextHelper.js';
 import { detectEol, initialLines, joinLines, merge3, splitLines } from './merge3.js';
 import styles from './ConflictPage.module.css';
@@ -268,9 +271,81 @@ const ChunkRow = memo(function ChunkRow({ index, chunk, starts, state, labels, a
 
 const ACCEPT_ALL = {
   left: ['ours'],
-  both: ['ours', 'theirs'],
   right: ['theirs'],
 };
+
+/** Whether a chunk is a change one or both sides made that git could merge on its own. */
+const isMergeable = (chunk) => chunk.kind !== 'stable' && chunk.kind !== 'conflict';
+
+/** Whether a mergeable chunk no longer holds what git merged, as after an edit. */
+const differsFromMerged = (chunk, state) =>
+  state.edited || state.lines !== initialLines(chunk) || state.picks.length > 0;
+
+const OPEN_DIALOG = '.ant-modal';
+
+/**
+ * Ctrl+Z (Cmd+Z) undoes, and Ctrl+Y or Ctrl+Shift+Z redoes. Gives 'undo', 'redo' or null.
+ */
+function readHistoryKey(event) {
+  if (!KeyboardHelper.hasCommandKey(event) || event.altKey) return null;
+  const key = event.key.toLowerCase();
+  if (key === 'z') return event.shiftKey ? 'redo' : 'undo';
+  if (key === 'y' && !event.shiftKey) return 'redo';
+  return null;
+}
+
+/**
+ * The working file's chunks with their undo history. `change` gets the current states
+ * and gives the next. Changes with the same `group`, such as typing into one chunk,
+ * undo together.
+ */
+function useStatesHistory(chunks) {
+  const [history, setHistory] = useState(() => ({
+    past: [],
+    present: chunks.map(startingState),
+    future: [],
+    group: null,
+  }));
+
+  const update = useCallback((change, group = null) => {
+    setHistory((current) => {
+      const next = change(current.present);
+      if (next === current.present) return current;
+      const merges = group !== null && group === current.group;
+      return {
+        past: merges ? current.past : [...current.past, current.present],
+        present: next,
+        future: [],
+        group,
+      };
+    });
+  }, []);
+
+  const undo = useCallback(() => {
+    setHistory(({ past, present, future }) =>
+      past.length === 0
+        ? { past, present, future, group: null }
+        : { past: past.slice(0, -1), present: past.at(-1), future: [present, ...future], group: null },
+    );
+  }, []);
+
+  const redo = useCallback(() => {
+    setHistory(({ past, present, future }) =>
+      future.length === 0
+        ? { past, present, future, group: null }
+        : { past: [...past, present], present: future[0], future: future.slice(1), group: null },
+    );
+  }, []);
+
+  return {
+    states: history.present,
+    update,
+    undo,
+    redo,
+    canUndo: history.past.length > 0,
+    canRedo: history.future.length > 0,
+  };
+}
 
 /**
  * Three panes: the branch being merged into, the working file, and the branch being
@@ -279,25 +354,28 @@ const ACCEPT_ALL = {
  */
 export function ConflictEditor({ conflict, isBusy, onSave, onCancel }) {
   const { chunks, starts, eol, finalNewline } = useMemo(() => prepare(conflict), [conflict]);
-  const [states, setStates] = useState(() => chunks.map(startingState));
+  const { states, update, undo, redo, canUndo, canRedo } = useStatesHistory(chunks);
   const scrollerRef = useRef(null);
   const lastJump = useRef(-1);
 
   /** Changes one chunk of the working file. See `applyAction` for what each `type` does. */
   const act = useCallback(
     (type, index, value) => {
-      setStates((current) =>
-        current.map((state, position) =>
-          position === index ? applyAction(type, chunks[index], state, value) : state,
-        ),
+      update(
+        (current) =>
+          current.map((state, position) =>
+            position === index ? applyAction(type, chunks[index], state, value) : state,
+          ),
+        // A run of typing in one chunk undoes as one change, not a letter at a time.
+        type === 'edit' ? `edit:${index}` : null,
       );
     },
-    [chunks],
+    [chunks, update],
   );
 
   const acceptAll = (which) => {
     const sides = ACCEPT_ALL[which];
-    setStates((current) =>
+    update((current) =>
       current.map((state, index) => {
         const chunk = chunks[index];
         if (chunk.kind !== 'conflict') return state;
@@ -305,6 +383,32 @@ export function ConflictEditor({ conflict, isBusy, onSave, onCancel }) {
       }),
     );
   };
+
+  /** Puts back every change git merged from either side, leaving the conflicts as they are. */
+  const acceptMergeable = () => {
+    update((current) =>
+      current.map((state, index) =>
+        isMergeable(chunks[index]) && differsFromMerged(chunks[index], state)
+          ? startingState(chunks[index])
+          : state,
+      ),
+    );
+  };
+
+  // Undo here is for the working file, not the latest commit as elsewhere in the app.
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      const action = readHistoryKey(event);
+      if (!action || document.querySelector(OPEN_DIALOG)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (action === 'undo') undo();
+      else redo();
+    };
+    // Capturing, so the commit shortcut and a textarea's own undo never see the key.
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [undo, redo]);
 
   const conflictIndexes = chunks.flatMap((chunk, index) => (chunk.kind === 'conflict' ? index : []));
   const openIndexes = conflictIndexes.filter((index) => states[index].lines === null);
@@ -335,6 +439,9 @@ export function ConflictEditor({ conflict, isBusy, onSave, onCancel }) {
 
   const hasConflicts = conflictIndexes.length > 0;
   const openCount = openIndexes.length;
+  const hasMergeableChanges = chunks.some(
+    (chunk, index) => isMergeable(chunk) && differsFromMerged(chunk, states[index]),
+  );
 
   return (
     <div className={styles.editorPage}>
@@ -343,9 +450,11 @@ export function ConflictEditor({ conflict, isBusy, onSave, onCancel }) {
           <Button size="small" disabled={!hasConflicts} onClick={() => acceptAll('left')}>
             Accept all from left
           </Button>
-          <Button size="small" disabled={!hasConflicts} onClick={() => acceptAll('both')}>
-            Accept all from both
-          </Button>
+          <Tooltip title="Take every change from both sides that doesn't conflict. Conflicts stay as they are.">
+            <Button size="small" disabled={!hasMergeableChanges} onClick={acceptMergeable}>
+              Accept all from both
+            </Button>
+          </Tooltip>
           <Button size="small" disabled={!hasConflicts} onClick={() => acceptAll('right')}>
             Accept all from right
           </Button>
@@ -371,6 +480,26 @@ export function ConflictEditor({ conflict, isBusy, onSave, onCancel }) {
           )}
         </div>
         <Space size="small">
+          <Tooltip title="Undo (Ctrl+Z)">
+            <Button
+              size="small"
+              type="text"
+              icon={<UndoOutlined />}
+              aria-label="Undo"
+              disabled={!canUndo}
+              onClick={undo}
+            />
+          </Tooltip>
+          <Tooltip title="Redo (Ctrl+Y)">
+            <Button
+              size="small"
+              type="text"
+              icon={<RedoOutlined />}
+              aria-label="Redo"
+              disabled={!canRedo}
+              onClick={redo}
+            />
+          </Tooltip>
           <Button size="small" onClick={onCancel}>
             Cancel
           </Button>

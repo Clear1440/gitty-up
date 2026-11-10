@@ -1,5 +1,7 @@
+import { App } from 'antd';
 import { useNavigate } from 'react-router';
 import { paths } from '../../paths.js';
+import { BranchHelper } from '../../utils/BranchHelper.js';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { StatusHelper } from './StatusHelper.js';
 import { useWorktreeActions } from './useWorktreeActions.jsx';
@@ -12,8 +14,10 @@ export function useBranchMenu(branch, kind) {
   const navigate = useNavigate();
   const { repository, status, run, openDialog, isBusy } = useRepositoryContext();
   const { open: openWorktree, createWorktree } = useWorktreeActions();
+  const { message } = App.useApp();
 
   const isRemote = kind === 'remote';
+  const isProtected = isRemote && BranchHelper.isProtectedOnRemote(branch.localName);
   // Across a mono repo, merging or rebasing would rewrite several repositories at once.
   const canMerge = !repository.isMono;
   const blocked = StatusHelper.isBlocked(status, isBusy);
@@ -26,6 +30,15 @@ export function useBranchMenu(branch, kind) {
     if (branch.isCurrent || blocked) return;
     if (worktreePath) openWorktree(worktreePath);
     else run('checkout', { branch: branch.name, remote: isRemote });
+  };
+
+  const copyName = async () => {
+    try {
+      await navigator.clipboard.writeText(branch.name);
+      message.success(`Copied ${branch.name}`);
+    } catch {
+      message.error('Could not reach the clipboard');
+    }
   };
 
   const worktreeItems = repository.isMono
@@ -102,12 +115,15 @@ export function useBranchMenu(branch, kind) {
     },
     ...worktreeItems,
     { type: 'divider' },
+    { key: 'copy-name', label: 'Copy branch name', onClick: copyName },
+    { type: 'divider' },
     isRemote
       ? {
           key: 'delete-remote',
           label: branch.remote ? `Delete from ${branch.remote}…` : 'Delete from remote…',
           danger: true,
-          disabled: blocked || !branch.remote,
+          title: isProtected ? `${branch.localName} is protected on its remote` : undefined,
+          disabled: blocked || !branch.remote || isProtected,
           onClick: () =>
             openDialog('deleteRemoteBranch', {
               name: branch.name,

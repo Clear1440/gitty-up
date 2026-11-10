@@ -533,6 +533,25 @@ describe('branches', () => {
     expect(git(repo.work, 'branch', '--list')).toContain('local-only');
   });
 
+  it('refuses to delete a protected branch from its remote', async () => {
+    const { status, body } = await request('DELETE', `${repo.api}/remote-branches/origin%2Fmain`);
+    expect(status).toBe(400);
+    expect(body.error.message).toContain('protected');
+    expect(git(repo.remote, 'branch', '--list')).toContain('main');
+  });
+
+  it('keeps the local branch when its remote copy is protected', async () => {
+    git(repo.work, 'switch', '--create', 'release');
+    git(repo.work, 'push', '--set-upstream', 'origin', 'release:production');
+    git(repo.work, 'switch', 'main');
+
+    const { status } = await request('DELETE', `${repo.api}/branches/release?deleteRemote=true`);
+
+    expect(status).toBe(400);
+    expect(git(repo.work, 'branch', '--list')).toContain('release');
+    expect(git(repo.remote, 'branch', '--list')).toContain('production');
+  });
+
   it('refuses to delete a remote branch it does not know', async () => {
     const { status } = await request('DELETE', `${repo.api}/remote-branches/origin%2Fnope`);
     expect(status).toBe(400);

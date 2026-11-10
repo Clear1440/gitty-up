@@ -368,6 +368,34 @@ export const SCHEMES = [
 
 export const MODES = ['dark', 'light'];
 
+/** A mode that follows the operating system's light or dark setting. */
+export const SYSTEM_MODE = 'system';
+
+/** What the mode setting can hold: one of MODES, or SYSTEM_MODE. */
+const MODE_CHOICES = [...MODES, SYSTEM_MODE];
+
+const SYSTEM_DARK_QUERY = '(prefers-color-scheme: dark)';
+
+/** Whether the operating system asks for dark colors. Dark where it can't be asked. */
+export function systemPrefersDark() {
+  if (typeof window === 'undefined' || !window.matchMedia) return true;
+  return window.matchMedia(SYSTEM_DARK_QUERY).matches;
+}
+
+/** Calls `onChange` whenever the operating system switches light and dark. Gives the unsubscribe. */
+export function watchSystemMode(onChange) {
+  if (typeof window === 'undefined' || !window.matchMedia) return () => {};
+  const query = window.matchMedia(SYSTEM_DARK_QUERY);
+  query.addEventListener('change', onChange);
+  return () => query.removeEventListener('change', onChange);
+}
+
+/** The mode to show, 'dark' or 'light', for a mode setting that may be SYSTEM_MODE. */
+export function resolveMode(mode) {
+  if (mode !== SYSTEM_MODE) return mode;
+  return systemPrefersDark() ? 'dark' : 'light';
+}
+
 /*
  * The custom scheme: the user picks four colors for each mode, and the rest of the
  * palette is worked out from them.
@@ -489,13 +517,15 @@ function normalizeCustom(custom) {
 export function normalizeAppearance(appearance) {
   return {
     scheme: isKnownScheme(appearance?.scheme) ? appearance.scheme : DEFAULT_APPEARANCE.scheme,
-    mode: MODES.includes(appearance?.mode) ? appearance.mode : DEFAULT_APPEARANCE.mode,
+    mode: MODE_CHOICES.includes(appearance?.mode) ? appearance.mode : DEFAULT_APPEARANCE.mode,
     custom: normalizeCustom(appearance?.custom),
   };
 }
 
 export function paletteOf(appearance) {
-  const { scheme, mode, custom } = normalizeAppearance(appearance);
+  const normalized = normalizeAppearance(appearance);
+  const { scheme, custom } = normalized;
+  const mode = resolveMode(normalized.mode);
   if (scheme === CUSTOM_SCHEME_ID) return buildCustomPalette(custom[mode]);
   return findScheme(scheme)[mode];
 }
@@ -505,7 +535,9 @@ export function paletteOf(appearance) {
  * background, which may not match the mode it was picked for.
  */
 export function isDarkAppearance(appearance) {
-  const { scheme, mode, custom } = normalizeAppearance(appearance);
+  const normalized = normalizeAppearance(appearance);
+  const { scheme, custom } = normalized;
+  const mode = resolveMode(normalized.mode);
   return scheme === CUSTOM_SCHEME_ID ? isDarkColor(custom[mode].bg) : mode === 'dark';
 }
 

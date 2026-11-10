@@ -6,18 +6,21 @@ import {
 } from '@ant-design/icons';
 import { Avatar, Button, Dropdown, Empty, Result, Spin, Tag } from 'antd';
 import clsx from 'clsx';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router';
 import { RelativeTime } from '../../components/RelativeTime.jsx';
 import { ResizeHandle } from '../../components/ResizeHandle.jsx';
 import { useResizableSizes } from '../../components/useResizableSizes.js';
 import { StashSelection, UNCOMMITTED, paths } from '../../paths.js';
 import { useCommits, usePullRequests, useStashes } from '../../queries/git.js';
+import { KeyboardHelper } from '../../utils/KeyboardHelper.js';
 import { TextHelper } from '../../utils/TextHelper.js';
 import { CommitHelper } from './CommitHelper.js';
 import { layoutCommitGraph } from './history/commitGraph.js';
 import { CommitGraphCell, labelOffset } from './history/CommitGraphCell.jsx';
 import { CommitPane } from './history/CommitPane.jsx';
+import { CommitSearch } from './history/CommitSearch.jsx';
+import { findMatches } from './history/commitSearch.js';
 import { GraphTooltipArea } from './history/GraphTooltipArea.jsx';
 import { findBranchTip, groupHasBranch, groupRefs } from './history/groupRefs.js';
 import { RefBranchActions } from './history/RefBranchActions.jsx';
@@ -126,10 +129,17 @@ function uncommittedCommit(branch, headHash) {
   };
 }
 
-function UncommittedRow({ graphRow, columnCount, fileCount, selected, onSelect }) {
+/** How a row shows while searching: the match on show, another match, or not a match. */
+const SEARCH_STYLES = {
+  current: styles.searchCurrent,
+  match: styles.searchMatch,
+  dimmed: styles.searchDimmed,
+};
+
+function UncommittedRow({ graphRow, columnCount, fileCount, selected, onSelect, searchState }) {
   return (
     <li
-      className={clsx(styles.commit, selected && styles.selectedCommit)}
+      className={clsx(styles.commit, selected && styles.selectedCommit, SEARCH_STYLES[searchState])}
       onClick={() => onSelect(UNCOMMITTED)}
     >
       <div className={styles.tree}>
@@ -152,7 +162,7 @@ function UncommittedRow({ graphRow, columnCount, fileCount, selected, onSelect }
 }
 
 /** A stash, drawn as a short branch off the commit it was made on. */
-function StashRow({ entry, graphRow, columnCount, selected, onSelect }) {
+function StashRow({ entry, graphRow, columnCount, selected, onSelect, searchState }) {
   const { stash } = entry;
   const items = useStashMenu(stash);
   // React bubbles events out of a menu to here, though it is elsewhere on the page.
@@ -161,7 +171,11 @@ function StashRow({ entry, graphRow, columnCount, selected, onSelect }) {
   return (
     <Dropdown menu={{ items }} trigger={['contextMenu']}>
       <li
-        className={clsx(styles.commit, selected && styles.selectedCommit)}
+        className={clsx(
+          styles.commit,
+          selected && styles.selectedCommit,
+          SEARCH_STYLES[searchState],
+        )}
         onClick={(event) => isInRow(event) && onSelect(entry.hash)}
       >
         <div className={styles.tree}>
@@ -188,7 +202,16 @@ function StashRow({ entry, graphRow, columnCount, selected, onSelect }) {
   );
 }
 
-function CommitRow({ commit, graphRow, columnCount, selected, focus, pullRequests, onSelect }) {
+function CommitRow({
+  commit,
+  graphRow,
+  columnCount,
+  selected,
+  focus,
+  pullRequests,
+  onSelect,
+  searchState,
+}) {
   const groups = groupRefs(commit.refs);
   const { items, checkout } = useCommitMenu(commit);
   // React bubbles events out of a menu to here, though it is elsewhere on the page.
@@ -196,7 +219,7 @@ function CommitRow({ commit, graphRow, columnCount, selected, focus, pullRequest
 
   const row = (
     <li
-      className={clsx(styles.commit, selected && styles.selectedCommit)}
+      className={clsx(styles.commit, selected && styles.selectedCommit, SEARCH_STYLES[searchState])}
       data-hash={commit.hash}
       // The second click of a double click would close the commit again.
       onClick={(event) => isInRow(event) && event.detail < 2 && onSelect(commit.hash)}
@@ -306,6 +329,51 @@ export function HistoryPage() {
     if (isSearching && !isFetchingNextPage) fetchNextPage();
   }, [isSearching, isFetchingNextPage, fetchNextPage]);
 
+  // Ctrl+F (Cmd+F) searches the commits loaded here. `focusRequest` refocuses an open box.
+  const [search, setSearch] = useState({ open: false, query: '', current: 0, focusRequest: 0 });
+  const matches = useMemo(
+    () => (search.open ? findMatches(entries, search.query) : []),
+    [entries, search.open, search.query],
+  );
+  const currentMatch = matches.length > 0 ? Math.min(search.current, matches.length - 1) : -1;
+  const currentMatchHash = matches[currentMatch];
+  const matchSet = useMemo(() => new Set(matches), [matches]);
+  const isFiltering = search.open && search.query.trim() !== '';
+  const searchStateOf = (hash) => {
+    if (!isFiltering) return undefined;
+    if (hash === currentMatchHash) return 'current';
+    return matchSet.has(hash) ? 'match' : 'dimmed';
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      const isFind =
+        event.key.toLowerCase() === 'f' &&
+        KeyboardHelper.hasCommandKey(event) &&
+        !event.shiftKey &&
+        !event.altKey;
+      if (!isFind || document.querySelector('.ant-modal')) return;
+      event.preventDefault();
+      setSearch((current) => ({ ...current, open: true, focusRequest: current.focusRequest + 1 }));
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (!currentMatchHash) return;
+    const row = tableRef.current?.querySelector(`[data-hash="${currentMatchHash}"]`);
+    row?.scrollIntoView({ block: 'center' });
+  }, [currentMatchHash, search.focusRequest]);
+
+  const stepMatch = (step) => {
+    if (matches.length === 0) return;
+    setSearch((current) => ({
+      ...current,
+      current: (currentMatch + step + matches.length) % matches.length,
+    }));
+  };
+
   useEffect(() => {
     // Only on request, so opening a commit never jumps the list back to the branch.
     if (!focusedHash || !focusRequest) return;
@@ -356,71 +424,90 @@ export function HistoryPage() {
       className={clsx(styles.layout, selectedHash && styles.withPane)}
       style={pane.style}
     >
-      <div className={styles.scrollArea}>
-        <header className={styles.header}>
-          <h2 className={styles.heading}>{ref ?? allBranchesLabel}</h2>
-          {ref && showAllBranches}
-          {focusedBranch && !focusedHash && !isSearching && !isFetchingNextPage && (
-            <>
-              <span className={styles.focusNote}>
-                {focusedBranch} is not in the commits loaded here.
-              </span>
-              <Link to={paths.history(repository.id, focusedBranch)}>
-                <Button size="small">Show only this branch</Button>
-              </Link>
-            </>
-          )}
-        </header>
-        <div ref={tableRef} className={styles.table} style={style}>
-          <ColumnHeadings handleFor={handleFor} />
-          <GraphTooltipArea>
-            <ol className={styles.list}>
-              {showUncommitted && (
-                <UncommittedRow
-                  graphRow={graph.rows[0]}
-                  columnCount={graph.columnCount}
-                  fileCount={fileCount}
-                  selected={selectedHash === UNCOMMITTED}
-                  onSelect={toggleCommit}
-                />
-              )}
-              {entries.map((commit, index) =>
-                commit.stash ? (
-                  <StashRow
-                    key={commit.hash}
-                    entry={commit}
-                    graphRow={graph.rows[index + graphRowOffset]}
-                    columnCount={graph.columnCount}
-                    selected={commit.hash === selectedHash}
-                    onSelect={toggleCommit}
-                  />
-                ) : (
-                  <CommitRow
-                    key={commit.hash}
-                    commit={commit}
-                    graphRow={graph.rows[index + graphRowOffset]}
-                    columnCount={graph.columnCount}
-                    selected={commit.hash === selectedHash}
-                    focus={
-                      commit.hash === focusedHash && focusRequest
-                        ? { branch: focusedBranch, request: focusRequest }
-                        : undefined
-                    }
-                    pullRequests={pullRequests}
-                    onSelect={toggleCommit}
-                  />
-                ),
-              )}
-            </ol>
-          </GraphTooltipArea>
-        </div>
-        {hasNextPage && (
-          <div className={styles.loadMore}>
-            <Button loading={isFetchingNextPage} onClick={() => fetchNextPage()}>
-              Load more
-            </Button>
-          </div>
+      <div className={styles.listArea}>
+        {search.open && (
+          <CommitSearch
+            query={search.query}
+            onQueryChange={(query) => setSearch((current) => ({ ...current, query, current: 0 }))}
+            matchCount={matches.length}
+            current={currentMatch}
+            onStep={stepMatch}
+            onClose={() => setSearch((current) => ({ ...current, open: false, query: '' }))}
+            focusRequest={search.focusRequest}
+            canSearchOlder={hasNextPage}
+            isSearchingOlder={isFetchingNextPage}
+            onSearchOlder={() => fetchNextPage()}
+          />
         )}
+        <div className={styles.scrollArea}>
+          <header className={styles.header}>
+            <h2 className={styles.heading}>{ref ?? allBranchesLabel}</h2>
+            {ref && showAllBranches}
+            {focusedBranch && !focusedHash && !isSearching && !isFetchingNextPage && (
+              <>
+                <span className={styles.focusNote}>
+                  {focusedBranch} is not in the commits loaded here.
+                </span>
+                <Link to={paths.history(repository.id, focusedBranch)}>
+                  <Button size="small">Show only this branch</Button>
+                </Link>
+              </>
+            )}
+          </header>
+          <div ref={tableRef} className={styles.table} style={style}>
+            <ColumnHeadings handleFor={handleFor} />
+            <GraphTooltipArea>
+              <ol className={styles.list}>
+                {showUncommitted && (
+                  <UncommittedRow
+                    graphRow={graph.rows[0]}
+                    columnCount={graph.columnCount}
+                    fileCount={fileCount}
+                    selected={selectedHash === UNCOMMITTED}
+                    onSelect={toggleCommit}
+                    searchState={searchStateOf(UNCOMMITTED)}
+                  />
+                )}
+                {entries.map((commit, index) =>
+                  commit.stash ? (
+                    <StashRow
+                      key={commit.hash}
+                      entry={commit}
+                      graphRow={graph.rows[index + graphRowOffset]}
+                      columnCount={graph.columnCount}
+                      selected={commit.hash === selectedHash}
+                      onSelect={toggleCommit}
+                      searchState={searchStateOf(commit.hash)}
+                    />
+                  ) : (
+                    <CommitRow
+                      key={commit.hash}
+                      commit={commit}
+                      graphRow={graph.rows[index + graphRowOffset]}
+                      columnCount={graph.columnCount}
+                      selected={commit.hash === selectedHash}
+                      focus={
+                        commit.hash === focusedHash && focusRequest
+                          ? { branch: focusedBranch, request: focusRequest }
+                          : undefined
+                      }
+                      pullRequests={pullRequests}
+                      onSelect={toggleCommit}
+                      searchState={searchStateOf(commit.hash)}
+                    />
+                  ),
+                )}
+              </ol>
+            </GraphTooltipArea>
+          </div>
+          {hasNextPage && (
+            <div className={styles.loadMore}>
+              <Button loading={isFetchingNextPage} onClick={() => fetchNextPage()}>
+                Load more
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
       {selectedHash === UNCOMMITTED && (
         <WorkingTreePane onClose={() => toggleCommit(UNCOMMITTED)} resizeHandle={paneHandle} />

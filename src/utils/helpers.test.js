@@ -6,6 +6,7 @@ import { needsPublishing } from '../pages/repository/usePush.js';
 import { isMonoRepositoryId, monoGroupId, monoRepositoryId, paths } from '../paths.js';
 import { readPixels, readToken } from '../styles/readToken.js';
 import { CssTokenHelper } from '../styles/CssTokenHelper.js';
+import { BranchHelper } from './BranchHelper.js';
 import { KeyboardHelper } from './KeyboardHelper.js';
 import { ListHelper } from './ListHelper.js';
 import { MonoIdHelper } from './MonoIdHelper.js';
@@ -15,6 +16,16 @@ import { StorageHelper } from './StorageHelper.js';
 import { TextHelper } from './TextHelper.js';
 import { formatFullTime, formatRelativeTime } from './time.js';
 import { TimeHelper } from './TimeHelper.js';
+
+describe('BranchHelper', () => {
+  it('protects main, master, prod and production on a remote', () => {
+    expect(BranchHelper.isProtectedOnRemote('Main')).toBe(true);
+    expect(BranchHelper.isProtectedOnRemote('feature/main')).toBe(false);
+    expect(BranchHelper.isProtectedUpstream('origin/production')).toBe(true);
+    expect(BranchHelper.isProtectedUpstream('origin/feature/prod')).toBe(false);
+    expect(BranchHelper.isProtectedUpstream(null)).toBe(false);
+  });
+});
 
 describe('TextHelper', () => {
   it('counts with the right word', () => {

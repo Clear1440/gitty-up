@@ -132,6 +132,15 @@ describe('DateHelper', () => {
 });
 
 describe('GitRefHelper', () => {
+  it('protects main, master, prod and production on a remote, whatever their case', () => {
+    for (const name of ['main', 'master', 'prod', 'production', 'Main', 'PRODUCTION']) {
+      expect(GitRefHelper.isProtectedOnRemote(name)).toBe(true);
+    }
+    for (const name of ['feature/main', 'mainline', 'develop']) {
+      expect(GitRefHelper.isProtectedOnRemote(name)).toBe(false);
+    }
+  });
+
   it('converts between branch names and full refs', () => {
     expect(GitRefHelper.toLocalRef('feature/x')).toBe('refs/heads/feature/x');
     expect(GitRefHelper.toRemoteRef('origin/main')).toBe('refs/remotes/origin/main');
