@@ -17,6 +17,7 @@ import {
   parseNameStatus,
   parseStashes,
   parseStatus,
+  parseWorktrees,
 } from './parsers.js';
 import { buildPatch } from './patch.js';
 import { listPullRequests } from './pullRequests.js';
@@ -788,6 +789,132 @@ export async function getStashDiff(
     ...(originalPath ? [originalPath] : []),
     filePath,
   ]);
+}
+
+// Worktrees
+
+/** Compares folders the way the file system does: Windows ignores case and slash style. */
+function samePath(a, b) {
+  const normalize = (folder) => {
+    const resolved = path.resolve(folder);
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  };
+  return normalize(a) === normalize(b);
+}
+
+/**
+ * Every working tree of the repository, the main one first. `isCurrent` marks the one
+ * at `repoPath`, and `name` is its folder's name. `parent` is the main working tree's
+ * own folder, where new ones go by default, beside it.
+ */
+export async function getWorktrees(repoPath) {
+  const worktrees = parseWorktrees(await runGit(repoPath, ['worktree', 'list', '--porcelain']));
+  return worktrees
+    .filter((worktree) => !worktree.isBare)
+    .map((worktree) => ({
+      ...worktree,
+      // Git prints forward slashes everywhere, which Windows folders are shown without.
+      path: path.resolve(worktree.path),
+      name: path.basename(worktree.path),
+      isCurrent: samePath(worktree.path, repoPath),
+    }));
+}
+
+/** One of the repository's own working trees, so nothing else on disk can be touched. */
+async function requireWorktree(repoPath, folder) {
+  if (typeof folder !== 'string' || !folder.trim()) {
+    throw ApiError.badRequest('"path" must be a working tree folder.');
+  }
+  const worktree = (await getWorktrees(repoPath)).find((candidate) =>
+    samePath(candidate.path, folder),
+  );
+  if (!worktree) throw ApiError.badRequest(`${folder} is not a working tree of this repository.`);
+  return worktree;
+}
+
+/**
+ * Adds a working tree at `folder`, which must be new or empty. It checks out `branch`,
+ * or with `newBranch` creates that branch from `startPoint`. A remote branch gets a
+ * local branch that tracks it, as a checkout would. Resolves with its full path.
+ */
+export async function addWorktree(repoPath, { folder, branch, newBranch, startPoint }) {
+  if (typeof folder !== 'string' || !path.isAbsolute(folder)) {
+    throw ApiError.badRequest('Choose a full folder path for the working tree.');
+  }
+  const target = path.resolve(folder);
+  const entries = await fs.readdir(target).catch((error) => (error.code === 'ENOENT' ? [] : null));
+  if (entries === null) throw ApiError.badRequest(`${target} is not a folder that can be used.`);
+  if (entries.length > 0) throw ApiError.badRequest(`${target} already has files in it.`);
+
+  let args;
+  if (newBranch) {
+    await assertValidBranchName(repoPath, newBranch);
+    if (startPoint) assertRef(startPoint);
+    args = ['-b', newBranch, '--', target, ...(startPoint ? [startPoint] : [])];
+  } else {
+    assertRef(branch);
+    const remote = (await getBranches(repoPath)).remote.find(({ name }) => name === branch);
+    // Checking out a remote branch by its local name makes git set up tracking.
+    const local = remote?.localName;
+    args =
+      local && !(await hasLocalBranch(repoPath, local))
+        ? ['--track', '-b', local, '--', target, branch]
+        : ['--', target, local ?? branch];
+  }
+  await runGit(repoPath, ['worktree', 'add', ...args]);
+  return { path: target };
+}
+
+/**
+ * Deletes a working tree's folder and forgets it. Git refuses when it has changes,
+ * unless `force`. The main working tree, and the one open here, can't be removed.
+ */
+export async function removeWorktree(repoPath, { folder, force = false }) {
+  const worktree = await requireWorktree(repoPath, folder);
+  if (worktree.isMain) throw ApiError.badRequest('The main working tree cannot be removed.');
+  if (worktree.isCurrent) {
+    throw ApiError.badRequest('Open another working tree to remove this one.');
+  }
+  try {
+    await runGit(repoPath, [
+      'worktree',
+      'remove',
+      // Twice, as a locked working tree needs it doubled.
+      ...(force ? ['--force', '--force'] : []),
+      worktree.path,
+    ]);
+  } catch (error) {
+    if (!force && /modified or untracked|is dirty|locked/i.test(error.details ?? error.message)) {
+      throw ApiError.gitFailure(
+        `${worktree.name} has uncommitted changes or is locked. Remove it anyway to delete them.`,
+        error.details,
+      );
+    }
+    throw error;
+  }
+}
+
+/** Locking keeps git from pruning a working tree whose folder is away, such as on a USB drive. */
+export async function lockWorktree(repoPath, { folder, reason }) {
+  const worktree = await requireWorktree(repoPath, folder);
+  if (worktree.isMain) throw ApiError.badRequest('The main working tree cannot be locked.');
+  const trimmed = typeof reason === 'string' ? reason.trim() : '';
+  await runGit(repoPath, [
+    'worktree',
+    'lock',
+    ...(trimmed ? ['--reason', trimmed] : []),
+    worktree.path,
+  ]);
+}
+
+export async function unlockWorktree(repoPath, { folder }) {
+  const worktree = await requireWorktree(repoPath, folder);
+  await runGit(repoPath, ['worktree', 'unlock', worktree.path]);
+}
+
+/** Forgets working trees whose folders were deleted without git. */
+export async function pruneWorktrees(repoPath) {
+  await runGit(repoPath, ['worktree', 'prune']);
 }
 
 // Patches

@@ -2,13 +2,14 @@ import { SearchOutlined, SortAscendingOutlined } from '@ant-design/icons';
 import { Button, Collapse, Dropdown, Input, Spin, Tooltip } from 'antd';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { useBranches, useStashes } from '../../queries/git.js';
+import { useBranches, useStashes, useWorktrees } from '../../queries/git.js';
 import { TextHelper } from '../../utils/TextHelper.js';
 import { BRANCH_SORTS, buildBranchTree, sortBranches } from './branchTree.js';
 import { BranchTree, useFolderChoices } from './BranchTree.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { StashList } from './StashList.jsx';
 import { useBranchSort } from './useBranchSort.js';
+import { WorktreeList } from './WorktreeList.jsx';
 import styles from './BranchSidebar.module.css';
 
 const SORT_ITEMS = BRANCH_SORTS.map(({ value, label, hint }) => ({
@@ -46,6 +47,7 @@ export function BranchSidebar({ resizeHandle }) {
   const { repository, status } = useRepositoryContext();
   const { data: branches, isPending } = useBranches(repository.id);
   const { data: stashes = [] } = useStashes(repository.id);
+  const { data: worktrees = [] } = useWorktrees(repository.id);
   const [filter, setFilter] = useState('');
   const [sort, setSort] = useBranchSort();
   const [folderChoices, setFolderOpen] = useFolderChoices(repository.id);
@@ -84,7 +86,7 @@ export function BranchSidebar({ resizeHandle }) {
       label: `Remote (${remote.length})`,
       children: renderBranches(remote, 'remote'),
     },
-    // Stashes stay with each repository's own tab in a mono repo.
+    // Stashes and worktrees stay with each repository's own tab in a mono repo.
     ...(repository.isMono
       ? []
       : [
@@ -92,6 +94,11 @@ export function BranchSidebar({ resizeHandle }) {
             key: 'stashes',
             label: `Stashes (${stashes.length})`,
             children: <StashList stashes={stashes} />,
+          },
+          {
+            key: 'worktrees',
+            label: `Worktrees (${worktrees.length})`,
+            children: <WorktreeList worktrees={worktrees} />,
           },
         ]),
   ];
@@ -119,7 +126,7 @@ export function BranchSidebar({ resizeHandle }) {
           <Collapse
             ghost
             size="small"
-            defaultActiveKey={['local', 'remote', 'stashes']}
+            defaultActiveKey={['local', 'remote', 'stashes', 'worktrees']}
             items={sections}
           />
         )}

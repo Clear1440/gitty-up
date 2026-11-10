@@ -464,6 +464,20 @@ export async function stashPop() {
   throw ApiError.badRequest('Open the repository on its own to restore a stash.');
 }
 
+/** Each repository has its own working trees, so a mono repo lists none. */
+export async function getWorktrees() {
+  return [];
+}
+
+const notForMono = () => {
+  throw ApiError.badRequest('Open the repository on its own to manage its working trees.');
+};
+export const addWorktree = notForMono;
+export const removeWorktree = notForMono;
+export const lockWorktree = notForMono;
+export const unlockWorktree = notForMono;
+export const pruneWorktrees = notForMono;
+
 export async function stashDrop() {
   throw ApiError.badRequest('Open the repository on its own to delete a stash.');
 }

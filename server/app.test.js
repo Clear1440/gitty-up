@@ -1528,6 +1528,107 @@ describe('patches', () => {
   });
 });
 
+describe('worktrees', () => {
+  const siblingOf = (name) => path.join(path.dirname(repo.work), name);
+  const sameFolder = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+
+  it('lists the main working tree, marked as the one open', async () => {
+    const { body } = await request('GET', `${repo.api}/worktrees`);
+    expect(body).toHaveLength(1);
+    expect(body[0]).toMatchObject({ branch: 'main', isMain: true, isCurrent: true, name: 'work' });
+    expect(sameFolder(body[0].path, repo.work)).toBe(true);
+  });
+
+  it('adds one on a new branch, and marks that branch as checked out there', async () => {
+    const folder = siblingOf('side');
+    const { status, body } = await request('POST', `${repo.api}/worktrees`, {
+      path: folder,
+      newBranch: 'side',
+      startPoint: 'main',
+    });
+    expect(status).toBe(201);
+    expect(sameFolder(body.path, folder)).toBe(true);
+    expect(await fs.readFile(path.join(folder, 'readme.txt'), 'utf8')).toBe('one\n');
+
+    const { body: worktrees } = await request('GET', `${repo.api}/worktrees`);
+    expect(worktrees.map(({ branch, isCurrent }) => ({ branch, isCurrent }))).toEqual([
+      { branch: 'main', isCurrent: true },
+      { branch: 'side', isCurrent: false },
+    ]);
+    const { body: branches } = await request('GET', `${repo.api}/branches`);
+    const side = branches.local.find(({ name }) => name === 'side');
+    expect(sameFolder(side.worktreePath, folder)).toBe(true);
+  });
+
+  it('checks out a remote branch with a local branch that tracks it', async () => {
+    git(repo.work, 'switch', '-c', 'remote-only');
+    git(repo.work, 'push', '-u', 'origin', 'remote-only');
+    git(repo.work, 'switch', 'main');
+    git(repo.work, 'branch', '-D', 'remote-only');
+
+    const folder = siblingOf('tracking');
+    await request('POST', `${repo.api}/worktrees`, { path: folder, branch: 'origin/remote-only' });
+    expect(git(folder, 'rev-parse', '--abbrev-ref', '@{upstream}')).toBe('origin/remote-only');
+  });
+
+  it('refuses a folder with files in it, or one given as a relative path', async () => {
+    for (const folder of [repo.work, 'relative/folder']) {
+      const { status } = await request('POST', `${repo.api}/worktrees`, {
+        path: folder,
+        newBranch: 'x',
+      });
+      expect(status).toBe(400);
+    }
+  });
+
+  it('locks, unlocks and removes one, but asks for force when it has changes', async () => {
+    const folder = siblingOf('temp');
+    await request('POST', `${repo.api}/worktrees`, { path: folder, newBranch: 'temp' });
+
+    await request('POST', `${repo.api}/worktrees/lock`, { path: folder, reason: 'travelling' });
+    let { body } = await request('GET', `${repo.api}/worktrees`);
+    expect(body[1]).toMatchObject({ locked: true, lockReason: 'travelling' });
+    await request('POST', `${repo.api}/worktrees/unlock`, { path: folder });
+
+    await fs.writeFile(path.join(folder, 'wip.txt'), 'wip\n');
+    const refused = await request('POST', `${repo.api}/worktrees/remove`, { path: folder });
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.message).toContain('uncommitted changes');
+
+    const removed = await request('POST', `${repo.api}/worktrees/remove`, {
+      path: folder,
+      force: true,
+    });
+    expect(removed.status).toBe(204);
+    ({ body } = await request('GET', `${repo.api}/worktrees`));
+    expect(body).toHaveLength(1);
+    expect(await fs.stat(folder).catch(() => null)).toBeNull();
+  });
+
+  it('never removes the main working tree or a folder that is not one', async () => {
+    for (const folder of [repo.work, sandbox]) {
+      const { status } = await request('POST', `${repo.api}/worktrees/remove`, {
+        path: folder,
+        force: true,
+      });
+      expect(status).toBe(400);
+    }
+    expect(await fs.stat(repo.work)).toBeTruthy();
+  });
+
+  it('prunes working trees whose folders were deleted outside git', async () => {
+    const folder = siblingOf('vanished');
+    await request('POST', `${repo.api}/worktrees`, { path: folder, newBranch: 'vanished' });
+    await fs.rm(folder, { recursive: true, force: true });
+
+    let { body } = await request('GET', `${repo.api}/worktrees`);
+    expect(body[1].prunable).toBe(true);
+    await request('POST', `${repo.api}/worktrees/prune`, {});
+    ({ body } = await request('GET', `${repo.api}/worktrees`));
+    expect(body).toHaveLength(1);
+  });
+});
+
 describe('history across branches', () => {
   it('covers every branch without a ref, and one branch with it', async () => {
     git(repo.work, 'switch', '-c', 'topic');

@@ -1,6 +1,7 @@
 import {
   CheckCircleFilled,
   CloudOutlined,
+  FolderOutlined,
   LaptopOutlined,
   MoreOutlined,
 } from '@ant-design/icons';
@@ -47,6 +48,13 @@ export function BranchRow({ branch, label, kind, depth, selected }) {
           <span className={styles.name}>{label}</span>
           <AheadBehind ahead={branch.ahead} behind={branch.behind} />
           {branch.upstreamGone && <Tag color="warning">gone</Tag>}
+          {kind === 'local' && !branch.isCurrent && branch.worktreePath && (
+            <FolderOutlined
+              className={styles.worktree}
+              title={`Checked out in ${branch.worktreePath}. Double-click to open it.`}
+              aria-label="Checked out in another worktree"
+            />
+          )}
         </button>
         <Dropdown menu={menu} trigger={['click']}>
           <Button

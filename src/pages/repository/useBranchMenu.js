@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router';
 import { paths } from '../../paths.js';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { StatusHelper } from './StatusHelper.js';
+import { useWorktreeActions } from './useWorktreeActions.jsx';
 
 /**
  * What can be done with a branch, wherever it is shown. `kind` is 'local' or 'remote',
@@ -10,6 +11,7 @@ import { StatusHelper } from './StatusHelper.js';
 export function useBranchMenu(branch, kind) {
   const navigate = useNavigate();
   const { repository, status, run, openDialog, isBusy } = useRepositoryContext();
+  const { open: openWorktree, createWorktree } = useWorktreeActions();
 
   const isRemote = kind === 'remote';
   // Across a mono repo, merging or rebasing would rewrite several repositories at once.
@@ -17,9 +19,37 @@ export function useBranchMenu(branch, kind) {
   const blocked = StatusHelper.isBlocked(status, isBusy);
   const currentName = StatusHelper.currentBranchName(status);
 
+  // Git checks a branch out in one working tree at a time, so one taken there opens there.
+  const worktreePath = !isRemote && !branch.isCurrent ? branch.worktreePath : null;
+
   const checkout = () => {
-    if (!branch.isCurrent && !blocked) run('checkout', { branch: branch.name, remote: isRemote });
+    if (branch.isCurrent || blocked) return;
+    if (worktreePath) openWorktree(worktreePath);
+    else run('checkout', { branch: branch.name, remote: isRemote });
   };
+
+  const worktreeItems = repository.isMono
+    ? []
+    : [
+        worktreePath
+          ? {
+              key: 'open-worktree',
+              label: 'Open its worktree',
+              title: worktreePath,
+              onClick: () => openWorktree(worktreePath),
+            }
+          : {
+              key: 'worktree',
+              label: 'Check out in a new worktree…',
+              disabled: branch.isCurrent,
+              onClick: () => createWorktree({ branch: branch.name }),
+            },
+        {
+          key: 'worktree-new-branch',
+          label: 'New branch in a new worktree…',
+          onClick: () => createWorktree({ startPoint: branch.name }),
+        },
+      ];
 
   const items = [
     {
@@ -30,7 +60,8 @@ export function useBranchMenu(branch, kind) {
     {
       key: 'checkout',
       label: 'Checkout',
-      disabled: branch.isCurrent || blocked,
+      title: worktreePath ? `Checked out in ${worktreePath}` : undefined,
+      disabled: branch.isCurrent || blocked || Boolean(worktreePath),
       onClick: checkout,
     },
     ...(branch.isCurrent || !canMerge
@@ -69,6 +100,7 @@ export function useBranchMenu(branch, kind) {
       label: 'New branch from here…',
       onClick: () => openDialog('createBranch', { startPoint: branch.name }),
     },
+    ...worktreeItems,
     { type: 'divider' },
     isRemote
       ? {

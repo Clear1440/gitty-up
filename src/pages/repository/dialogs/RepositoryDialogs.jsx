@@ -1,5 +1,6 @@
 import { ApplyPatchDialog } from './ApplyPatchDialog.jsx';
 import { CreateBranchDialog } from './CreateBranchDialog.jsx';
+import { CreateWorktreeDialog } from './CreateWorktreeDialog.jsx';
 import { DeleteBranchDialog } from './DeleteBranchDialog.jsx';
 import { DeleteRemoteBranchDialog } from './DeleteRemoteBranchDialog.jsx';
 import { MergeDialog } from './MergeDialog.jsx';
@@ -11,6 +12,7 @@ import { StashDialog } from './StashDialog.jsx';
 const DIALOGS = {
   applyPatch: ApplyPatchDialog,
   createBranch: CreateBranchDialog,
+  createWorktree: CreateWorktreeDialog,
   deleteBranch: DeleteBranchDialog,
   deleteRemoteBranch: DeleteRemoteBranchDialog,
   merge: MergeDialog,
