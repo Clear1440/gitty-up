@@ -67,11 +67,18 @@ export function undoStepFor(name, input = {}, statusBefore = null) {
       };
     }
     case 'unstage': {
-      const paths = input.paths ?? (statusBefore?.staged ?? []).map((file) => file.path);
+      const staged = statusBefore?.staged ?? [];
+      const paths = input.paths ?? staged.map((file) => file.path);
       if (paths.length === 0) return null;
+      // A staged rename is the old path's deletion as well as the new path's addition, so
+      // staging it again takes both, or the deletion would be left unstaged.
+      const originals = staged
+        .filter((file) => file.originalPath && paths.includes(file.path))
+        .map((file) => file.originalPath)
+        .filter((original) => !paths.includes(original));
       return {
         kind: 'actions',
-        actions: [{ name: 'stage', input: { paths } }],
+        actions: [{ name: 'stage', input: { paths: [...paths, ...originals] } }],
         label: `Staged ${describePaths(paths)} again`,
       };
     }
@@ -101,6 +108,14 @@ export function recordAction(repositoryId, name, input, statusBefore) {
   if (!step) return;
   history.push(step);
   if (history.length > MAX_STEPS) history.shift();
+}
+
+/**
+ * Notes that `name` failed. A failure can still change the repository, as a merge that
+ * stops on conflicts does, so one that could move the branch clears the earlier steps.
+ */
+export function recordFailedAction(repositoryId, name) {
+  if (!KEEPS_HISTORY.has(name)) historyOf(repositoryId).length = 0;
 }
 
 /** Takes the latest step off the history, or null when there is none. */

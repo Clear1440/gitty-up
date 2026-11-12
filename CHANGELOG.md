@@ -19,6 +19,7 @@ version's section.
 - Ctrl+Z undoes the latest change in the open repository.
 - Merging works across every repository in a mono repo.
 - The app version shows at the bottom of Settings.
+- Middle-clicking anywhere on a tab closes it, not just on its name.
 
 ### Changed
 

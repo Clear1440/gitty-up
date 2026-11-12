@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { clearUndoHistories, recordAction, takeUndoStep, undoStepFor } from './undoHistory.js';
+import {
+  clearUndoHistories,
+  recordAction,
+  recordFailedAction,
+  takeUndoStep,
+  undoStepFor,
+} from './undoHistory.js';
 
 const file = (path) => ({ path });
 const status = ({ staged = [], unstaged = [], conflicted = [] } = {}) => ({
@@ -31,6 +37,16 @@ describe('undoStepFor', () => {
       { name: 'stage', input: { paths: ['s.txt'] } },
     ]);
     expect(undoStepFor('stage', {}, status())).toBeNull();
+  });
+
+  it('stages both sides of a rename again', () => {
+    const before = { staged: [{ path: 'new.txt', originalPath: 'old.txt' }], unstaged: [], conflicted: [] };
+    expect(undoStepFor('unstage', {}, before).actions).toEqual([
+      { name: 'stage', input: { paths: ['new.txt', 'old.txt'] } },
+    ]);
+    expect(undoStepFor('unstage', { paths: ['new.txt'] }, before).actions).toEqual([
+      { name: 'stage', input: { paths: ['new.txt', 'old.txt'] } },
+    ]);
   });
 
   it('puts a conflict back when staging resolved it', () => {
@@ -66,6 +82,16 @@ describe('the history', () => {
 
     recordAction('repo', 'stage', { paths: ['a.txt'] }, status());
     recordAction('repo', 'merge', { branch: 'main' }, status());
+    expect(takeUndoStep('repo')).toBeNull();
+  });
+
+  it('drops the steps when an action that can move the branch fails, as a conflicted merge does', () => {
+    recordAction('repo', 'stage', { paths: ['a.txt'] }, status());
+    recordFailedAction('repo', 'push');
+    expect(takeUndoStep('repo')?.label).toBe('Undid staging a.txt');
+
+    recordAction('repo', 'stage', { paths: ['a.txt'] }, status());
+    recordFailedAction('repo', 'merge');
     expect(takeUndoStep('repo')).toBeNull();
   });
 

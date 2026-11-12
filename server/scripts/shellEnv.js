@@ -80,6 +80,10 @@ async function loadPosixShellEnv() {
       ZSH_TMUX_AUTOSTARTED: 'true',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
+    // Its own session, without the terminal the app may have been started from. An
+    // interactive shell would otherwise take over that terminal's job control, which can
+    // suspend the app's server (SIGTTOU) when run with `npm run dev`.
+    detached: true,
   });
   const env = parseMarkedEnv(stdout);
   if (!env) return null;
