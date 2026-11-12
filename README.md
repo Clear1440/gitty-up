@@ -68,6 +68,15 @@ will do and asks before changing anything.
 - The version already in `package.json` tags it as it is, which suits a first release.
 - `-m "message"` gives the commit message for uncommitted changes, and `-y` skips the question.
 
+#### Changelog
+
+[CHANGELOG.md](CHANGELOG.md) is bundled into the app, which shows it from **Settings › About ›
+What's new**, and once after an update with the releases since the last version that ran. Add
+what changes under `## Unreleased` as you go, in `### Added`, `### Changed` and `### Fixed`
+sections of `- ` items (`**bold**`, `` `code` `` and links work). The release script moves those
+notes under the new version's heading, dated, in the release commit, and warns if there are
+none.
+
 The tag starts [the Release workflow](.github/workflows/release.yml). It builds a Windows
 installer (`.exe`), a macOS disk image (`.dmg`, for both Intel and Apple Silicon) and a Linux
 AppImage (`.AppImage`, x64) and attaches them to a **draft** GitHub release, which you then publish.

@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Spin } from 'antd';
 import { Suspense, useEffect, useRef } from 'react';
 import { Outlet, useLocation, useMatch } from 'react-router';
+import { WhatsNewAfterUpdate } from '../changelog/WhatsNewAfterUpdate.jsx';
 import { loadRepository, refFromPath } from '../queries/loadRepository.js';
 import { useAutoFetch } from '../queries/useAutoFetch.js';
 import { useTabs } from '../tabs/TabsContext.jsx';
@@ -61,6 +62,7 @@ export function AppLayout() {
           <Outlet />
         </Suspense>
       </main>
+      <WhatsNewAfterUpdate />
     </div>
   );
 }

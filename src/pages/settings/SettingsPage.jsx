@@ -1,6 +1,7 @@
 import {
   DesktopOutlined,
   FolderOpenOutlined,
+  HistoryOutlined,
   MoonOutlined,
   SunOutlined,
   UndoOutlined,
@@ -10,6 +11,8 @@ import { useState } from 'react';
 // Only the version is bundled, read when the app is built, so it is the release's own.
 import { version as appVersion } from '../../../package.json';
 import { useAppearance } from '../../appearance/AppearanceContext.jsx';
+import { ChangelogDialog } from '../../changelog/ChangelogDialog.jsx';
+import { RELEASES } from '../../changelog/releases.js';
 import { useSetDataDir, useSettings } from '../../queries/settings.js';
 import {
   CUSTOM_COLORS,
@@ -247,6 +250,7 @@ function DataSection({ settings }) {
 
 export function SettingsPage() {
   const { data: settings, isPending, error } = useSettings();
+  const [showingChangelog, setShowingChangelog] = useState(false);
 
   return (
     <div className={styles.page}>
@@ -263,10 +267,22 @@ export function SettingsPage() {
           About
         </h2>
         <Setting label="Version" description="The release of Gitty Up you are running.">
-          <Typography.Text className={styles.version} copyable={{ text: appVersion }}>
-            v{appVersion}
-          </Typography.Text>
+          <div className={styles.versionRow}>
+            <Typography.Text className={styles.version} copyable={{ text: appVersion }}>
+              v{appVersion}
+            </Typography.Text>
+            <Button icon={<HistoryOutlined />} onClick={() => setShowingChangelog(true)}>
+              What's new
+            </Button>
+          </div>
         </Setting>
+        <ChangelogDialog
+          open={showingChangelog}
+          title="Changelog"
+          releases={RELEASES}
+          current={appVersion}
+          onClose={() => setShowingChangelog(false)}
+        />
       </section>
     </div>
   );
