@@ -1,6 +1,12 @@
-import { infiniteQueryOptions, queryOptions, useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import {
+  infiniteQueryOptions,
+  queryOptions,
+  useInfiniteQuery,
+  useIsMutating,
+  useQuery,
+} from '@tanstack/react-query';
 import { gitApi } from '../api';
-import { queryKeys } from './queryKeys.js';
+import { mutationKeys, queryKeys } from './queryKeys.js';
 
 const COMMIT_PAGE_SIZE = 100;
 const STATUS_POLL_MS = 5_000;
@@ -36,10 +42,12 @@ export const commitsQuery = (repositoryId, ref) =>
   });
 
 export function useStatus(repositoryId) {
+  // A poll during a git action could catch it halfway. The action refreshes it after.
+  const isActing = useIsMutating({ mutationKey: mutationKeys.gitAction(repositoryId) }) > 0;
   return useQuery({
     ...statusQuery(repositoryId),
     // Files also change outside the app, in editors and terminals.
-    refetchInterval: STATUS_POLL_MS,
+    refetchInterval: isActing ? false : STATUS_POLL_MS,
   });
 }
 

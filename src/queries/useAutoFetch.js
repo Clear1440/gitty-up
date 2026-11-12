@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { gitApi } from '../api';
 import { isFetchAllDue } from './autoFetch.js';
 import { queryKeys } from './queryKeys.js';
+import { refreshTogether } from './refreshTogether.js';
 import { useFetchAllRepositories } from './repositories.js';
 
 /** When every repository was last fetched automatically, this app start. */
@@ -36,7 +37,7 @@ export function useAutoFetch(activeRepositoryId) {
       .fetch(activeRepositoryId)
       .then(() =>
         Promise.all([
-          queryClient.invalidateQueries({ queryKey: queryKeys.repository(activeRepositoryId) }),
+          refreshTogether(queryClient, queryKeys.repository(activeRepositoryId)),
           queryClient.invalidateQueries({ queryKey: queryKeys.repositoryList() }),
         ]),
       )

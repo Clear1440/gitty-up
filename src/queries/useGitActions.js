@@ -5,6 +5,7 @@ import { gitApi } from '../api';
 import { MonoIdHelper } from '../utils/MonoIdHelper.js';
 import { TextHelper } from '../utils/TextHelper.js';
 import { mutationKeys, queryKeys } from './queryKeys.js';
+import { refreshTogether } from './refreshTogether.js';
 
 /** A mono repo reports on each of its repositories, a line apiece. */
 const MULTILINE = { whiteSpace: 'pre-line' };
@@ -164,8 +165,16 @@ export function useGitActions(repositoryId) {
   const { message, notification } = App.useApp();
   const mutationKey = mutationKeys.gitAction(repositoryId);
 
+  // A mono repo's actions land in its members, which have tabs of their own.
+  const affectedKey = MonoIdHelper.isMonoId(repositoryId)
+    ? queryKeys.allRepositories()
+    : queryKeys.repository(repositoryId);
+
   const { mutateAsync } = useMutation({
     mutationKey,
+    // A status read while the action runs could catch it halfway, as a merge into
+    // another branch does by switching first, and flash that on screen.
+    onMutate: () => queryClient.cancelQueries({ queryKey: queryKeys.status(repositoryId) }),
     mutationFn: ({ name, input }) => GIT_ACTIONS[name].run(repositoryId, input),
     onSuccess: (result, { name, input }) => {
       // Many actions run with no input, such as a plain push, and messages read from it.
@@ -198,14 +207,10 @@ export function useGitActions(repositoryId) {
       }
     },
     // Failed commands can still change the repository, as a conflicted merge does.
+    // Everything on screen changes in one go, rather than a panel at a time.
     onSettled: () =>
       Promise.all([
-        queryClient.invalidateQueries({
-          // A mono repo's actions land in its members, which have tabs of their own.
-          queryKey: MonoIdHelper.isMonoId(repositoryId)
-            ? queryKeys.allRepositories()
-            : queryKeys.repository(repositoryId),
-        }),
+        refreshTogether(queryClient, affectedKey),
         queryClient.invalidateQueries({ queryKey: queryKeys.repositoryList() }),
       ]),
   });
