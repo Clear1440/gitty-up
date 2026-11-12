@@ -59,6 +59,8 @@ export const gitApi = {
   stageLines: (id, selection) => http.post(route(id, '/stage-lines'), selection),
   resolveConflict: (id, { path, content, side, remove }) =>
     http.post(route(id, '/resolve-conflict'), { path, content, side, remove }),
+  /** Puts a resolved file back in conflict, while its merge is still under way. */
+  unresolveConflict: (id, { path }) => http.post(route(id, '/unresolve-conflict'), { path }),
   discard: (id, { paths }) => http.post(route(id, '/discard'), { paths }),
   discardAll: (id) => http.post(route(id, '/discard-all')),
   /** `kind` is "file", "folder" or "extension". */

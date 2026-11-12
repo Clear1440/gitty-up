@@ -1348,3 +1348,15 @@ export async function resolveConflict(repoPath, { filePath, content, side, remov
   await fs.writeFile(target, content);
   await stage(repoPath, { paths: [filePath] });
 }
+
+/**
+ * Takes back resolving a conflict, putting the file back as git first left it, with its
+ * conflict markers. Git remembers each side of a resolved file for this until the merge
+ * is committed, so this only works while it is still under way.
+ */
+export async function unresolveConflict(repoPath, { filePath }) {
+  const { operation, conflicted } = await getStatus(repoPath);
+  if (!operation) throw ApiError.gitFailure('There is no merge under way to undo this in.');
+  if (conflicted.some((file) => file.path === filePath)) return;
+  await runGitOnPaths(repoPath, ['checkout', '--merge', '--', filePath]);
+}

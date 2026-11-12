@@ -272,6 +272,11 @@ export function resolveConflict(mono, { filePath, ...options }) {
   return git.resolveConflict(member.path, { ...options, filePath: path });
 }
 
+export function unresolveConflict(mono, { filePath }) {
+  const { member, path } = findMember(mono, filePath);
+  return git.unresolveConflict(member.path, { filePath: path });
+}
+
 export async function fetchAll(mono) {
   await forEachMember(mono.members, ({ path }) => git.fetchAll(path));
 }

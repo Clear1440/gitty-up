@@ -315,6 +315,9 @@ function createGitRouter() {
       remove: remove === true,
     }),
   );
+  action(router, '/unresolve-conflict', (service, target, { path }) =>
+    service.unresolveConflict(target, { filePath: ValidationHelper.requireString(path, 'path') }),
+  );
   action(router, '/discard', (service, target, { paths }) =>
     service.discard(target, { paths: ValidationHelper.requirePaths(paths) }),
   );

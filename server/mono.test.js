@@ -530,6 +530,23 @@ describe('merging and stashing', () => {
     expect(git(mono.api.work, 'rev-parse', 'HEAD')).toBe(before);
   });
 
+  it('puts a resolved file back in conflict to undo resolving it', async () => {
+    git(mono.web.work, 'switch', '--create', 'other');
+    await writeAndCommit(mono.web.work, 'readme.txt', 'theirs\n', 'Theirs');
+    git(mono.web.work, 'switch', 'main');
+    await writeAndCommit(mono.web.work, 'readme.txt', 'ours\n', 'Ours');
+    expect(() => git(mono.web.work, 'merge', 'other')).toThrow();
+
+    const file = { path: 'web/readme.txt' };
+    await request('POST', `${mono.route}/resolve-conflict`, { ...file, content: 'both\n' });
+    expect((await getStatus()).conflicted).toEqual([]);
+
+    expect((await request('POST', `${mono.route}/unresolve-conflict`, file)).status).toBe(204);
+    const { conflicted } = await getStatus();
+    expect(conflicted.map(({ path: conflictedPath }) => conflictedPath)).toEqual(['web/readme.txt']);
+    expect(await fs.readFile(path.join(mono.web.work, 'readme.txt'), 'utf8')).toContain('<<<<<<<');
+  });
+
   it('refuses every stash action and lists no stashes', async () => {
     await fs.writeFile(path.join(mono.api.work, 'readme.txt'), 'api\n');
     git(mono.api.work, 'stash', 'push', '--message', 'Own tab');

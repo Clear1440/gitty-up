@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isUndoCommitKey } from './useUndoCommitShortcut.js';
+import { isUndoCommitKey, whyCommitUndoIsBlocked } from './useUndoCommitShortcut.js';
 
 const page = { closest: () => null };
 const field = { closest: () => ({}) };
@@ -25,5 +25,15 @@ describe('isUndoCommitKey', () => {
 
   it('never fires again from a held key', () => {
     expect(isUndoCommitKey(press({ repeat: true }))).toBe(false);
+  });
+});
+
+describe('whyCommitUndoIsBlocked', () => {
+  it('blocks undoing a commit while a merge or rebase is under way', () => {
+    expect(whyCommitUndoIsBlocked({ operation: 'merge', conflicted: [] })).toContain('merge');
+    expect(whyCommitUndoIsBlocked({ operation: null, conflicted: [{ path: 'a' }] })).toContain(
+      'conflicts',
+    );
+    expect(whyCommitUndoIsBlocked({ operation: null, conflicted: [] })).toBeNull();
   });
 });
