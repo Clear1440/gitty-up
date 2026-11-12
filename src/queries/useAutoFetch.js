@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { gitApi } from '../api';
 import { isFetchDue, isReturnRefreshDue } from './autoFetch.js';
 import { mutationKeys, queryKeys } from './queryKeys.js';
@@ -12,6 +12,24 @@ let fetchedAllAt = null;
 const fetchedAt = new Map();
 /** Repositories with a fetch on its way, so one visit never starts two. */
 const fetching = new Set();
+/** What is watching `fetching`, to show a fetch under way. */
+const fetchingListeners = new Set();
+
+function setFetching(repositoryId, isFetching) {
+  if (isFetching) fetching.add(repositoryId);
+  else fetching.delete(repositoryId);
+  for (const listener of fetchingListeners) listener();
+}
+
+function watchFetching(listener) {
+  fetchingListeners.add(listener);
+  return () => fetchingListeners.delete(listener);
+}
+
+/** True while a repository is being fetched in the background, on entering or returning to it. */
+export function useIsAutoFetching(repositoryId) {
+  return useSyncExternalStore(watchFetching, () => fetching.has(repositoryId));
+}
 
 /** Rereads everything on screen for a repository, in one go, and the repository list. */
 function refreshRepository(queryClient, repositoryId) {
@@ -24,13 +42,13 @@ function refreshRepository(queryClient, repositoryId) {
 /** Fetches a repository from its remotes quietly, then refreshes it. */
 function fetchRepository(queryClient, repositoryId) {
   if (fetching.has(repositoryId)) return;
-  fetching.add(repositoryId);
+  setFetching(repositoryId, true);
   fetchedAt.set(repositoryId, Date.now());
   gitApi
     .fetch(repositoryId)
     .then(() => refreshRepository(queryClient, repositoryId))
     .catch(() => {})
-    .finally(() => fetching.delete(repositoryId));
+    .finally(() => setFetching(repositoryId, false));
 }
 
 /**
