@@ -174,6 +174,45 @@ output. The file is JSON:
 - Scripts get `GITTY_REPO_PATH` and `GITTY_SCRIPT_NAME` in their environment, and stop after 10
   minutes.
 
+### Parameters
+
+A script can ask for values before it runs. Picking it opens a form, which remembers the last
+answers for next time:
+
+```json
+{
+  "name": "Deploy",
+  "shell": "bash",
+  "command": "npm run deploy -- --env {{env}} {{dryRun}} --tag {{tag}}",
+  "params": [
+    { "name": "env", "label": "Environment", "options": ["staging", "production"], "default": "staging" },
+    { "name": "tag", "required": true, "placeholder": "v1.2.3" },
+    { "name": "dryRun", "label": "Dry run", "type": "boolean", "flag": "--dry-run", "default": true },
+    { "name": "retries", "type": "number", "default": 3, "description": "How often to retry" }
+  ]
+}
+```
+
+- `params` is a list, or an object mapping names to parameters. A parameter has a `name` (letters,
+  digits, `_` and `-`), and optionally a `type`, `label`, `description`, `placeholder`, `default`
+  and `required`.
+- `type` is `string` (the default), `number`, `boolean` (a checkbox) or `choice`, which needs
+  `options`, a list of strings. Giving `options` alone makes it a choice.
+- `{{name}}` in a `command` or in `args` is replaced by the answer. In a `command` it is quoted for
+  the shell, so don't put quotes around it yourself. An empty answer leaves nothing behind, and an
+  arg that is just a placeholder is dropped when its answer is empty.
+- A boolean gives `true` or `false`. With a `flag`, it gives the flag when ticked and nothing when
+  not.
+- Every answer is also in the environment as `GITTY_PARAM_<NAME>` (in capitals, `-` as `_`), and
+  all of them as JSON in `GITTY_PARAMS`.
+
+### Console
+
+A running script's output streams into a console at the bottom of the window, which can be
+closed and reopened from the dropdown while the script carries on. It can stop the script, and
+everything it started, or run it again with the same answers. When the console is closed, a
+notification says how the script ended.
+
 Problems in the file, such as a shared file that cannot be loaded, show at the bottom of the
 dropdown. Mono repo tabs do not offer scripts. `server/scripts/` does this.
 

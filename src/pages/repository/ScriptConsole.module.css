@@ -1,0 +1,81 @@
+.drawer :global(.ant-drawer-body) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  padding: var(--space-2) var(--space-3) var(--space-3);
+}
+
+.title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: normal;
+  white-space: nowrap;
+}
+
+.success {
+  color: var(--color-success);
+}
+
+.danger {
+  color: var(--color-danger);
+}
+
+.warning {
+  color: var(--color-warning);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.params {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.paramChip {
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--color-focus-tint);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.output {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.placeholder {
+  color: var(--color-text-muted);
+}

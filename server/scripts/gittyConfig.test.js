@@ -106,6 +106,25 @@ describe('loadGittyConfig', () => {
     expect(errors[2]).toMatch(/only strings/);
   });
 
+  it('reads parameters, and reports a placeholder that has none', async () => {
+    await write(path.join(repo, '.gitty'), {
+      scripts: [
+        { name: 'Deploy', command: 'deploy {{env}}', params: [{ name: 'env', options: ['a', 'b'] }] },
+        { name: 'Typo', command: 'deploy {{evn}}', params: ['env'] },
+      ],
+    });
+    const { scripts, errors } = await loadGittyConfig(repo);
+
+    expect(scripts.map(describeScript)).toEqual([
+      expect.objectContaining({
+        name: 'Deploy',
+        params: [expect.objectContaining({ name: 'env', type: 'choice', options: ['a', 'b'] })],
+      }),
+    ]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/no parameter named "evn"/);
+  });
+
   it('reports a missing shared config, a loop and bad JSON without losing the rest', async () => {
     await write(path.join(repo, 'a.gitty'), { extends: '.gitty', scripts: { A: 'a.sh' } });
     await write(path.join(repo, '.gitty'), {

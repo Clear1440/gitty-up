@@ -1,10 +1,13 @@
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { ApiError } from '../errors.js';
 import { runGit } from '../git/runGit.js';
 import { FileSystemHelper } from '../utils/FileSystemHelper.js';
+import { fillArgs, fillCommand, resolveParams } from './scriptParams.js';
 import { loadShellEnv } from './shellEnv.js';
 
 const SCRIPT_TIMEOUT_MS = 10 * 60_000;
@@ -100,19 +103,25 @@ async function writePowerShellFile(lines) {
  * and what to tidy up afterwards. Each shell stops at the first line that fails, as `&&`
  * would between them, and exits with that line's exit code.
  */
-async function commandLauncher({ commands, shell, args }) {
+async function commandLauncher({ commands, shell, args }, texts) {
+  const lines = (quote) =>
+    withArgs(
+      commands.map((line) => fillCommand(line, texts, quote)),
+      fillArgs(args, texts),
+      quote,
+    );
   switch (shell) {
     case 'bash':
     case 'sh': {
       // There is rarely an sh on Windows, but Git for Windows' bash runs sh scripts.
       const program = shell === 'bash' || isWindows ? await findBash() : 'sh';
-      const text = ['set -e', ...withArgs(commands, args, quotePosix)].join('\n');
+      const text = ['set -e', ...lines(quotePosix)].join('\n');
       return { program, args: ['-c', text] };
     }
     case 'powershell':
     case 'pwsh': {
       const program = shell === 'powershell' && isWindows ? 'powershell.exe' : 'pwsh';
-      const { file, cleanup } = await writePowerShellFile(withArgs(commands, args, quotePowerShell));
+      const { file, cleanup } = await writePowerShellFile(lines(quotePowerShell));
       return {
         program,
         args: ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', file],
@@ -121,11 +130,11 @@ async function commandLauncher({ commands, shell, args }) {
     }
     case 'cmd':
       if (!isWindows) throw ApiError.badRequest('The cmd shell is only on Windows.');
-      return { program: withArgs(commands, args, quoteCmd).join(' && '), args: [], shell: true };
+      return { program: lines(quoteCmd).join(' && '), args: [], shell: true };
     default:
       // The system shell: cmd on Windows, sh elsewhere. Both understand &&.
       return {
-        program: withArgs(commands, args, isWindows ? quoteCmd : quotePosix).join(' && '),
+        program: lines(isWindows ? quoteCmd : quotePosix).join(' && '),
         args: [],
         shell: true,
       };
@@ -133,56 +142,180 @@ async function commandLauncher({ commands, shell, args }) {
 }
 
 /** How to run a script file, picked by its extension. */
-async function fileLauncher(script) {
+async function fileLauncher(script, texts) {
   const stats = await fs.stat(script.path).catch(() => null);
   if (!stats?.isFile()) throw ApiError.badRequest(`${script.path} does not exist.`);
   const [program, interpreterArgs] = await interpreterFor(script.path);
-  return { program, args: [...interpreterArgs, ...script.args] };
+  return { program, args: [...interpreterArgs, ...fillArgs(script.args, texts)] };
 }
 
 /**
- * Runs a script from a .gitty file in the repository's folder and resolves with its
- * exit code and output, whether or not it succeeded. A `command` runs in the shell it
- * names, or the system shell, as it would typed into a terminal; a `path` runs that file.
+ * Ends a script and whatever it started. Killing just the shell would leave the program
+ * it runs, such as a build, going on without anyone to read its output.
  */
-export async function runScript(repoPath, script) {
-  const launcher = script.commands ? await commandLauncher(script) : await fileLauncher(script);
-  try {
-    return await launch(repoPath, script, launcher);
-  } finally {
-    await launcher.cleanup?.();
+function killTree(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  if (isWindows) {
+    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+      .on('error', () => child.kill());
+    return;
+  }
+  // The script leads its own process group, so a negative pid reaches all of it.
+  const signalGroup = (signal) => {
+    try {
+      process.kill(-child.pid, signal);
+    } catch {
+      child.kill(signal);
+    }
+  };
+  signalGroup('SIGTERM');
+  // A script that ignores SIGTERM is stopped for certain shortly after.
+  setTimeout(() => {
+    if (child.exitCode === null && child.signalCode === null) signalGroup('SIGKILL');
+  }, 5_000).unref();
+}
+
+/**
+ * One run of a script. Its output is kept, so a console that opens later can show it all,
+ * and is sent on as it comes as 'output' events. 'end' follows once the script exits.
+ */
+class ScriptRun extends EventEmitter {
+  constructor({ repoPath, name, values }) {
+    super();
+    // Each open console listens, and there is no telling how many there are.
+    this.setMaxListeners(0);
+    this.id = randomUUID();
+    this.repoPath = repoPath;
+    this.name = name;
+    this.values = values;
+    this.status = 'running';
+    this.exitCode = null;
+    this.stopReason = null;
+    this.startedAt = Date.now();
+    this.endedAt = null;
+    this.output = collectOutput();
+    this.done = new Promise((resolve) => this.once('end', resolve));
+  }
+
+  append = (text) => {
+    this.output.append(text);
+    this.emit('output', text);
+  };
+
+  /** What a client is told about the run, without its output. */
+  summary() {
+    return {
+      id: this.id,
+      name: this.name,
+      params: this.values,
+      status: this.status,
+      exitCode: this.exitCode,
+      stopReason: this.stopReason,
+      startedAt: new Date(this.startedAt).toISOString(),
+      durationMs: (this.endedAt ?? Date.now()) - this.startedAt,
+    };
+  }
+
+  /** Stops the script. `reason` is 'stopped' when asked to, or 'timeout'. */
+  stop(reason = 'stopped') {
+    if (this.status !== 'running' || !this.child) return;
+    this.stopReason ??= reason;
+    killTree(this.child);
+  }
+
+  finish(exitCode) {
+    if (this.status !== 'running') return;
+    if (this.stopReason === 'timeout') this.append(`\nStopped after ${SCRIPT_TIMEOUT_MS / 60_000} minutes.\n`);
+    else if (this.stopReason) this.append('\nStopped.\n');
+    this.status = 'finished';
+    this.exitCode = exitCode;
+    this.endedAt = Date.now();
+    this.emit('end', this.summary());
   }
 }
 
-async function launch(repoPath, script, { program, args, shell = false }) {
-  const startedAt = Date.now();
-  const output = collectOutput();
+/** Recent runs by id, so a console can attach to one that is running or just ended. */
+const runs = new Map();
+const MAX_KEPT_RUNS = 20;
+
+function keep(run) {
+  runs.set(run.id, run);
+  for (const [id, old] of runs) {
+    if (runs.size <= MAX_KEPT_RUNS) break;
+    if (old.status !== 'running') runs.delete(id);
+  }
+}
+
+/** A run started in `repoPath`, or undefined once it has been forgotten. */
+export function findRun(repoPath, id) {
+  const run = runs.get(id);
+  return run?.repoPath === repoPath ? run : undefined;
+}
+
+/**
+ * Starts a script from a .gitty file in the repository's folder, with `paramInput` as the
+ * answers to its parameters, and resolves with the run once the script has started. A
+ * `command` runs in the shell it names, or the system shell, as it would typed into a
+ * terminal; a `path` runs that file.
+ */
+export async function startScript(repoPath, script, paramInput) {
+  const { texts, env: paramEnv, values } = resolveParams(script.params ?? [], paramInput);
+  const launcher = script.commands
+    ? await commandLauncher(script, texts)
+    : await fileLauncher(script, texts);
+  const run = new ScriptRun({ repoPath, name: script.name, values });
+  try {
+    await launch(run, launcher, paramEnv);
+  } catch (error) {
+    await launcher.cleanup?.();
+    throw error;
+  }
+  run.done.then(() => launcher.cleanup?.()).catch(() => {});
+  keep(run);
+  return run;
+}
+
+/** Runs a script to the end and resolves with its exit code and output. */
+export async function runScript(repoPath, script, paramInput) {
+  const run = await startScript(repoPath, script, paramInput);
+  const { exitCode, durationMs } = await run.done;
+  return { exitCode, output: run.output.text(), durationMs };
+}
+
+/** Starts the run's process, resolving once it is going and rejecting if it can't start. */
+async function launch(run, { program, args, shell = false }, paramEnv) {
   // What a new terminal would have, so tools set up in the shell profile are found.
   const env = await loadShellEnv();
 
-  const exitCode = await new Promise((resolve, reject) => {
-    const child = spawn(program, args, {
-      cwd: repoPath,
-      shell,
-      timeout: SCRIPT_TIMEOUT_MS,
-      windowsHide: true,
-      env: { ...env, GITTY_REPO_PATH: repoPath, GITTY_SCRIPT_NAME: script.name },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    child.stdout.setEncoding('utf8').on('data', output.append);
-    child.stderr.setEncoding('utf8').on('data', output.append);
-    child.on('error', (error) => {
+  const child = spawn(program, args, {
+    cwd: run.repoPath,
+    shell,
+    // Its own process group, so stopping it reaches everything it started. Windows has
+    // no groups, and a detached process there would open a console window.
+    detached: !isWindows,
+    windowsHide: true,
+    env: { ...env, ...paramEnv, GITTY_REPO_PATH: run.repoPath, GITTY_SCRIPT_NAME: run.name },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  run.child = child;
+
+  await new Promise((resolve, reject) => {
+    child.once('spawn', resolve);
+    child.once('error', (error) => {
       if (error.code === 'ENOENT') {
         reject(ApiError.badRequest(`Could not start ${program}. Is it installed and on the PATH?`));
       } else {
         reject(error);
       }
     });
-    child.on('close', (code, signal) => {
-      if (signal) output.append(`\nStopped by ${signal}${child.killed ? ' after timing out' : ''}.`);
-      resolve(code ?? 1);
-    });
   });
 
-  return { exitCode, output: output.text(), durationMs: Date.now() - startedAt };
+  child.stdout.setEncoding('utf8').on('data', run.append);
+  child.stderr.setEncoding('utf8').on('data', run.append);
+  child.on('error', (error) => run.append(`\n${error.message}\n`));
+  const timer = setTimeout(() => run.stop('timeout'), SCRIPT_TIMEOUT_MS);
+  child.on('close', (code) => {
+    clearTimeout(timer);
+    run.finish(code ?? 1);
+  });
 }

@@ -55,6 +55,8 @@ async function request(method, path, { query, body } = {}) {
 
 /** The only place in the client that touches the network. */
 export const http = {
+  /** Server-sent events from `path`. The caller listens on it and closes it. */
+  events: (path) => new EventSource(buildUrl(path)),
   get: (path, query) => request('GET', path, { query }),
   post: (path, body = {}) => request('POST', path, { body }),
   put: (path, body = {}) => request('PUT', path, { body }),

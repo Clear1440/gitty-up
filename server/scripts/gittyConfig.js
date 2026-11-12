@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { checkPlaceholders, parseParams } from './scriptParams.js';
 
 /** The file, at the top of a working tree, that turns on scripts for that repository. */
 export const GITTY_FILE = '.gitty';
@@ -88,6 +89,9 @@ function toScript(entry, { location, repoPath, fallbackName }) {
     }
   }
 
+  const params = parseParams(spec.params);
+  checkPlaceholders([...(commands ?? []), ...(spec.args ?? [])], params);
+
   const base = isUrl(location) ? path.join(repoPath, GITTY_FILE) : location;
   const scriptPath = hasPath ? path.resolve(path.dirname(base), spec.path.trim()) : undefined;
   const name =
@@ -102,6 +106,7 @@ function toScript(entry, { location, repoPath, fallbackName }) {
     commands: commands ?? undefined,
     shell: spec.shell,
     args: spec.args ?? [],
+    params,
     source: location,
   };
 }
@@ -207,12 +212,13 @@ export async function loadGittyConfig(repoPath) {
 }
 
 /** What the client is shown of a script: enough to list it and say what it runs. */
-export function describeScript({ name, description, path: scriptPath, commands, shell, args, source }) {
+export function describeScript({ name, description, path: scriptPath, commands, shell, args, params, source }) {
   const runs = [commands ? commands.join(' ; ') : scriptPath, ...args].join(' ');
   return {
     name,
     description,
     runs: shell ? `${shell}: ${runs}` : runs,
+    params,
     source,
   };
 }

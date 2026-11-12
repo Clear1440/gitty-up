@@ -2289,6 +2289,103 @@ describe('scripts from .gitty', () => {
     expect(fail.output).not.toContain('never');
   });
 
+  it('passes parameters as quoted placeholders and environment variables', async () => {
+    await fs.writeFile(
+      path.join(repo.work, 'show.js'),
+      'console.log(JSON.stringify({ argv: process.argv.slice(2), env: process.env.GITTY_PARAM_TARGET_ENV }));\n',
+    );
+    await fs.writeFile(
+      path.join(repo.work, '.gitty'),
+      JSON.stringify({
+        scripts: [
+          {
+            name: 'Echo',
+            shell: 'bash',
+            command: 'echo {{greeting}} {{loud}}; echo "$GITTY_PARAMS"',
+            params: [
+              { name: 'greeting', required: true },
+              { name: 'loud', type: 'boolean', flag: '--loud' },
+            ],
+          },
+          {
+            name: 'Show',
+            path: 'show.js',
+            args: ['--env={{target-env}}', '{{count}}'],
+            params: {
+              'target-env': { options: ['staging', 'prod'], default: 'staging' },
+              count: { type: 'number' },
+            },
+          },
+        ],
+      }),
+    );
+    const run = (name, params) => request('POST', `${repo.api}/scripts/run`, { name, params });
+
+    const listed = await request('GET', `${repo.api}/scripts`);
+    expect(listed.body.scripts[1].params.map(({ name, type }) => [name, type])).toEqual([
+      ['target-env', 'choice'],
+      ['count', 'number'],
+    ]);
+
+    const echo = await run('Echo', { greeting: "it's $HOME; rm -rf x", loud: true });
+    expect(echo.body.output.trim().split('\n')).toEqual([
+      "it's $HOME; rm -rf x --loud",
+      JSON.stringify({ greeting: "it's $HOME; rm -rf x", loud: true }),
+    ]);
+    expect((await run('Echo', { greeting: 'hi' })).body.output.split('\n')[0]).toBe('hi');
+    expect((await run('Echo', {})).status).toBe(400);
+
+    const show = await run('Show', {});
+    expect(JSON.parse(show.body.output)).toEqual({ argv: ['--env=staging'], env: 'staging' });
+    const prod = await run('Show', { 'target-env': 'prod', count: 3 });
+    expect(JSON.parse(prod.body.output)).toEqual({ argv: ['--env=prod', '3'], env: 'prod' });
+    expect((await run('Show', { 'target-env': 'dev' })).status).toBe(400);
+  });
+
+  it('streams a run as server-sent events, and stops it when asked', async () => {
+    await fs.writeFile(
+      path.join(repo.work, 'slow.js'),
+      'console.log("started"); setInterval(() => console.log("tick"), 50);\n',
+    );
+    await fs.writeFile(
+      path.join(repo.work, '.gitty'),
+      JSON.stringify({ scripts: [{ name: 'Slow', path: 'slow.js' }] }),
+    );
+
+    const started = await request('POST', `${repo.api}/scripts/runs`, { name: 'Slow' });
+    expect(started.status).toBe(201);
+    expect(started.body.status).toBe('running');
+    const runRoute = `${repo.api}/scripts/runs/${started.body.id}`;
+
+    const response = await fetch(`${baseUrl}${runRoute}/events`);
+    expect(response.headers.get('content-type')).toMatch(/text\/event-stream/);
+    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+    let received = '';
+    const readUntil = async (text) => {
+      while (!received.includes(text)) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        received += value;
+      }
+    };
+
+    await readUntil('tick');
+    expect(received).toMatch(/^event: snapshot\n/);
+    expect((await request('POST', `${runRoute}/stop`)).status).toBe(204);
+    await readUntil('event: end');
+    await readUntil('\n\n');
+    const end = JSON.parse(received.split('event: end\ndata: ')[1].split('\n')[0]);
+    expect(end).toMatchObject({ status: 'finished', stopReason: 'stopped' });
+
+    // Once over, it still replays from the start, then ends.
+    const replay = await (await fetch(`${baseUrl}${runRoute}/events`)).text();
+    expect(replay).toContain('started');
+    expect(replay).toContain('Stopped.');
+    expect(replay.trimEnd()).toMatch(/event: end\ndata: .*$/);
+
+    expect((await request('GET', `${repo.api}/scripts/runs/nope/events`)).status).toBe(404);
+  });
+
   it('refuses a script the .gitty file does not list', async () => {
     await fs.writeFile(path.join(repo.work, '.gitty'), JSON.stringify({ scripts: {} }));
     const { status } = await request('POST', `${repo.api}/scripts/run`, { name: 'rm -rf /' });
