@@ -151,6 +151,10 @@
   text-align: right;
 }
 
+.version {
+  font-family: var(--font-mono);
+}
+
 .dataActions {
   display: flex;
   gap: var(--space-2);
