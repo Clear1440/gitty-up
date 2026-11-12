@@ -11,7 +11,12 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['server/**/*.test.js', 'src/**/*.test.js', 'electron/**/*.test.js'],
+    include: [
+      'server/**/*.test.js',
+      'src/**/*.test.js',
+      'electron/**/*.test.js',
+      'scripts/**/*.test.js',
+    ],
     environment: 'node',
     testTimeout: 30_000,
     hookTimeout: 30_000,

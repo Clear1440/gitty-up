@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Releases a version: commits any pending changes, sets the version in package.json,
- * tags it, and pushes main and the tag. The tag starts the Release workflow, which builds
+ * moves CHANGELOG.md's Unreleased notes under it, tags it, and pushes main and the tag. The tag starts the Release workflow, which builds
  * the installers onto a draft GitHub release.
  *
  *   npm run release -- 0.2.0          a version of your choosing
@@ -16,6 +16,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
+import { hasRelease, stampUnreleased } from './changelog.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const RELEASE_BRANCH = 'main';
@@ -96,6 +97,23 @@ function writeJson(file, data) {
   fs.writeFileSync(path.join(ROOT, file), `${JSON.stringify(data, null, 2)}\n`);
 }
 
+const CHANGELOG = 'CHANGELOG.md';
+
+/**
+ * What the release does to CHANGELOG.md: moves the Unreleased notes under the new version,
+ * whose section the app shows as what's new. `text` is null when nothing changes.
+ */
+function planChangelog(version) {
+  const file = path.join(ROOT, CHANGELOG);
+  if (!fs.existsSync(file)) return { text: null, note: `there is no ${CHANGELOG}` };
+  const current = fs.readFileSync(file, 'utf8');
+  const date = new Date().toISOString().slice(0, 10);
+  const { text, stamped } = stampUnreleased(current, version, date);
+  if (stamped) return { text, note: null };
+  if (hasRelease(current, version)) return { text: null, note: null };
+  return { text: null, note: `${CHANGELOG} has nothing under Unreleased for this release` };
+}
+
 function setVersion(version) {
   const pkg = readJson('package.json');
   writeJson('package.json', { ...pkg, version });
@@ -146,6 +164,7 @@ async function main() {
 
   checkRepository(tag);
 
+  const changelog = planChangelog(version);
   const changes = pendingChanges();
   const prompt = createPrompt();
   let commitMessage = options.message;
@@ -161,6 +180,8 @@ async function main() {
       console.log(`  - commit ${changes.length} changed path(s): "${commitMessage}"`);
     }
     if (version !== current) console.log(`  - commit the new version in package.json`);
+    if (changelog.text) console.log(`  - move the Unreleased notes in ${CHANGELOG} under ${tag}`);
+    if (changelog.note) console.log(`  - warning: ${changelog.note}, so the app has no notes for it`);
     console.log(`  - tag ${tag}`);
     console.log(`  - push ${RELEASE_BRANCH} and ${tag} to ${REMOTE}, which starts the build`);
 
@@ -176,9 +197,15 @@ async function main() {
     git(['add', '--all']);
     git(['commit', '--quiet', '-m', commitMessage]);
   }
-  if (version !== current) {
-    setVersion(version);
-    git(['add', 'package.json', 'package-lock.json']);
+  if (version !== current || changelog.text) {
+    if (version !== current) {
+      setVersion(version);
+      git(['add', 'package.json', 'package-lock.json']);
+    }
+    if (changelog.text) {
+      fs.writeFileSync(path.join(ROOT, CHANGELOG), changelog.text);
+      git(['add', CHANGELOG]);
+    }
     git(['commit', '--quiet', '-m', `Release ${tag}`]);
   }
   git(['tag', '-a', tag, '-m', `Release ${tag}`]);
