@@ -8,11 +8,10 @@ import {
 } from '@ant-design/icons';
 import { App, Button, ColorPicker, Result, Segmented, Select, Spin, Typography } from 'antd';
 import { useState } from 'react';
-// Only the version is bundled, read when the app is built, so it is the release's own.
-import { version as appVersion } from '../../../package.json';
 import { useAppearance } from '../../appearance/AppearanceContext.jsx';
 import { ChangelogDialog } from '../../changelog/ChangelogDialog.jsx';
-import { RELEASES } from '../../changelog/releases.js';
+// Read when the app is built, so it is the release's own.
+import { APP_VERSION as appVersion, RELEASES } from '../../changelog/releases.js';
 import { useSetDataDir, useSettings } from '../../queries/settings.js';
 import {
   CUSTOM_COLORS,

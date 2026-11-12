@@ -26,7 +26,7 @@ export function isUndoCommitKey(event) {
  */
 export function whyCommitUndoIsBlocked(status) {
   if (status?.operation) return `Finish or abort the ${status.operation} first`;
-  if (status?.conflicted.length > 0) return 'Resolve the conflicts first';
+  if (status?.conflicted?.length > 0) return 'Resolve the conflicts first';
   return null;
 }
 

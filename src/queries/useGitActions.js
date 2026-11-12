@@ -6,7 +6,8 @@ import { MonoIdHelper } from '../utils/MonoIdHelper.js';
 import { TextHelper } from '../utils/TextHelper.js';
 import { mutationKeys, queryKeys } from './queryKeys.js';
 import { refreshTogether } from './refreshTogether.js';
-import { recordAction, takeUndoStep } from './undoHistory.js';
+import { statusQuery } from './git.js';
+import { recordAction, recordFailedAction, takeUndoStep } from './undoHistory.js';
 
 /** A mono repo reports on each of its repositories, a line apiece. */
 const MULTILINE = { whiteSpace: 'pre-line' };
@@ -176,9 +177,17 @@ export function useGitActions(repositoryId) {
     mutationKey,
     // A status read while the action runs could catch it halfway, as a merge into
     // another branch does by switching first, and flash that on screen.
-    onMutate: async () => {
+    onMutate: async ({ name, input, isUndo }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.status(repositoryId) });
-      return { statusBefore: queryClient.getQueryData(queryKeys.status(repositoryId)) };
+      const cached = queryClient.getQueryData(queryKeys.status(repositoryId));
+      // Undoing "stage all" or "unstage all" takes back exactly the files it touched, so
+      // it needs them as they are now rather than as of the last poll.
+      const touchesEverything = (name === 'stage' || name === 'unstage') && !input?.paths;
+      if (isUndo || !touchesEverything) return { statusBefore: cached };
+      const statusBefore = await queryClient
+        .fetchQuery({ ...statusQuery(repositoryId), staleTime: 0 })
+        .catch(() => cached);
+      return { statusBefore };
     },
     mutationFn: ({ name, input }) => GIT_ACTIONS[name].run(repositoryId, input),
     onSuccess: (result, { name, input, isUndo }, context) => {
@@ -189,7 +198,9 @@ export function useGitActions(repositoryId) {
       // A retry that worked has dealt with whatever this action last left unfinished.
       notification.destroy(partialKey(repositoryId, name));
     },
-    onError: (error, { name, handledCodes = [] }) => {
+    onError: (error, { name, isUndo, handledCodes = [] }) => {
+      // A failed merge or pull can still have moved things, so earlier steps may no longer apply.
+      if (!isUndo) recordFailedAction(repositoryId, name);
       const { title } = GIT_ACTIONS[name];
       // The caller asked to deal with this one itself, as it has a question to ask.
       if (handledCodes.includes(error.code)) return;

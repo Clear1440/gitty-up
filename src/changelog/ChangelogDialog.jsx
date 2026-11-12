@@ -42,8 +42,9 @@ function Release({ release, current }) {
         {version === current && <span className={styles.badge}>You have this</span>}
         <span className={styles.date}>{date ? formatDate(date) : !version && 'Not in a release yet'}</span>
       </header>
-      {notes.map((note) => (
-        <p key={note} className={styles.note}>
+      {/* The same line can appear twice, so keys go by position. */}
+      {notes.map((note, index) => (
+        <p key={index} className={styles.note}>
           <Inline text={note} />
         </p>
       ))}
@@ -53,8 +54,8 @@ function Release({ release, current }) {
             <div key={title ?? index} className={styles.section}>
               {title && <h4 className={styles.sectionTitle}>{title}</h4>}
               <ul className={styles.items}>
-                {items.map((item) => (
-                  <li key={item}>
+                {items.map((item, itemIndex) => (
+                  <li key={itemIndex}>
                     <Inline text={item} />
                   </li>
                 ))}
