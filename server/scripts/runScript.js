@@ -5,6 +5,7 @@ import path from 'node:path';
 import { ApiError } from '../errors.js';
 import { runGit } from '../git/runGit.js';
 import { FileSystemHelper } from '../utils/FileSystemHelper.js';
+import { loadShellEnv } from './shellEnv.js';
 
 const SCRIPT_TIMEOUT_MS = 10 * 60_000;
 /** Only the end of a long output is kept, as that is where a failure explains itself. */
@@ -156,6 +157,8 @@ export async function runScript(repoPath, script) {
 async function launch(repoPath, script, { program, args, shell = false }) {
   const startedAt = Date.now();
   const output = collectOutput();
+  // What a new terminal would have, so tools set up in the shell profile are found.
+  const env = await loadShellEnv();
 
   const exitCode = await new Promise((resolve, reject) => {
     const child = spawn(program, args, {
@@ -163,7 +166,7 @@ async function launch(repoPath, script, { program, args, shell = false }) {
       shell,
       timeout: SCRIPT_TIMEOUT_MS,
       windowsHide: true,
-      env: { ...process.env, GITTY_REPO_PATH: repoPath, GITTY_SCRIPT_NAME: script.name },
+      env: { ...env, GITTY_REPO_PATH: repoPath, GITTY_SCRIPT_NAME: script.name },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     child.stdout.setEncoding('utf8').on('data', output.append);
