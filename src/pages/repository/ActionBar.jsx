@@ -204,16 +204,20 @@ export function ActionBar() {
         disabled={isBusy}
         onClick={() => openDialog('createBranch')}
       />
+      <ActionButton
+        label="Merge"
+        hint={
+          repository.isMono
+            ? 'Merge another branch, in every repository here'
+            : 'Merge or rebase with another branch'
+        }
+        icon={<MergeOutlined />}
+        disabled={isBusy || midOperation}
+        onClick={() => openDialog('merge')}
+      />
       {/* Across a mono repo these would quietly change several repositories at once. */}
       {!repository.isMono && (
         <>
-          <ActionButton
-            label="Merge"
-            hint="Merge or rebase with another branch"
-            icon={<MergeOutlined />}
-            disabled={isBusy || midOperation}
-            onClick={() => openDialog('merge')}
-          />
           <ActionButton
             label="Stash"
             hint="Set your changes aside"

@@ -345,17 +345,66 @@ export async function pruneGoneBranches(mono, { force = false } = {}) {
 }
 
 /**
- * Merging and rebasing are kept to each repository on its own. Across a mono repo they
- * would rewrite several repositories at once, and could leave some mid-merge.
+ * Checks every member before any of them merges, so that a reason not to merge, such as
+ * a branch behind its remote or a merge already under way, stops all of them alike
+ * rather than leaving some merged and some not.
  */
-export async function merge() {
-  throw ApiError.badRequest('Open the repository on its own to merge.');
+async function assertMembersCanMerge(mono, branches) {
+  const results = await readStatuses(mono.members);
+  const busy = results.filter(({ status }) => status.operation);
+  if (busy.length > 0) {
+    const names = namesOf(busy.map(({ member }) => member));
+    throw ApiError.gitFailure(`Finish or abort what is under way in ${names} before merging.`);
+  }
+  const problems = await readEach(mono.members, async (member) => {
+    try {
+      await git.assertNotBehind(member.path, branches);
+      return null;
+    } catch (error) {
+      if (error.code !== 'BRANCH_BEHIND') throw error;
+      return `${member.name}: ${error.message}`;
+    }
+  });
+  const behind = problems.filter(Boolean);
+  if (behind.length > 0) throw ApiError.branchBehind(behind.join('\n'));
 }
 
-export async function mergeInto() {
-  throw ApiError.badRequest('Open the repository on its own to merge.');
+const MERGE_NEXT_STEP =
+  'Fix that, then merge again. Repositories already merged are not affected.';
+
+/** Merges `branch` into the mono repo's branch, in every member. */
+export async function merge(mono, options) {
+  await assertMembersCanMerge(mono, [mono.branch, options.branch]);
+  await forEachMember(mono.members, ({ path }) => git.merge(path, options), {
+    doneIn: 'Merged in',
+    nextStep: MERGE_NEXT_STEP,
+  });
 }
 
+/**
+ * Merges the mono repo's branch into `target` in every member, leaving them on `target`.
+ * The mono repo follows them there. A member that could not switch stays behind on the
+ * old branch, and the report says which.
+ */
+export async function mergeInto(mono, options) {
+  await assertMembersCanMerge(mono, [mono.branch, options.target]);
+  try {
+    await forEachMember(mono.members, ({ path }) => git.mergeInto(path, options), {
+      doneIn: 'Merged in',
+      nextStep: MERGE_NEXT_STEP,
+    });
+  } finally {
+    const branches = await readEach(mono.members, ({ path }) =>
+      git.getCurrentBranch(path).catch(() => null),
+    );
+    if (branches.includes(options.target)) await mono.setBranch(options.target);
+  }
+}
+
+/**
+ * Rebasing is kept to each repository on its own, as it rewrites history and across a
+ * mono repo would do so in several repositories at once.
+ */
 export async function rebase() {
   throw ApiError.badRequest('Open the repository on its own to rebase.');
 }

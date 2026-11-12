@@ -471,23 +471,63 @@ describe('branch actions', () => {
 });
 
 describe('merging and stashing', () => {
-  it('refuses to merge, merge into or rebase, and changes nothing', async () => {
-    for (const { work } of [mono.api, mono.web, mono.docs]) git(work, 'branch', 'other');
-    await writeAndCommit(mono.api.work, 'a.txt', 'a\n', 'Ahead');
-    const heads = () => [mono.api, mono.web, mono.docs].map(({ work }) => git(work, 'rev-parse', 'HEAD'));
+  const members = () => [mono.api, mono.web, mono.docs];
+
+  it('merges a branch into every member', async () => {
+    for (const { work } of members()) {
+      git(work, 'switch', '--create', 'feature');
+      await writeAndCommit(work, 'feature.txt', 'new\n', 'Feature');
+      git(work, 'switch', 'main');
+    }
+
+    expect((await request('POST', `${mono.route}/merge`, { branch: 'feature' })).status).toBe(204);
+    for (const { work } of members()) {
+      expect(git(work, 'rev-parse', 'HEAD')).toBe(git(work, 'rev-parse', 'feature'));
+    }
+  });
+
+  it('merges into another branch everywhere, and the mono repo follows', async () => {
+    for (const { work } of members()) git(work, 'branch', 'release');
+    for (const { work } of members()) await writeAndCommit(work, 'fix.txt', 'fix\n', 'Fix');
+
+    const { status } = await request('POST', `${mono.route}/merge-into`, { target: 'release' });
+    expect(status).toBe(204);
+    for (const { work } of members()) {
+      expect(git(work, 'branch', '--show-current')).toBe('release');
+      expect(git(work, 'rev-parse', 'release')).toBe(git(work, 'rev-parse', 'main'));
+    }
+    expect((await getStatus()).branch).toBe('release');
+  });
+
+  it('stops before merging anywhere when a member is behind its remote', async () => {
+    for (const { work } of members()) git(work, 'branch', 'other');
+    // Someone else pushed to web's main, so its main is behind once fetched.
+    const clone = path.join(path.dirname(mono.web.work), 'web-clone');
+    git(path.dirname(clone), 'clone', `${mono.web.work}.git`, clone);
+    git(clone, 'config', 'user.name', 'Test');
+    git(clone, 'config', 'user.email', 'test@example.com');
+    await writeAndCommit(clone, 'remote.txt', 'remote\n', 'Remote work');
+    git(clone, 'push', 'origin', 'main');
+    git(mono.web.work, 'fetch', 'origin');
+    for (const { work } of members()) await writeAndCommit(work, 'b.txt', 'b\n', 'Ahead');
+    const heads = () => members().map(({ work }) => git(work, 'rev-parse', 'HEAD'));
     const before = heads();
 
-    const attempts = [
-      ['/merge', { branch: 'other' }],
-      ['/merge-into', { target: 'other' }],
-      ['/rebase', { branch: 'other' }],
-    ];
-    for (const [route, body] of attempts) {
-      const { status } = await request('POST', `${mono.route}${route}`, body);
-      expect(status).toBe(400);
-    }
+    const { status, body } = await request('POST', `${mono.route}/merge`, { branch: 'other' });
+    expect(status).toBe(409);
+    expect(body.error.code).toBe('BRANCH_BEHIND');
+    expect(body.error.message).toContain('web');
     expect(heads()).toEqual(before);
-    expect(git(mono.api.work, 'rev-parse', 'other')).not.toBe(before[0]);
+  });
+
+  it('still refuses to rebase, and changes nothing', async () => {
+    for (const { work } of members()) git(work, 'branch', 'other');
+    await writeAndCommit(mono.api.work, 'a.txt', 'a\n', 'Ahead');
+    const before = git(mono.api.work, 'rev-parse', 'HEAD');
+
+    const { status } = await request('POST', `${mono.route}/rebase`, { branch: 'other' });
+    expect(status).toBe(400);
+    expect(git(mono.api.work, 'rev-parse', 'HEAD')).toBe(before);
   });
 
   it('refuses every stash action and lists no stashes', async () => {

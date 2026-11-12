@@ -18,8 +18,8 @@ export function useBranchMenu(branch, kind) {
 
   const isRemote = kind === 'remote';
   const isProtected = isRemote && BranchHelper.isProtectedOnRemote(branch.localName);
-  // Across a mono repo, merging or rebasing would rewrite several repositories at once.
-  const canMerge = !repository.isMono;
+  // A mono repo merges in every repository at once, but rebasing stays with each one.
+  const canRebase = !repository.isMono;
   const blocked = StatusHelper.isBlocked(status, isBusy);
   const currentName = StatusHelper.currentBranchName(status);
 
@@ -70,7 +70,7 @@ export function useBranchMenu(branch, kind) {
       disabled: branch.isCurrent || blocked || Boolean(worktreePath),
       onClick: checkout,
     },
-    ...(branch.isCurrent || !canMerge
+    ...(branch.isCurrent
       ? []
       : [
           {
@@ -81,7 +81,7 @@ export function useBranchMenu(branch, kind) {
           },
         ]),
     // A remote branch can't be committed to, and a detached HEAD has no branch to merge.
-    ...(branch.isCurrent || isRemote || !status.branch || !canMerge
+    ...(branch.isCurrent || isRemote || !status.branch
       ? []
       : [
           {
@@ -91,7 +91,7 @@ export function useBranchMenu(branch, kind) {
             onClick: () => openDialog('mergeInto', { target: branch.name }),
           },
         ]),
-    ...(canMerge
+    ...(canRebase
       ? [
           {
             key: 'rebase',

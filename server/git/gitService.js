@@ -563,7 +563,7 @@ export async function pruneGoneBranches(repoPath, { force = false, names } = {})
 }
 
 /** A merge from or into a stale branch would leave out what is already on the remote. */
-async function assertNotBehind(repoPath, names) {
+export async function assertNotBehind(repoPath, names) {
   const { local } = await listBranchRefs(repoPath);
   const stale = local.filter(({ name, behind }) => names.includes(name) && behind > 0);
   if (stale.length === 0) return;
