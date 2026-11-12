@@ -6,6 +6,8 @@ version's section.
 
 ## Unreleased
 
+## 0.2.3 - 2026-11-12
+
 ### Added
 
 - **Script parameters.** A script in `.gitty` can ask for values before it runs: text, a
