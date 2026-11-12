@@ -3,6 +3,8 @@ import { app, BrowserWindow, dialog, shell } from 'electron';
 import { config } from '../server/config.js';
 import { startServer } from '../server/start.js';
 import { UrlHelper } from '../server/utils/UrlHelper.js';
+import { MIN_SIZE } from './windowBounds.js';
+import { initialWindowState, rememberWindowState } from './windowState.js';
 
 /** The app's own background, so the window doesn't flash white while it loads. */
 const BACKGROUND_COLOR = '#0f1218';
@@ -41,16 +43,17 @@ function isExternal(url, appOrigin) {
 }
 
 function createWindow(appUrl) {
+  const { bounds, maximized } = initialWindowState();
   const window = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    minWidth: 900,
-    minHeight: 600,
+    ...bounds,
+    minWidth: MIN_SIZE.width,
+    minHeight: MIN_SIZE.height,
     title: 'Gitty Up',
     backgroundColor: BACKGROUND_COLOR,
     autoHideMenuBar: true,
     show: false,
   });
+  rememberWindowState(window);
   const appOrigin = new URL(appUrl).origin;
 
   // Links such as pull requests open in the default browser, never inside the app.
@@ -64,7 +67,11 @@ function createWindow(appUrl) {
     if (isExternal(url, appOrigin)) shell.openExternal(url);
   });
 
-  window.once('ready-to-show', () => window.show());
+  window.once('ready-to-show', () => {
+    // Maximizing shows the window, so it waits until there is something to show.
+    if (maximized) window.maximize();
+    window.show();
+  });
   window.loadURL(appUrl);
   return window;
 }
