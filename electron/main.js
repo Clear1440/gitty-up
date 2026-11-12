@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { app, BrowserWindow, dialog, shell } from 'electron';
+import { app, BrowserWindow, dialog, powerMonitor, screen, shell } from 'electron';
 import { config } from '../server/config.js';
 import { startServer } from '../server/start.js';
 import { UrlHelper } from '../server/utils/UrlHelper.js';
@@ -42,6 +42,27 @@ function isExternal(url, appOrigin) {
   return isWeb && parsed.origin !== appOrigin;
 }
 
+/**
+ * After sleep, or a screen being added, removed or rearranged, macOS can leave the page
+ * drawn from stale layers, so hovering, tooltips and clicks stop lining up with what is
+ * shown until the window moves to another screen. A full repaint puts that right.
+ */
+function repaintAfterDisplayChanges(window) {
+  const repaint = () => {
+    if (!window.isDestroyed()) window.webContents.invalidate();
+  };
+  const screenEvents = ['display-added', 'display-removed', 'display-metrics-changed'];
+  const powerEvents = ['resume', 'unlock-screen'];
+  for (const event of screenEvents) screen.on(event, repaint);
+  for (const event of powerEvents) powerMonitor.on(event, repaint);
+  window.on('show', repaint);
+  window.on('restore', repaint);
+  window.on('closed', () => {
+    for (const event of screenEvents) screen.off(event, repaint);
+    for (const event of powerEvents) powerMonitor.off(event, repaint);
+  });
+}
+
 function createWindow(appUrl) {
   const { bounds, maximized } = initialWindowState();
   const window = new BrowserWindow({
@@ -54,6 +75,7 @@ function createWindow(appUrl) {
     show: false,
   });
   rememberWindowState(window);
+  repaintAfterDisplayChanges(window);
   const appOrigin = new URL(appUrl).origin;
 
   // Links such as pull requests open in the default browser, never inside the app.
