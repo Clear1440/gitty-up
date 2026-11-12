@@ -144,6 +144,23 @@ export function TabBar({ activeRepositoryId, isSettings = false }) {
     closeTab(repositoryId);
   };
 
+  /**
+   * Middle-clicking anywhere on a tab closes it, as in a browser. Ant Design only does
+   * this for a click on the tab's label, so the rest of the tab, its padding and its close
+   * button, is handled here, leaving the label to Ant's own handler.
+   */
+  const withMiddleClickClose = (node) => {
+    if (node.key === HOME_TAB) return node;
+    return cloneElement(node, {
+      onMouseDown: (event) => {
+        if (event.button !== 1) return;
+        // Stops Windows and Linux starting to autoscroll the page.
+        event.preventDefault();
+        if (!event.target.closest('.ant-tabs-tab-btn')) handleClose(node.key);
+      },
+    });
+  };
+
   return (
     <header className={styles.tabBar}>
       <Tabs
@@ -168,7 +185,7 @@ export function TabBar({ activeRepositoryId, isSettings = false }) {
           ),
         }}
         renderTabBar={(tabBarProps, DefaultTabBar) => (
-          <DefaultTabBar {...tabBarProps}>{wrapTab}</DefaultTabBar>
+          <DefaultTabBar {...tabBarProps}>{(node) => wrapTab(withMiddleClickClose(node))}</DefaultTabBar>
         )}
         onChange={handleChange}
         onEdit={(key, action) => {
