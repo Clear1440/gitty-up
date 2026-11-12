@@ -22,6 +22,12 @@ export function sanitizeSizes(stored, limits) {
   return Object.fromEntries(entries);
 }
 
+/** Whether a pointer event happened with the main mouse button down, as a drag needs. */
+export function isPrimaryButtonHeld({ buttons }) {
+  // A bit mask, a bit per button, the main one first.
+  return (buttons & 1) === 1;
+}
+
 /** How much an arrow key changes the size from this edge, or 0 if it doesn't apply. */
 export function keyboardStep(key, edge) {
   const { isVertical, direction } = EDGES[edge];
@@ -76,22 +82,35 @@ export function useResizableSizes(containerRef, group, limits) {
       const start = pointerPosition(event);
       const startSize = measure(handle);
       let size = startSize;
+      let isDragging = true;
 
-      const onMove = (moveEvent) => {
-        size = clampSize(startSize + (pointerPosition(moveEvent) - start) * direction, limit);
-        containerRef.current?.style.setProperty(variable(name), `${size}px`);
-      };
       const onEnd = () => {
+        if (!isDragging) return;
+        isDragging = false;
         handle.removeEventListener('pointermove', onMove);
         handle.removeEventListener('pointerup', onEnd);
         handle.removeEventListener('pointercancel', onEnd);
+        handle.removeEventListener('lostpointercapture', onEnd);
+        if (handle.hasPointerCapture?.(event.pointerId)) handle.releasePointerCapture(event.pointerId);
         if (size !== startSize) commit(size);
+      };
+      // The release can go missing, as when macOS takes the click for a gesture or the
+      // button comes up outside the window. Without the button held this is just hovering,
+      // which must never resize, so the drag is over.
+      const onMove = (moveEvent) => {
+        if (!isPrimaryButtonHeld(moveEvent)) {
+          onEnd();
+          return;
+        }
+        size = clampSize(startSize + (pointerPosition(moveEvent) - start) * direction, limit);
+        containerRef.current?.style.setProperty(variable(name), `${size}px`);
       };
 
       handle.setPointerCapture(event.pointerId);
       handle.addEventListener('pointermove', onMove);
       handle.addEventListener('pointerup', onEnd);
       handle.addEventListener('pointercancel', onEnd);
+      handle.addEventListener('lostpointercapture', onEnd);
     };
 
     const onKeyDown = (event) => {
