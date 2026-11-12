@@ -12,6 +12,9 @@ const queryClient = new QueryClient({
       // Kept a while after its tab is left, so switching back shows it straight away
       // while it refreshes, rather than loading from scratch.
       gcTime: 30 * 60_000,
+      // Coming back to the window refreshes the open tab in one go instead (useAutoFetch),
+      // rather than each query landing on its own and the page redrawing a panel at a time.
+      refetchOnWindowFocus: false,
       // Only server hiccups are worth retrying. A 4xx will fail the same way again.
       retry: (failureCount, error) => failureCount < 1 && error.status >= 500,
     },

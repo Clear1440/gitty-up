@@ -24,7 +24,9 @@ export function MergeIntoDialog({ target, onClose }) {
     >
       <Flex vertical gap={12} align="flex-start">
         <p style={{ margin: 0 }}>
-          This checks out {target} and merges {source} into it. You stay on {target} afterwards.
+          {repository.isMono
+            ? `In every repository here, this checks out ${target} and merges ${source} into it. They all stay on ${target} afterwards.`
+            : `This checks out ${target} and merges ${source} into it. You stay on ${target} afterwards.`}
         </p>
         <Checkbox
           checked={noFastForward}

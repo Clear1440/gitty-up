@@ -55,6 +55,7 @@
     "files": [
       "package.json",
       "electron/**",
+      "!electron/**/*.test.js",
       "server/**",
       "!server/**/*.test.js",
       "dist/**"

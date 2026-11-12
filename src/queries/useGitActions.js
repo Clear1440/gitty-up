@@ -5,6 +5,8 @@ import { gitApi } from '../api';
 import { MonoIdHelper } from '../utils/MonoIdHelper.js';
 import { TextHelper } from '../utils/TextHelper.js';
 import { mutationKeys, queryKeys } from './queryKeys.js';
+import { refreshTogether } from './refreshTogether.js';
+import { recordAction, takeUndoStep } from './undoHistory.js';
 
 /** A mono repo reports on each of its repositories, a line apiece. */
 const MULTILINE = { whiteSpace: 'pre-line' };
@@ -88,6 +90,7 @@ const GIT_ACTIONS = {
     title: 'Resolve conflict',
     success: ({ path, remove }) => (remove ? `Deleted ${path}` : `Resolved ${path}`),
   },
+  unresolveConflict: { run: gitApi.unresolveConflict, title: 'Undo resolving' },
   discard: { run: gitApi.discard, title: 'Discard', success: () => 'Changes discarded' },
   discardAll: {
     run: gitApi.discardAll,
@@ -164,10 +167,22 @@ export function useGitActions(repositoryId) {
   const { message, notification } = App.useApp();
   const mutationKey = mutationKeys.gitAction(repositoryId);
 
+  // A mono repo's actions land in its members, which have tabs of their own.
+  const affectedKey = MonoIdHelper.isMonoId(repositoryId)
+    ? queryKeys.allRepositories()
+    : queryKeys.repository(repositoryId);
+
   const { mutateAsync } = useMutation({
     mutationKey,
+    // A status read while the action runs could catch it halfway, as a merge into
+    // another branch does by switching first, and flash that on screen.
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.status(repositoryId) });
+      return { statusBefore: queryClient.getQueryData(queryKeys.status(repositoryId)) };
+    },
     mutationFn: ({ name, input }) => GIT_ACTIONS[name].run(repositoryId, input),
-    onSuccess: (result, { name, input }) => {
+    onSuccess: (result, { name, input, isUndo }, context) => {
+      if (!isUndo) recordAction(repositoryId, name, input, context?.statusBefore);
       // Many actions run with no input, such as a plain push, and messages read from it.
       const text = GIT_ACTIONS[name].success?.(input ?? {}, result);
       if (text) message.success(text);
@@ -198,14 +213,10 @@ export function useGitActions(repositoryId) {
       }
     },
     // Failed commands can still change the repository, as a conflicted merge does.
+    // Everything on screen changes in one go, rather than a panel at a time.
     onSettled: () =>
       Promise.all([
-        queryClient.invalidateQueries({
-          // A mono repo's actions land in its members, which have tabs of their own.
-          queryKey: MonoIdHelper.isMonoId(repositoryId)
-            ? queryKeys.allRepositories()
-            : queryKeys.repository(repositoryId),
-        }),
+        refreshTogether(queryClient, affectedKey),
         queryClient.invalidateQueries({ queryKey: queryKeys.repositoryList() }),
       ]),
   });
@@ -220,9 +231,9 @@ export function useGitActions(repositoryId) {
    * because the conflict banner takes over from there.
    */
   const run = useCallback(
-    async (name, input) => {
+    async (name, input, { isUndo = false } = {}) => {
       try {
-        await mutateAsync({ name, input });
+        await mutateAsync({ name, input, isUndo });
         return true;
       } catch (error) {
         return error.code === 'CONFLICTS';
@@ -247,9 +258,13 @@ export function useGitActions(repositoryId) {
     [mutateAsync],
   );
 
+  /** Takes this repository's latest undo step, or null. See undoHistory.js. */
+  const takeUndo = useCallback(() => takeUndoStep(repositoryId), [repositoryId]);
+
   return {
     run,
     attempt,
+    takeUndo,
     pendingAction: pendingActions[0] ?? null,
     isBusy: pendingActions.length > 0,
   };

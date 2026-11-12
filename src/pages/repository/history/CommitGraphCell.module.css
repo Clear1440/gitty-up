@@ -1,8 +1,13 @@
-/* Spreads out from the ring around the checked out commit, and fades as it goes. */
+/*
+ * Spreads out from the ring around the checked out commit, and fades as it goes. A few
+ * times, as the checked out commit arrives, and then it rests: an endless animation
+ * keeps the window redrawing every frame for as long as the app is open, which costs
+ * CPU even when nothing else is happening.
+ */
 .headPulse {
   transform-box: fill-box;
   transform-origin: center;
-  animation: head-pulse 2s ease-out infinite;
+  animation: head-pulse 2s ease-out 3 forwards;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
 }

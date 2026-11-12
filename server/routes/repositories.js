@@ -7,7 +7,7 @@ import * as mono from '../git/monoService.js';
 import { parseRemoteUrl } from '../git/remoteUrl.js';
 import { GIT_CONCURRENCY } from '../git/runGit.js';
 import { describeScript, loadGittyConfig } from '../scripts/gittyConfig.js';
-import { runScript } from '../scripts/runScript.js';
+import { findRun, runScript, startScript } from '../scripts/runScript.js';
 import { AsyncHelper } from '../utils/AsyncHelper.js';
 import { ValidationHelper } from '../utils/ValidationHelper.js';
 
@@ -65,6 +65,18 @@ function requireStub(repository) {
     throw ApiError.badRequest(`${repository.name} is already on this machine.`);
   }
   return repository;
+}
+
+/** The script named in the request body. Read afresh, so only what .gitty lists right now can run. */
+async function findScript(request) {
+  if (request.repository.isMono) {
+    throw ApiError.badRequest('Scripts are not available in a mono repo.');
+  }
+  const name = ValidationHelper.requireString(request.body?.name, 'name');
+  const { scripts } = await loadGittyConfig(request.target);
+  const script = scripts.find((candidate) => candidate.name === name);
+  if (!script) throw ApiError.notFound(`.gitty has no script named "${name}".`);
+  return script;
 }
 
 /** A stub has no folder. Without this guard git would run in the server's own folder. */
@@ -148,16 +160,59 @@ function createGitRouter() {
     response.json({ found, scripts: scripts.map(describeScript), errors });
   });
 
+  // Runs a script to the end and replies with all its output at once.
   router.post('/scripts/run', async (request, response) => {
-    if (request.repository.isMono) {
-      throw ApiError.badRequest('Scripts are not available in a mono repo.');
+    const script = await findScript(request);
+    response.json(await runScript(request.target, script, request.body?.params));
+  });
+
+  // Starts a script and replies at once. Its output follows from /events as it comes.
+  router.post('/scripts/runs', async (request, response) => {
+    const script = await findScript(request);
+    const run = await startScript(request.target, script, request.body?.params);
+    response.status(201).json(run.summary());
+  });
+
+  // Server-sent events: a 'snapshot' of the run and its output so far, then 'output' as
+  // the script writes more, then 'end' once it exits.
+  router.get('/scripts/runs/:runId/events', (request, response) => {
+    const run = findRun(request.target, request.params.runId);
+    if (!run) throw ApiError.notFound('That script run is no longer kept.');
+
+    response.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+    });
+    const send = (event, data) => response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    send('snapshot', { ...run.summary(), output: run.output.text() });
+    if (run.status !== 'running') {
+      send('end', run.summary());
+      response.end();
+      return;
     }
-    const name = ValidationHelper.requireString(request.body?.name, 'name');
-    // Read afresh, so only what .gitty lists right now can run.
-    const { scripts } = await loadGittyConfig(request.target);
-    const script = scripts.find((candidate) => candidate.name === name);
-    if (!script) throw ApiError.notFound(`.gitty has no script named "${name}".`);
-    response.json(await runScript(request.target, script));
+
+    const onOutput = (text) => send('output', { text });
+    const onEnd = (summary) => {
+      send('end', summary);
+      response.end();
+    };
+    // A comment now and then keeps an idle connection from being dropped.
+    const heartbeat = setInterval(() => response.write(': still running\n\n'), 15_000);
+    run.on('output', onOutput);
+    run.once('end', onEnd);
+    response.on('close', () => {
+      clearInterval(heartbeat);
+      run.off('output', onOutput);
+      run.off('end', onEnd);
+    });
+  });
+
+  router.post('/scripts/runs/:runId/stop', async (request, response) => {
+    const run = findRun(request.target, request.params.runId);
+    if (!run) throw ApiError.notFound('That script run is no longer kept.');
+    run.stop();
+    response.status(204).end();
   });
 
   router.get('/worktrees', async (request, response) => {
@@ -314,6 +369,9 @@ function createGitRouter() {
       side: side ?? undefined,
       remove: remove === true,
     }),
+  );
+  action(router, '/unresolve-conflict', (service, target, { path }) =>
+    service.unresolveConflict(target, { filePath: ValidationHelper.requireString(path, 'path') }),
   );
   action(router, '/discard', (service, target, { paths }) =>
     service.discard(target, { paths: ValidationHelper.requirePaths(paths) }),

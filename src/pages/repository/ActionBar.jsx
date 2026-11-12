@@ -20,6 +20,8 @@ import { useConfirmDanger } from '../../components/useConfirmDanger.js';
 import { paths } from '../../paths.js';
 import { useStashes } from '../../queries/git.js';
 import { queryKeys } from '../../queries/queryKeys.js';
+import { useIsFetchingAllRepositories } from '../../queries/repositories.js';
+import { useIsAutoFetching } from '../../queries/useAutoFetch.js';
 import { CommitHelper } from './CommitHelper.js';
 import { MonoMembers } from './MonoMembers.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
@@ -89,6 +91,11 @@ export function ActionBar() {
   const push = usePush();
   const { savePatch, pickPatchFile } = usePatchActions();
   useUndoCommitShortcut();
+  // Fetches started on their own, on opening or coming back to the tab, or by fetching
+  // every repository, spin the button too, so a click doesn't seem to do nothing.
+  const isAutoFetching = useIsAutoFetching(repository.id);
+  const isFetchingAll = useIsFetchingAllRepositories();
+  const isFetching = pendingAction === 'fetch' || isAutoFetching || isFetchingAll;
 
   const changedFileCount = StatusHelper.countChangedFiles(status);
   const midOperation = Boolean(status.operation);
@@ -157,7 +164,7 @@ export function ActionBar() {
         label="Fetch"
         hint="Download updates from all remotes"
         icon={<SyncOutlined />}
-        loading={pendingAction === 'fetch'}
+        loading={isFetching}
         disabled={isBusy}
         menuItems={fetchMenu}
         onClick={() => run('fetch')}
@@ -204,16 +211,20 @@ export function ActionBar() {
         disabled={isBusy}
         onClick={() => openDialog('createBranch')}
       />
+      <ActionButton
+        label="Merge"
+        hint={
+          repository.isMono
+            ? 'Merge another branch, in every repository here'
+            : 'Merge or rebase with another branch'
+        }
+        icon={<MergeOutlined />}
+        disabled={isBusy || midOperation}
+        onClick={() => openDialog('merge')}
+      />
       {/* Across a mono repo these would quietly change several repositories at once. */}
       {!repository.isMono && (
         <>
-          <ActionButton
-            label="Merge"
-            hint="Merge or rebase with another branch"
-            icon={<MergeOutlined />}
-            disabled={isBusy || midOperation}
-            onClick={() => openDialog('merge')}
-          />
           <ActionButton
             label="Stash"
             hint="Set your changes aside"

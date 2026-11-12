@@ -7,6 +7,8 @@ import {
 } from '@ant-design/icons';
 import { App, Button, ColorPicker, Result, Segmented, Select, Spin, Typography } from 'antd';
 import { useState } from 'react';
+// Only the version is bundled, read when the app is built, so it is the release's own.
+import { version as appVersion } from '../../../package.json';
 import { useAppearance } from '../../appearance/AppearanceContext.jsx';
 import { useSetDataDir, useSettings } from '../../queries/settings.js';
 import {
@@ -256,6 +258,16 @@ export function SettingsPage() {
       {isPending && <Spin className="centered" />}
       {error && <Result status="error" title="Could not load the settings" subTitle={error.message} />}
       {settings && <DataSection settings={settings} />}
+      <section className={styles.section} aria-labelledby="about-heading">
+        <h2 id="about-heading" className={styles.sectionTitle}>
+          About
+        </h2>
+        <Setting label="Version" description="The release of Gitty Up you are running.">
+          <Typography.Text className={styles.version} copyable={{ text: appVersion }}>
+            v{appVersion}
+          </Typography.Text>
+        </Setting>
+      </section>
     </div>
   );
 }

@@ -563,7 +563,7 @@ export async function pruneGoneBranches(repoPath, { force = false, names } = {})
 }
 
 /** A merge from or into a stale branch would leave out what is already on the remote. */
-async function assertNotBehind(repoPath, names) {
+export async function assertNotBehind(repoPath, names) {
   const { local } = await listBranchRefs(repoPath);
   const stale = local.filter(({ name, behind }) => names.includes(name) && behind > 0);
   if (stale.length === 0) return;
@@ -1347,4 +1347,16 @@ export async function resolveConflict(repoPath, { filePath, content, side, remov
   await fs.mkdir(path.dirname(target), { recursive: true });
   await fs.writeFile(target, content);
   await stage(repoPath, { paths: [filePath] });
+}
+
+/**
+ * Takes back resolving a conflict, putting the file back as git first left it, with its
+ * conflict markers. Git remembers each side of a resolved file for this until the merge
+ * is committed, so this only works while it is still under way.
+ */
+export async function unresolveConflict(repoPath, { filePath }) {
+  const { operation, conflicted } = await getStatus(repoPath);
+  if (!operation) throw ApiError.gitFailure('There is no merge under way to undo this in.');
+  if (conflicted.some((file) => file.path === filePath)) return;
+  await runGitOnPaths(repoPath, ['checkout', '--merge', '--', filePath]);
 }

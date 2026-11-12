@@ -21,7 +21,10 @@ export const gitApi = {
   /** `source` is "commit" with `hash`, "stash" with `ref`, or "uncommitted". */
   createPatch: (id, { source, hash, ref }) => http.get(route(id, '/patch'), { source, hash, ref }),
   getScripts: (id) => http.get(route(id, '/scripts')),
-  runScript: (id, { name }) => http.post(route(id, '/scripts/run'), { name }),
+  /** Starts a script and resolves with the run at once. Follow it with `scriptRunEvents`. */
+  startScript: (id, { name, params }) => http.post(route(id, '/scripts/runs'), { name, params }),
+  scriptRunEvents: (id, runId) => http.events(route(id, `/scripts/runs/${runId}/events`)),
+  stopScript: (id, runId) => http.post(route(id, `/scripts/runs/${runId}/stop`)),
   getDiff: (id, { path, staged, untracked, fullFile }) =>
     http.get(route(id, '/diff'), { path, staged, untracked, fullFile }),
   getConflict: (id, { path }) => http.get(route(id, '/conflict'), { path }),
@@ -59,6 +62,8 @@ export const gitApi = {
   stageLines: (id, selection) => http.post(route(id, '/stage-lines'), selection),
   resolveConflict: (id, { path, content, side, remove }) =>
     http.post(route(id, '/resolve-conflict'), { path, content, side, remove }),
+  /** Puts a resolved file back in conflict, while its merge is still under way. */
+  unresolveConflict: (id, { path }) => http.post(route(id, '/unresolve-conflict'), { path }),
   discard: (id, { paths }) => http.post(route(id, '/discard'), { paths }),
   discardAll: (id) => http.post(route(id, '/discard-all')),
   /** `kind` is "file", "folder" or "extension". */
