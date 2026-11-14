@@ -33,6 +33,21 @@ export function useFolderPicker() {
   };
 }
 
+/** Says which folder the dialog's button will act on, so it is never a guess. */
+export function ChosenFolder({ path }) {
+  return (
+    <p className={styles.target}>
+      {path ? (
+        <>
+          Links <code>{path}</code>
+        </>
+      ) : (
+        'No folder chosen yet.'
+      )}
+    </p>
+  );
+}
+
 /**
  * `onChange` fires whenever the selection changes. `selection` adds checkboxes to
  * the folder list, and `list` replaces that list with something else.

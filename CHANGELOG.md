@@ -6,6 +6,15 @@ version's section.
 
 ## Unreleased
 
+### Changed
+
+- **Clearer dialogs.** Fields in the branch, merge, stash, publish and worktree dialogs have
+  labels that stay on show, and each dialog says in a sentence what its button will do.
+- The commit box always says which files a commit takes, and why Commit is greyed out.
+- Hovering a toolbar button says what its count means, and why it can't be used right now.
+- Linking a repository names its two choices **Folder on this machine** and **Git URL**, and
+  shows the folder that will be linked.
+
 ## 0.2.3 - 2026-11-12
 
 ### Added

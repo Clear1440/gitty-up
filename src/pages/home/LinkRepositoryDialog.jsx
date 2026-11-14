@@ -2,14 +2,15 @@ import { BranchesOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import { Alert, Input, Segmented } from 'antd';
 import { useState } from 'react';
 import { ActionDialog } from '../../components/ActionDialog.jsx';
+import { Field } from '../../components/Field.jsx';
 import { useAddRepositoryStub, useLinkRepository } from '../../queries/repositories.js';
-import { FolderPicker, useFolderPicker } from './FolderPicker.jsx';
+import { ChosenFolder, FolderPicker, useFolderPicker } from './FolderPicker.jsx';
 import styles from './LinkRepositoryDialog.module.css';
 import { useOpenAfter } from './useOpenAfter.js';
 
 const SOURCES = [
-  { value: 'filesystem', label: 'File system', icon: <FolderOpenOutlined /> },
-  { value: 'git', label: 'Git', icon: <BranchesOutlined /> },
+  { value: 'filesystem', label: 'Folder on this machine', icon: <FolderOpenOutlined /> },
+  { value: 'git', label: 'Git URL', icon: <BranchesOutlined /> },
 ];
 
 export function LinkRepositoryDialog({ onClose }) {
@@ -51,27 +52,29 @@ export function LinkRepositoryDialog({ onClose }) {
       />
       {fromGit ? (
         <>
-          <p className={styles.hint}>
-            Paste the repository’s URL. It gets a row where you can clone it, or locate a copy
-            you already have.
-          </p>
-          <Input
-            autoFocus
-            aria-label="Repository URL"
-            placeholder="https://github.com/owner/repository.git"
-            value={url}
-            onChange={(event) => {
-              setUrl(event.target.value);
-              addStub.reset();
-            }}
-          />
+          <Field
+            label="Repository URL"
+            hint="Nothing is downloaded yet. It gets a row in the list, where you can clone it or locate a copy you already have."
+          >
+            <Input
+              autoFocus
+              aria-label="Repository URL"
+              placeholder="https://github.com/owner/repository.git"
+              value={url}
+              onChange={(event) => {
+                setUrl(event.target.value);
+                addStub.reset();
+              }}
+            />
+          </Field>
         </>
       ) : (
         <>
           <p className={styles.hint}>
-            Choose a folder on this machine, or paste its path. Nothing is copied or moved.
+            Open the repository’s folder below, or paste its path. Nothing is copied or moved.
           </p>
           <FolderPicker picker={picker} onChange={link.reset} />
+          <ChosenFolder path={picker.selected} />
         </>
       )}
       {error && <Alert className={styles.error} type="error" showIcon title={error.message} />}
