@@ -9,9 +9,10 @@ import {
   SearchOutlined,
   SyncOutlined,
 } from '@ant-design/icons';
-import { App, Button, Input, Result, Segmented, Spin, Tooltip } from 'antd';
+import { App, Button, Input, Result, Segmented, Spin } from 'antd';
 import clsx from 'clsx';
 import { useMemo, useState } from 'react';
+import { Tooltip } from '../../components/Tooltip.jsx';
 import {
   useCreateGroup,
   useFetchAllRepositories,

@@ -1,8 +1,9 @@
 import { ClusterOutlined } from '@ant-design/icons';
-import { App, Button, Radio, Tooltip } from 'antd';
+import { App, Button, Radio } from 'antd';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ActionDialog } from '../../components/ActionDialog.jsx';
+import { Tooltip } from '../../components/Tooltip.jsx';
 import { paths } from '../../paths.js';
 import { useOpenMono, useRepositories } from '../../queries/repositories.js';
 import { MonoIdHelper } from '../../utils/MonoIdHelper.js';

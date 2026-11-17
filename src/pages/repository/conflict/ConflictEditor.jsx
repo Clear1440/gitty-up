@@ -6,9 +6,10 @@ import {
   UndoOutlined,
   VerticalAlignBottomOutlined,
 } from '@ant-design/icons';
-import { Button, Space, Tooltip } from 'antd';
+import { Button, Space } from 'antd';
 import clsx from 'clsx';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Tooltip } from '../../../components/Tooltip.jsx';
 import { KeyboardHelper } from '../../../utils/KeyboardHelper.js';
 import { TextHelper } from '../../../utils/TextHelper.js';
 import { detectEol, initialLines, joinLines, merge3, splitLines } from './merge3.js';

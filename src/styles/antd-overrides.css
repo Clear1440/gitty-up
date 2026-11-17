@@ -12,3 +12,11 @@
 .ant-message-notice-content {
   border: 1px solid var(--color-border-strong);
 }
+
+/*
+ * A tooltip only explains what it points at, so the pointer passes straight through it.
+ * Otherwise moving onto the tooltip holds it open over whatever it covers.
+ */
+.ant-tooltip {
+  pointer-events: none;
+}

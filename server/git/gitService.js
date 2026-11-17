@@ -28,6 +28,7 @@ const OPERATION_MARKERS = [
   { operation: 'rebase', marker: 'rebase-apply' },
   { operation: 'merge', marker: 'MERGE_HEAD' },
   { operation: 'cherry-pick', marker: 'CHERRY_PICK_HEAD' },
+  { operation: 'revert', marker: 'REVERT_HEAD' },
 ];
 
 const PULL_MODE_FLAGS = { merge: '--no-rebase', rebase: '--rebase', 'ff-only': '--ff-only' };
@@ -111,7 +112,7 @@ async function getOperation(repoPath) {
 async function requireOperation(repoPath) {
   const operation = await getOperation(repoPath);
   if (!operation) {
-    throw ApiError.gitFailure('There is no merge, rebase or cherry-pick in progress.');
+    throw ApiError.gitFailure('There is no merge, rebase, cherry-pick or revert in progress.');
   }
   return operation;
 }
@@ -622,7 +623,7 @@ export async function abortOperation(repoPath) {
 export async function continueOperation(repoPath) {
   const operation = await requireOperation(repoPath);
   await reportingConflicts(repoPath, () =>
-    // A merge or cherry-pick finishes by committing, with the message git prepared.
+    // A merge, cherry-pick or revert finishes by committing, with the message git prepared.
     runGit(repoPath, operation === 'rebase' ? ['rebase', '--continue'] : ['commit', '--no-edit']),
   );
 }
@@ -745,8 +746,9 @@ export async function commit(repoPath, { message, amend = false, stageAll = fals
   // Staging everything here would commit the conflict markers.
   if (conflicted.length > 0) throw ApiError.gitFailure('Resolve the conflicts before committing.');
 
-  // A merge or cherry-pick already has a message, and an amend can keep the existing one.
-  const canReuseMessage = operation === 'merge' || operation === 'cherry-pick' || amend;
+  // A merge, cherry-pick or revert already has a message, and an amend can keep the existing one.
+  const canReuseMessage =
+    operation === 'merge' || operation === 'cherry-pick' || operation === 'revert' || amend;
   if (!trimmed && !canReuseMessage) throw ApiError.badRequest('A commit message is required.');
 
   if (stageAll) await stage(repoPath);
@@ -786,6 +788,32 @@ export async function cherryPick(repoPath, { hash }) {
   } catch (error) {
     if (error.code !== 'CONFLICTS' && (await getOperation(repoPath)) === 'cherry-pick') {
       await runGit(repoPath, ['cherry-pick', '--abort']);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Adds a commit that undoes `hash` on the checked out branch. With `keepMessage` it
+ * commits straight away as git words it, `Revert "<subject>"`. Without, the reverted
+ * changes are left staged for the user to commit with a message of their own.
+ * Either way a conflict pauses the revert, as with a cherry-pick.
+ */
+export async function revert(repoPath, { hash, keepMessage = true }) {
+  assertCommitHash(hash);
+  await assertNoOperation(repoPath, 'reverting');
+  const [, ...parents] = (await runGit(repoPath, ['rev-list', '--parents', '-n', '1', hash]))
+    .trim()
+    .split(' ');
+  if (parents.length > 1) throw ApiError.badRequest('A merge commit cannot be reverted here.');
+
+  try {
+    await reportingConflicts(repoPath, () =>
+      runGit(repoPath, ['revert', keepMessage ? '--no-edit' : '--no-commit', hash]),
+    );
+  } catch (error) {
+    if (error.code !== 'CONFLICTS' && (await getOperation(repoPath)) === 'revert') {
+      await runGit(repoPath, ['revert', '--abort']);
     }
     throw error;
   }
@@ -1270,6 +1298,8 @@ async function getConflictLabels(repoPath) {
 
   const cherryPick = await readGitFile(gitDir, 'CHERRY_PICK_HEAD');
   if (cherryPick) return { ours, theirs: await nameCommit(repoPath, cherryPick) };
+  const reverted = await readGitFile(gitDir, 'REVERT_HEAD');
+  if (reverted) return { ours, theirs: `Revert of ${GitRefHelper.shortHash(reverted)}` };
   // Applying a stash is the other way to end up with conflicts.
   return { ours, theirs: 'Stashed changes' };
 }

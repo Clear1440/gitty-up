@@ -6,6 +6,14 @@ version's section.
 
 ## Unreleased
 
+### Added
+
+- **Revert a commit.** Right-click a commit in the history and choose **Revert commit…**. Keep
+  the commit message to commit straight away as `Revert "…"`, or untick it to stage the undoing
+  changes and commit them with a message of your own.
+- The branch list can hide local branches whose upstream is gone, with the button beside the
+  filter. The checked out branch always shows.
+
 ### Changed
 
 - **Clearer dialogs.** Fields in the branch, merge, stash, publish and worktree dialogs have
@@ -14,6 +22,11 @@ version's section.
 - Hovering a toolbar button says what its count means, and why it can't be used right now.
 - Linking a repository names its two choices **Folder on this machine** and **Git URL**, and
   shows the folder that will be linked.
+- Discarding a file's changes shows as a trash can.
+- Tooltips show below their button, and go away as soon as the pointer leaves it, even onto
+  the tooltip.
+- The repository list keeps its counts and times in columns that line up from row to row.
+- The Stash button no longer shows a count.
 
 ## 0.2.3 - 2026-11-12
 

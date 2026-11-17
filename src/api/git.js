@@ -52,6 +52,7 @@ export const gitApi = {
   rebase: (id, { branch }) => http.post(route(id, '/rebase'), { branch }),
   checkoutCommit: (id, { hash }) => http.post(route(id, '/checkout-commit'), { hash }),
   cherryPick: (id, { hash }) => http.post(route(id, '/cherry-pick'), { hash }),
+  revert: (id, { hash, keepMessage }) => http.post(route(id, '/revert'), { hash, keepMessage }),
   resetToCommit: (id, { hash, mode }) => http.post(route(id, '/reset'), { hash, mode }),
   abortOperation: (id) => http.post(route(id, '/operation/abort')),
   continueOperation: (id) => http.post(route(id, '/operation/continue')),

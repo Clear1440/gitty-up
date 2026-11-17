@@ -56,6 +56,13 @@ export function useCommitMenu(commit) {
       onClick: () => run('cherryPick', { hash, subject }),
     },
     {
+      key: 'revert',
+      label: 'Revert commit…',
+      title: isMerge ? 'Merge commits cannot be reverted here' : undefined,
+      disabled: isMerge || blocked,
+      onClick: () => openDialog('revertCommit', { hash, shortHash, subject }),
+    },
+    {
       key: 'reset',
       label: `Reset ${current} to here`,
       disabled: blocked,

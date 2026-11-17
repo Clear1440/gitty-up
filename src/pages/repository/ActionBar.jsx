@@ -12,10 +12,11 @@ import {
   SyncOutlined,
 } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
-import { App, Button, Divider, Dropdown, Space, Tooltip } from 'antd';
+import { App, Button, Divider, Dropdown, Space } from 'antd';
 import clsx from 'clsx';
 import { useNavigate } from 'react-router';
 import { AheadBehind } from '../../components/AheadBehind.jsx';
+import { Tooltip } from '../../components/Tooltip.jsx';
 import { useConfirmDanger } from '../../components/useConfirmDanger.js';
 import { paths } from '../../paths.js';
 import { useStashes } from '../../queries/git.js';
@@ -262,7 +263,6 @@ export function ActionBar() {
             label="Stash"
             hint={waitHint ?? stashHint}
             icon={<InboxOutlined />}
-            count={changedFileCount}
             loading={pendingAction === 'stash'}
             disabled={isBusy || midOperation || changedFileCount === 0}
             onClick={() => openDialog('stash')}

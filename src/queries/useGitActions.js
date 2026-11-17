@@ -75,6 +75,14 @@ const GIT_ACTIONS = {
     title: 'Cherry-pick',
     success: ({ subject }) => `Cherry-picked "${subject}"`,
   },
+  revert: {
+    run: gitApi.revert,
+    title: 'Revert',
+    success: ({ shortHash, keepMessage }) =>
+      keepMessage === false
+        ? `Staged the revert of ${shortHash}. Write its message to commit it.`
+        : `Reverted ${shortHash}`,
+  },
   resetToCommit: {
     run: gitApi.resetToCommit,
     title: 'Reset',

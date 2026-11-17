@@ -2,14 +2,15 @@ import { Alert, Button, Popconfirm, Space } from 'antd';
 import { TextHelper } from '../../utils/TextHelper.js';
 import { useRepositoryContext } from './RepositoryContext.js';
 
-const LABELS = { merge: 'Merge', rebase: 'Rebase', 'cherry-pick': 'Cherry-pick' };
+const LABELS = { merge: 'Merge', rebase: 'Rebase', 'cherry-pick': 'Cherry-pick', revert: 'Revert' };
 const CONTINUE_LABELS = {
   merge: 'Finish merge',
   rebase: 'Continue rebase',
   'cherry-pick': 'Finish cherry-pick',
+  revert: 'Finish revert',
 };
 
-/** Appears while a merge, rebase or cherry-pick is paused and waiting on the user. */
+/** Appears while a merge, rebase, cherry-pick or revert is paused and waiting on the user. */
 export function OperationBanner() {
   const { status, run, isBusy } = useRepositoryContext();
   if (!status.operation) return null;

@@ -6,11 +6,11 @@ import {
   InboxOutlined,
   MinusOutlined,
   PlusOutlined,
-  UndoOutlined,
 } from '@ant-design/icons';
-import { Button, Empty, Popconfirm, Tooltip } from 'antd';
+import { Button, Empty, Popconfirm } from 'antd';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { Tooltip } from '../../../components/Tooltip.jsx';
 import { useConfirmDanger } from '../../../components/useConfirmDanger.js';
 import { paths } from '../../../paths.js';
 import { EMPTY_SELECTION, clickSelection, selectedInOrder } from '../../home/selection.js';
@@ -166,7 +166,7 @@ function WorkingTreeFiles({ selected, onSelect }) {
               okButtonProps={{ danger: true }}
               onConfirm={() => run('discard', { paths: [file.path] })}
             >
-              <IconAction label="Discard" icon={<UndoOutlined />} disabled={isBusy} />
+              <IconAction label="Discard" icon={<DeleteOutlined />} disabled={isBusy} />
             </Popconfirm>
             <IconAction
               label="Stage"
