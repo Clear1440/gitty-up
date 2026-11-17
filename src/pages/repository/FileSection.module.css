@@ -93,7 +93,8 @@
 }
 
 .folder {
-  color: var(--color-primary-strong);
+  color: var(--repository-color, var(--color-primary-strong));
+  font-weight: var(--font-weight-semibold);
 }
 
 .actions {

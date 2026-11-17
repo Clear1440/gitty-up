@@ -529,6 +529,59 @@ describe('merging and stashing', () => {
     }
   });
 
+  it('previews a merge per member, saying which branch goes where', async () => {
+    for (const { work } of members()) git(work, 'branch', 'feature');
+    // api gains two commits on feature, web one, and docs none.
+    git(mono.api.work, 'switch', 'feature');
+    await writeAndCommit(mono.api.work, 'a.txt', 'a\n', 'A1');
+    await writeAndCommit(mono.api.work, 'b.txt', 'b\n', 'A2');
+    git(mono.api.work, 'switch', 'main');
+    git(mono.web.work, 'switch', 'feature');
+    await writeAndCommit(mono.web.work, 'w.txt', 'w\n', 'W1');
+    git(mono.web.work, 'switch', 'main');
+    await writeAndCommit(mono.web.work, 'm.txt', 'm\n', 'On main too');
+
+    const { status, body } = await request(
+      'GET',
+      `${mono.route}/merge-preview?source=feature&target=main`,
+    );
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ source: 'feature', target: 'main', commits: 3 });
+    expect(body.fastForward).toBe(false);
+    expect(body.repositories).toEqual([
+      expect.objectContaining({ name: 'api', commits: 2, fastForward: true, slot: 0 }),
+      expect.objectContaining({ name: 'web', commits: 1, fastForward: false, slot: 1 }),
+      expect.objectContaining({ name: 'docs', commits: 0, fastForward: false, slot: 2 }),
+    ]);
+  });
+
+  it('says where each member stands, and words a partial merge with both branches', async () => {
+    await fs.writeFile(path.join(mono.api.work, 'readme.txt'), 'changed\n');
+    await writeAndCommit(mono.web.work, 'w.txt', 'w\n', 'Unpushed');
+    const { mono: parts } = await getStatus();
+    expect(parts.members).toEqual([
+      expect.objectContaining({ name: 'api', prefix: 'api', changes: 1, ahead: 0 }),
+      expect.objectContaining({ name: 'web', upstream: 'origin/main', ahead: 1, changes: 0 }),
+      expect.objectContaining({ name: 'docs', slot: 2 }),
+    ]);
+
+    // web can't merge, as its copy of other conflicts; the rest merge, and the report says what.
+    for (const { work } of members()) git(work, 'branch', 'other', 'HEAD~0');
+    git(mono.web.work, 'switch', 'other');
+    await writeAndCommit(mono.web.work, 'w.txt', 'theirs\n', 'Theirs');
+    git(mono.web.work, 'switch', 'main');
+    await writeAndCommit(mono.web.work, 'w.txt', 'ours\n', 'Ours');
+    for (const { work } of [mono.api, mono.docs]) {
+      git(work, 'switch', 'other');
+      await writeAndCommit(work, 'o.txt', 'o\n', 'Other');
+      git(work, 'switch', 'main');
+    }
+    git(mono.api.work, 'stash', '--include-untracked');
+
+    const { body } = await request('POST', `${mono.route}/merge`, { branch: 'other' });
+    expect(body.error.message).toContain('Merged other into main in api and docs.');
+  });
+
   it('merges into another branch everywhere, and the mono repo follows', async () => {
     for (const { work } of members()) git(work, 'branch', 'release');
     for (const { work } of members()) await writeAndCommit(work, 'fix.txt', 'fix\n', 'Fix');
@@ -616,5 +669,98 @@ describe('what is kept to one repository', () => {
   it('cannot be cloned over', async () => {
     const { status } = await request('POST', `${mono.route}/clone`, { parentPath: sandbox });
     expect(status).toBe(400);
+  });
+});
+
+describe('branches across part of the group', () => {
+  /** api and web get `feature`, each with a commit that changes readme.txt. docs does not. */
+  async function featureInApiAndWeb() {
+    for (const { work } of [mono.api, mono.web]) {
+      git(work, 'switch', '--create', 'feature');
+      await writeAndCommit(work, 'readme.txt', 'feature\n', 'Feature');
+      git(work, 'switch', 'main');
+    }
+  }
+  const branchOf = ({ work }) => git(work, 'branch', '--show-current');
+
+  it('lists a branch that some of the repositories have', async () => {
+    await featureInApiAndWeb();
+    const { body } = await request('GET', `${mono.route}/spanning-branches`);
+    expect(body).toEqual([
+      {
+        name: 'feature',
+        total: 3,
+        repositories: [
+          expect.objectContaining({ name: 'api', slot: 0 }),
+          expect.objectContaining({ name: 'web', slot: 1 }),
+        ],
+      },
+    ]);
+  });
+
+  it('plans each repository onto the branch or its main line, without changing anything', async () => {
+    await featureInApiAndWeb();
+    const { body } = await request('GET', `${mono.route}/span-plan?branch=feature`);
+    expect(body).toMatchObject({ branch: 'feature', onBranch: 2, canSwitch: true });
+    expect(body.repositories.map(({ name, from, to }) => [name, from, to])).toEqual([
+      ['api', 'main', 'feature'],
+      ['web', 'main', 'feature'],
+      ['docs', 'main', 'main'],
+    ]);
+    expect(branchOf(mono.api)).toBe('main');
+  });
+
+  it('switches them all, and the rest ride along on main', async () => {
+    await featureInApiAndWeb();
+    expect((await request('POST', `${mono.route}/switch-span`, { branch: 'feature' })).status).toBe(
+      204,
+    );
+    expect([branchOf(mono.api), branchOf(mono.web), branchOf(mono.docs)]).toEqual([
+      'feature',
+      'feature',
+      'main',
+    ]);
+    const status = await getStatus();
+    expect(status.branch).toBe('feature');
+    expect(status.mono.members.map(({ name }) => name)).toEqual(['api', 'web']);
+    expect(status.mono.following).toEqual([
+      expect.objectContaining({ name: 'docs', branch: 'main' }),
+    ]);
+    expect(status.mono.leftOut).toEqual([]);
+  });
+
+  it('switches nothing while a repository that would move has staged changes', async () => {
+    await featureInApiAndWeb();
+    await fs.writeFile(path.join(mono.web.work, 'new.txt'), 'new\n');
+    git(mono.web.work, 'add', 'new.txt');
+
+    const plan = (await request('GET', `${mono.route}/span-plan?branch=feature`)).body;
+    expect(plan.canSwitch).toBe(false);
+    expect(plan.repositories[1].problem).toBe('1 staged change');
+
+    const { status, body } = await request('POST', `${mono.route}/switch-span`, {
+      branch: 'feature',
+    });
+    expect(status).toBe(400);
+    expect(body.error.message).toContain('web: 1 staged change');
+    expect([branchOf(mono.api), branchOf(mono.web)]).toEqual(['main', 'main']);
+  });
+
+  it('puts back the repositories already switched when one cannot switch', async () => {
+    await featureInApiAndWeb();
+    // An unstaged edit to a file the branch changes makes git refuse to switch web.
+    await fs.writeFile(path.join(mono.web.work, 'readme.txt'), 'local edit\n');
+
+    const { status } = await request('POST', `${mono.route}/switch-span`, { branch: 'feature' });
+    expect(status).toBe(409);
+    expect([branchOf(mono.api), branchOf(mono.web)]).toEqual(['main', 'main']);
+    expect(await fs.readFile(path.join(mono.web.work, 'readme.txt'), 'utf8')).toBe('local edit\n');
+    expect((await getStatus()).branch).toBe('main');
+  });
+
+  it('is only for a mono repo', async () => {
+    const { status } = await request('POST', `${mono.api.api}/switch-span`, { branch: 'main' });
+    expect(status).toBe(400);
+    expect((await request('GET', `${mono.api.api}/spanning-branches`)).body).toEqual([]);
   });
 });

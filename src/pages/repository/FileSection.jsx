@@ -1,5 +1,6 @@
 import { Dropdown } from 'antd';
 import clsx from 'clsx';
+import { useRepositoryColor } from './RepositoryTag.jsx';
 import styles from './FileSection.module.css';
 
 const STATUS_BADGES = {
@@ -27,6 +28,8 @@ function splitPath(path, inRepository) {
 function FileRow({ file, selected, onSelect, actions, menuItems }) {
   const badge = STATUS_BADGES[file.status];
   const { folder, directory, name } = splitPath(file.path, Boolean(file.repository));
+  // Each repository's folder in its own color, so files from one stand together.
+  const folderColor = useRepositoryColor(file.repository);
 
   const row = (
     <li className={clsx(styles.row, selected && styles.selected)}>
@@ -43,7 +46,15 @@ function FileRow({ file, selected, onSelect, actions, menuItems }) {
           {badge.letter}
         </span>
         <span className={styles.path}>
-          {folder && <span className={styles.folder}>{folder}</span>}
+          {folder && (
+            <span
+              className={styles.folder}
+              style={folderColor ? { '--repository-color': folderColor } : undefined}
+              title={`In ${file.repository}`}
+            >
+              {folder}
+            </span>
+          )}
           <span className={styles.directory}>{directory}</span>
           {name}
         </span>

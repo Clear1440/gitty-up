@@ -12,6 +12,10 @@ import { recordAction, recordFailedAction, takeUndoStep } from './undoHistory.js
 /** A mono repo reports on each of its repositories, a line apiece. */
 const MULTILINE = { whiteSpace: 'pre-line' };
 
+/** ", in 3 repositories" for an action across a mono repo, and nothing for one repository. */
+const inRepositories = (count = 0) =>
+  count > 1 ? ` in ${TextHelper.countOf(count, 'repository', 'repositories')}` : '';
+
 /** Every git action the UI can run, with the message shown when it succeeds. */
 const GIT_ACTIONS = {
   fetch: { run: gitApi.fetch, title: 'Fetch', success: () => 'Fetched from all remotes' },
@@ -31,6 +35,17 @@ const GIT_ACTIONS = {
     run: gitApi.checkout,
     title: 'Checkout',
     success: ({ branch }) => `Checked out ${branch}`,
+  },
+  switchSpan: {
+    run: gitApi.switchSpan,
+    title: 'Switch branch',
+    success: ({ branch, onBranch, otherBranches = [] }) =>
+      [
+        `Switched ${TextHelper.countOf(onBranch, 'repository', 'repositories')} to ${branch}`,
+        otherBranches.length > 0 && `The rest are on ${otherBranches.join(' and ')}`,
+      ]
+        .filter(Boolean)
+        .join('. '),
   },
   createBranch: {
     run: gitApi.createBranch,
@@ -63,11 +78,17 @@ const GIT_ACTIONS = {
         .filter(Boolean)
         .join(' '),
   },
-  merge: { run: gitApi.merge, title: 'Merge', success: ({ branch }) => `Merged ${branch}` },
+  merge: {
+    run: gitApi.merge,
+    title: 'Merge',
+    success: ({ branch, into, repositoryCount }) =>
+      `Merged ${branch}${into ? ` into ${into}` : ''}${inRepositories(repositoryCount)}`,
+  },
   mergeInto: {
     run: gitApi.mergeInto,
     title: 'Merge',
-    success: ({ source, target }) => `Merged ${source} into ${target}`,
+    success: ({ source, target, repositoryCount }) =>
+      `Merged ${source} into ${target}${inRepositories(repositoryCount)}`,
   },
   rebase: { run: gitApi.rebase, title: 'Rebase', success: ({ branch }) => `Rebased onto ${branch}` },
   checkoutCommit: {

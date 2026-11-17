@@ -3,3 +3,4 @@ export { filesystemApi } from './filesystem.js';
 export { gitApi } from './git.js';
 export { repositoriesApi } from './repositories.js';
 export { settingsApi } from './settings.js';
+export { updatesApi } from './updates.js';

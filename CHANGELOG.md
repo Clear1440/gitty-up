@@ -10,11 +10,6 @@ version's section.
 
 ### Added
 
-- **Revert a commit.** Right-click a commit in the history and choose **Revert commit…**. Keep
-  the commit message to commit straight away as `Revert "…"`, or untick it to stage the undoing
-  changes and commit them with a message of your own.
-- The branch list can hide local branches whose upstream is gone, with the button beside the
-  filter. The checked out branch always shows.
 - **Rename a branch.** Right-click a local branch and choose **Rename…**. Its commits and
   upstream stay with it. In a mono repo, **Rename in every repository…** renames it in each
   repository of the group that has it, so the names stay together, or in none if any can't.
@@ -23,6 +18,52 @@ version's section.
   down, and click one to select it.
 
 ### Changed
+
+- The repository list shows uncommitted changes right beside the branch, with the counts after
+  the widest branch name so they still line up.
+- Toasts show at the top right, clear of the toolbar and branches.
+- Stash, save as patch and discard in Uncommitted changes, and Open as mono repo, are icon
+  buttons named by their tooltips.
+- The branch list makes the checked out branch bold, sets back branches whose upstream is
+  gone, and says on hover what each branch tracks.
+
+## 0.2.5 - 2026-11-17
+
+Nothing in the app changed. Releases are now prepared as a pull request, which the Release
+workflow tags and builds once it merges.
+
+## 0.2.4 - 2026-11-17
+
+### Added
+
+- **Revert a commit.** Right-click a commit in the history and choose **Revert commit…**. Keep
+  the commit message to commit straight away as `Revert "…"`, or untick it to stage the undoing
+  changes and commit them with a message of your own.
+- The branch list can hide local branches whose upstream is gone, with the button beside the
+  filter. The checked out branch always shows.
+- **Updates from inside the app.** Gitty Up checks for a new release when it starts, and shows
+  **Update available** beside the settings button when there is one. Click it to download and
+  install the update; the app restarts into it. **Settings › About › Updates** checks on demand.
+- **See a merge before you make it.** The merge dialogs show which branch goes into which, how
+  many commits that brings in, and whether it fast-forwards. In a mono repo they do so for each
+  repository, and name the ones the merge leaves alone.
+- **Branches across part of a mono repo.** A branch that two or more of a group's repositories
+  have is listed under **Across some repositories**. Choosing one lines the whole group up on
+  it: those with the branch switch to it, and the rest go to their main or master branch. The
+  dialog shows where each repository goes, and nothing switches if any of them has staged
+  changes, conflicts or something under way, or if one fails to switch.
+- Repositories riding along on their main branch show beside the branch name, with the branch
+  they are on, rather than as left out.
+
+### Changed
+
+- **Mono repos read as one repository, made of several.** Each repository keeps one color
+  throughout the tab: on its commits, its folder in the file lists, and the member dots by the
+  branch name. The members list says where each one's branch stands, and opens any of them in a
+  tab of its own.
+- Merge messages name both branches, and in a mono repo the repositories they were merged in.
+- Opening a group as a mono repo picks **main**, or else **master**, when some of its repositories
+  are on it. The merge dialog offers the same branch to merge in.
 
 - **Clearer dialogs.** Fields in the branch, merge, stash, publish and worktree dialogs have
   labels that stay on show, and each dialog says in a sentence what its button will do.
@@ -33,13 +74,7 @@ version's section.
 - Discarding a file's changes shows as a trash can.
 - Tooltips show below their button, and go away as soon as the pointer leaves it, even onto
   the tooltip.
-- The repository list keeps its counts and times in columns that line up from row to row, with
-  uncommitted changes right beside the branch.
-- Toasts show at the top right, clear of the toolbar and branches.
-- Stash, save as patch and discard in Uncommitted changes, and Open as mono repo, are icon
-  buttons named by their tooltips.
-- The branch list makes the checked out branch bold, sets back branches whose upstream is
-  gone, and says on hover what each branch tracks.
+- The repository list keeps its counts and times in columns that line up from row to row.
 - The Stash button no longer shows a count.
 
 ## 0.2.3 - 2026-11-12

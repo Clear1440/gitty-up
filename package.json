@@ -3,6 +3,10 @@
   "private": true,
   "version": "0.3.0",
   "description": "A git client with a liquid glass UI.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Clear1440/gitty-up.git"
+  },
   "type": "module",
   "main": "electron/main.js",
   "engines": {

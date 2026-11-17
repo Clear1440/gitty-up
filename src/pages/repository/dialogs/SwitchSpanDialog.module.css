@@ -1,0 +1,22 @@
+.normal,
+.muted,
+.danger {
+  flex: none;
+  white-space: nowrap;
+}
+
+.move {
+  color: var(--color-text-muted);
+}
+
+.normal {
+  color: var(--color-text);
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
+
+.danger {
+  color: var(--color-danger);
+}

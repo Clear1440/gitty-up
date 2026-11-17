@@ -26,6 +26,22 @@ describe('BranchHelper', () => {
     expect(BranchHelper.isProtectedUpstream('origin/feature/prod')).toBe(false);
     expect(BranchHelper.isProtectedUpstream(null)).toBe(false);
   });
+
+  it('picks main, then master', () => {
+    expect(BranchHelper.pickMainBranch(['dev', 'master', 'main'])).toBe('main');
+    expect(BranchHelper.pickMainBranch(['dev', 'master'])).toBe('master');
+    expect(BranchHelper.pickMainBranch(['dev', 'feature/main'])).toBe(null);
+  });
+
+  it("picks a remote's own main line, not a branch named like it", () => {
+    expect(
+      BranchHelper.pickRemoteMainBranch(['origin/dev', 'origin/team/main', 'origin/master']),
+    ).toBe('origin/master');
+    expect(BranchHelper.pickRemoteMainBranch(['origin/master', 'upstream/main'])).toBe(
+      'upstream/main',
+    );
+    expect(BranchHelper.pickRemoteMainBranch(['origin/team/main'])).toBe(null);
+  });
 });
 
 describe('TextHelper', () => {
@@ -34,6 +50,12 @@ describe('TextHelper', () => {
     expect(TextHelper.countOf(3, 'line')).toBe('3 lines');
     expect(TextHelper.countOf(1, 'local branch', 'local branches')).toBe('1 local branch');
     expect(TextHelper.pluralize(2, 'branch', 'branches')).toBe('branches');
+  });
+
+  it('joins names as a sentence would', () => {
+    expect(TextHelper.joinWithAnd(['api'])).toBe('api');
+    expect(TextHelper.joinWithAnd(['api', 'web'])).toBe('api and web');
+    expect(TextHelper.joinWithAnd(['api', 'web', 'docs'])).toBe('api, web and docs');
   });
 
   it('matches search text ignoring case and outer spaces', () => {

@@ -12,6 +12,7 @@ import { RenameBranchDialog } from './RenameBranchDialog.jsx';
 import { RevertCommitDialog } from './RevertCommitDialog.jsx';
 import { RewordCommitDialog } from './RewordCommitDialog.jsx';
 import { StashDialog } from './StashDialog.jsx';
+import { SwitchSpanDialog } from './SwitchSpanDialog.jsx';
 
 const DIALOGS = {
   applyPatch: ApplyPatchDialog,
@@ -28,6 +29,7 @@ const DIALOGS = {
   revertCommit: RevertCommitDialog,
   rewordCommit: RewordCommitDialog,
   stash: StashDialog,
+  switchSpan: SwitchSpanDialog,
 };
 
 /** Renders whichever dialog `openDialog` from the repository context asked for. */

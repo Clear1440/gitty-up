@@ -1,18 +1,77 @@
-# Builds the desktop installers and attaches them to a draft GitHub release.
-# Start it by pushing a version tag, for example: npm version 0.2.0 && git push --follow-tags
-# The tag must match the version in package.json, which names the release.
+# Builds the desktop installers, attaches them to a GitHub release and publishes it.
+# Each build uploads to a draft, and the release goes public only once all three have
+# succeeded, so nobody (and no app checking for updates) sees it half filled.
+#
+# It starts when a release pull request (made by `npm run release`) merges into main: a push
+# to main that changes package.json to a version with no tag yet tags that commit as
+# v<version> and releases it. Other pushes to main that touch package.json skip the rest.
+# Running it from the Actions tab tags the version on the chosen branch if it has no tag
+# yet, and builds it either way, which also retries a release whose build failed.
+# Pushing a v* tag yourself still works too. The tag must match the version in package.json.
 name: Release
 
 on:
   push:
+    branches: [main]
+    paths: [package.json]
     tags: ['v*']
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.tag.outputs.release }}
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tag the version
+        id: tag
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          tag="v$(node -p "require('./package.json').version")"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          if [ "$REF_TYPE" = tag ]; then
+            if [ "$REF_NAME" != "$tag" ]; then
+              echo "::error::The tag $REF_NAME does not match the version in package.json ($tag)."
+              exit 1
+            fi
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null; then
+            if [ "$EVENT" = workflow_dispatch ]; then
+              echo "$tag already exists, so this builds it again."
+              echo "release=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$tag already exists, so there is nothing to release."
+              echo "release=false" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" -m "Release $tag"
+          git push origin "refs/tags/$tag"
+          echo "Tagged $GITHUB_SHA as $tag."
+          echo "release=true" >> "$GITHUB_OUTPUT"
+
   check:
+    needs: tag
+    if: needs.tag.outputs.release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -25,7 +84,7 @@ jobs:
       - run: npm test
 
   desktop:
-    needs: check
+    needs: [tag, check]
     strategy:
       fail-fast: false
       matrix:
@@ -41,4 +100,14 @@ jobs:
       - run: npm run build
       - run: npx electron-builder --publish always
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish:
+    needs: [tag, desktop]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+        env:
+          TAG: ${{ needs.tag.outputs.tag }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -6,10 +6,12 @@ import { localOnly } from './middleware/localOnly.js';
 import { createFilesystemRouter } from './routes/filesystem.js';
 import { createRepositoriesRouter } from './routes/repositories.js';
 import { createSettingsRouter } from './routes/settings.js';
+import { createUpdatesRouter } from './routes/updates.js';
 
 const CLIENT_DIR = path.resolve(import.meta.dirname, '../dist');
 
-export function createApp({ store, settings }) {
+/** `updater` is set only in the desktop app, which is the only one that can update itself. */
+export function createApp({ store, settings, updater = null }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(localOnly);
@@ -19,6 +21,7 @@ export function createApp({ store, settings }) {
   app.use('/api/repositories', createRepositoriesRouter(store));
   app.use('/api/filesystem', createFilesystemRouter());
   app.use('/api/settings', createSettingsRouter({ settings, store }));
+  app.use('/api/updates', createUpdatesRouter(updater));
   app.use('/api', notFoundHandler);
 
   // In production the server also hosts the built client.

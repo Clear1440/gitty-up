@@ -7,11 +7,12 @@ import { SettingsStore } from './store/settingsStore.js';
  * Port 0 lets the system pick a free one. Rejects if the port cannot be used.
  * `dataDir` is the home folder for settings. The repositories may live elsewhere,
  * if a different folder was chosen in the settings.
+ * `updater` lets the desktop app offer its own updates.
  */
-export async function startServer({ host, port, dataDir }) {
+export async function startServer({ host, port, dataDir, updater = null }) {
   const settings = new SettingsStore(dataDir);
   const store = new RepositoryStore(await settings.dataDir());
-  const app = createApp({ store, settings });
+  const app = createApp({ store, settings, updater });
 
   return new Promise((resolve, reject) => {
     const server = app.listen(port, host, (error) => {

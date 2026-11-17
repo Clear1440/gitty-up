@@ -20,6 +20,9 @@ export const queryKeys = {
   /** Inside `repository`, so a checkout rereads the branch's own .gitty file. */
   scripts: (id) => [ROOT, 'detail', id, 'scripts'],
   diff: (id, file) => [ROOT, 'detail', id, 'diff', file],
+  spanningBranches: (id) => [ROOT, 'detail', id, 'spanning-branches'],
+  spanPlan: (id, branch) => [ROOT, 'detail', id, 'span-plan', branch],
+  mergePreview: (id, source, target) => [ROOT, 'detail', id, 'merge-preview', source, target],
   /**
    * Outside `repository` on purpose: git actions refetch everything under it, and
    * resolving a conflict would then refetch, and fail to find, the conflict just resolved.
@@ -30,6 +33,7 @@ export const queryKeys = {
   directories: (path) => ['directories', path ?? null],
   repositoryScan: (path) => ['repository-scan', path],
   settings: () => ['settings'],
+  updates: () => ['updates'],
 };
 
 export const mutationKeys = {

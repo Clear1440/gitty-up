@@ -1,9 +1,11 @@
 import {
+  CloudDownloadOutlined,
   DesktopOutlined,
   FolderOpenOutlined,
   HistoryOutlined,
   MoonOutlined,
   SunOutlined,
+  SyncOutlined,
   UndoOutlined,
 } from '@ant-design/icons';
 import { App, Button, ColorPicker, Result, Segmented, Select, Spin, Typography } from 'antd';
@@ -12,7 +14,10 @@ import { useAppearance } from '../../appearance/AppearanceContext.jsx';
 import { ChangelogDialog } from '../../changelog/ChangelogDialog.jsx';
 // Read when the app is built, so it is the release's own.
 import { APP_VERSION as appVersion, RELEASES } from '../../changelog/releases.js';
+import { RelativeTime } from '../../components/RelativeTime.jsx';
+import { updateLabel, useStartUpdate } from '../../layouts/UpdateButton.jsx';
 import { useSetDataDir, useSettings } from '../../queries/settings.js';
+import { isUpdating, useCheckForUpdates, useUpdateStatus } from '../../queries/updates.js';
 import {
   CUSTOM_COLORS,
   CUSTOM_SCHEME_ID,
@@ -247,6 +252,74 @@ function DataSection({ settings }) {
   );
 }
 
+function updateDescription(status) {
+  if (isUpdating(status) || status.available) {
+    return `v${status.latestVersion} is available. Installing it restarts Gitty Up.`;
+  }
+  if (status.checkError) return `Could not check for updates: ${status.checkError}`;
+  return (
+    <>
+      You have the latest release.
+      {status.checkedAt && (
+        <>
+          {' '}
+          Checked <RelativeTime date={status.checkedAt} />.
+        </>
+      )}
+    </>
+  );
+}
+
+/** Only the desktop app can update itself, so this is left out when run as a server. */
+function UpdatesSetting() {
+  const { notification } = App.useApp();
+  const { data: status } = useUpdateStatus();
+  const check = useCheckForUpdates();
+  const startUpdate = useStartUpdate();
+  if (!status?.supported) return null;
+
+  const handleCheck = async () => {
+    try {
+      const result = await check.mutateAsync();
+      if (result.checkError) {
+        notification.error({ title: 'Could not check for updates', description: result.checkError });
+      } else if (!result.available) {
+        notification.success({
+          title: 'Gitty Up is up to date',
+          description: `v${result.currentVersion} is the latest release.`,
+        });
+      }
+    } catch (error) {
+      notification.error({ title: 'Could not check for updates', description: error.message });
+    }
+  };
+
+  return (
+    <Setting label="Updates" description={updateDescription(status)}>
+      <div className={styles.versionRow}>
+        {(status.available || isUpdating(status)) && (
+          <Button
+            type="primary"
+            icon={<CloudDownloadOutlined />}
+            loading={isUpdating(status)}
+            onClick={startUpdate}
+          >
+            {isUpdating(status) ? updateLabel(status) : `Install v${status.latestVersion}`}
+          </Button>
+        )}
+        <Button
+          icon={<SyncOutlined />}
+          loading={check.isPending}
+          disabled={isUpdating(status)}
+          onClick={handleCheck}
+        >
+          Check for updates
+        </Button>
+      </div>
+    </Setting>
+  );
+}
+
 export function SettingsPage() {
   const { data: settings, isPending, error } = useSettings();
   const [showingChangelog, setShowingChangelog] = useState(false);
@@ -275,6 +348,7 @@ export function SettingsPage() {
             </Button>
           </div>
         </Setting>
+        <UpdatesSetting />
         <ChangelogDialog
           open={showingChangelog}
           title="Changelog"

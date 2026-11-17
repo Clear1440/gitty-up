@@ -53,20 +53,27 @@ repositories. Git must already be installed on the machine.
 
 ### Releasing
 
-Run the release script from `main` with the new version:
+Changes reach `main` only through pull requests, and a release is one too. Run the release
+script with the new version, from any branch with no uncommitted changes:
 
 ```bash
-npm run release -- 0.2.0
+npm run release -- 0.3.0
 ```
 
-[scripts/release.js](scripts/release.js) checks that `main` is up to date with `origin` and that
-the version is new. It commits any uncommitted changes, asking for a message first. Then it sets
-the version in `package.json`, tags it as `v0.2.0` and pushes `main` and the tag. It shows what it
-will do and asks before changing anything.
+[scripts/release.js](scripts/release.js) fetches `origin` and checks that the version is new.
+On a `release/v0.3.0` branch cut from `origin/main`, it sets the version in `package.json` and
+commits it as `Release v0.3.0`. It pushes that branch and opens a pull request into `main`,
+with the [GitHub CLI](https://cli.github.com) (`gh`) when it is installed and signed in, or else
+by printing the link that opens one. It shows what it will do and asks before changing anything,
+and leaves the branch you ran it from checked out.
 
-- `patch`, `minor` or `major` in place of a version bumps the current one.
-- The version already in `package.json` tags it as it is, which suits a first release.
-- `-m "message"` gives the commit message for uncommitted changes, and `-y` skips the question.
+- `patch`, `minor` or `major` in place of a version bumps the one on `main`.
+- `-y` skips the question.
+
+Merging the pull request releases it: the merge changes the version in `package.json` on `main`,
+so [the Release workflow](.github/workflows/release.yml) tags that commit as `v0.3.0` and builds
+it. To release the version already on `main` as it is, or to retry a release whose build failed,
+run the Release workflow from the repository's **Actions** tab.
 
 #### Changelog
 
@@ -74,12 +81,17 @@ will do and asks before changing anything.
 What's new**, and once after an update with the releases since the last version that ran. Add
 what changes under `## Unreleased` as you go, in `### Added`, `### Changed` and `### Fixed`
 sections of `- ` items (`**bold**`, `` `code` `` and links work). The release script moves those
-notes under the new version's heading, dated, in the release commit, and warns if there are
-none.
+notes under the new version's heading, dated, in the release commit. It stops if there are
+none, as every version needs its own section: the Release workflow's tests check for it, and a
+release without one fails before anything is built. When nothing in the app changed, a line
+under `## Unreleased` saying so is enough.
 
-The tag starts [the Release workflow](.github/workflows/release.yml). It builds a Windows
+#### Builds
+
+[The Release workflow](.github/workflows/release.yml) builds a Windows
 installer (`.exe`), a macOS disk image (`.dmg`, for both Intel and Apple Silicon) and a Linux
-AppImage (`.AppImage`, x64) and attaches them to a **draft** GitHub release, which you then publish.
+AppImage (`.AppImage`, x64), attaches them to a GitHub release, and publishes it as the latest
+release once all three have built. If one fails, the release stays a draft with whatever did build.
 
 ### Code signing
 

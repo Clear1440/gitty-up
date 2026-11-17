@@ -1,8 +1,12 @@
 import path from 'node:path';
 import { app, BrowserWindow, dialog, powerMonitor, screen, shell } from 'electron';
 import { config } from '../server/config.js';
+import { parseGitHubRemote } from '../server/git/pullRequests.js';
 import { startServer } from '../server/start.js';
+import { createUpdater } from '../server/updates/updater.js';
 import { UrlHelper } from '../server/utils/UrlHelper.js';
+import packageJson from '../package.json' with { type: 'json' };
+import { canInstallUpdates, installUpdate } from './installUpdate.js';
 import { MIN_SIZE } from './windowBounds.js';
 import { initialWindowState, rememberWindowState } from './windowState.js';
 
@@ -24,14 +28,28 @@ function addCommonToolPaths() {
  * Prefers the usual port, so the page keeps the same origin and its saved tabs
  * between launches, and falls back to any free port if something else holds it.
  */
-async function startLocalServer() {
-  const options = { host: '127.0.0.1', dataDir: config.dataDir };
+async function startLocalServer(updater) {
+  const options = { host: '127.0.0.1', dataDir: config.dataDir, updater };
   try {
     return await startServer({ ...options, port: config.port });
   } catch (error) {
     if (error.code !== 'EADDRINUSE') throw error;
     return startServer({ ...options, port: 0 });
   }
+}
+
+/**
+ * Offers new releases from the repository's GitHub releases, or null when this copy
+ * cannot replace itself, such as when it runs unpackaged with `npm run desktop`.
+ */
+function createAppUpdater() {
+  const github = parseGitHubRemote(packageJson.repository?.url);
+  if (!github || !canInstallUpdates()) return null;
+  return createUpdater({
+    repository: `${github.owner}/${github.repo}`,
+    currentVersion: app.getVersion(),
+    install: installUpdate,
+  });
 }
 
 /** Whether a link points at a web page outside the app, to open in the default browser. */
@@ -121,12 +139,15 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   // Not a top-level await: Electron only becomes ready once this module has finished loading.
+  const updater = createAppUpdater();
   app
     .whenReady()
-    .then(startLocalServer)
+    .then(() => startLocalServer(updater))
     .then(({ port }) => {
       appUrl = `http://127.0.0.1:${port}`;
       createWindow(appUrl);
+      // Checked on every launch, so the page can offer the update as soon as it loads.
+      updater?.check();
     })
     .catch((error) => {
       dialog.showErrorBox('Gitty Up could not start', error.message);
