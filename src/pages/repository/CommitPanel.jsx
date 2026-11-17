@@ -1,6 +1,6 @@
 import { CheckOutlined } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
-import { App, Button, Checkbox, Input, Tooltip } from 'antd';
+import { App, Button, Checkbox, Input } from 'antd';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router';
 import { gitApi } from '../../api';
@@ -16,20 +16,38 @@ import { usePush } from './usePush.js';
 
 /** Says why committing is not possible right now, or returns null when it is. */
 function findBlocker({ status, fileCount, hasMessage, amend }) {
-  // Git has a message ready for a merge or cherry-pick.
-  const isMerging = status.operation === 'merge' || status.operation === 'cherry-pick';
-  if (status.conflicted.length > 0) return 'Resolve conflicts first';
+  // Git has a message ready for a merge, cherry-pick or revert.
+  const isMerging = ['merge', 'cherry-pick', 'revert'].includes(status.operation);
+  if (status.conflicted.length > 0) return 'Resolve the conflicts first';
   if (status.operation === 'rebase') return 'Finish the rebase first';
   if (fileCount === 0 && !amend && !isMerging) return 'No changes to commit';
-  if (!hasMessage && !amend && !isMerging) return 'Enter a commit message';
+  if (!hasMessage && !amend && !isMerging) return 'Enter a commit message to commit';
   return null;
 }
 
 function placeholderFor({ status, amend }) {
   if (status.operation === 'merge') return 'Leave empty to use the merge message';
   if (status.operation === 'cherry-pick') return "Leave empty to use the commit's message";
+  if (status.operation === 'revert') return 'Leave empty to use the revert message';
   if (amend) return 'Leave empty to keep the previous message';
   return 'Commit message (Ctrl+Enter to commit)';
+}
+
+/** Says in words which files the commit takes, so staging rules never need guessing. */
+function describeScope({ status, stageAll, fileCount, amend, repositories }) {
+  // An amend has its own note, which says what it adds.
+  if (fileCount === 0 || amend) return null;
+  const where = repositories.length > 0 ? ` in ${repositories.join(', ')}` : '';
+  if (stageAll) {
+    const all = fileCount === 1 ? 'the 1 changed file' : `all ${fileCount} changed files`;
+    return `Nothing is staged, so ${all}${where} will be committed.`;
+  }
+  const unstagedCount = status.unstaged.length;
+  const leftOut =
+    unstagedCount > 0
+      ? ` ${TextHelper.countOf(unstagedCount, 'file')} with unstaged changes ${TextHelper.pluralize(unstagedCount, 'is', 'are')} left out.`
+      : '';
+  return `${TextHelper.countOf(fileCount, 'staged file')}${where} will be committed.${leftOut}`;
 }
 
 /** `onClean` fires after a commit that left nothing else to commit. */
@@ -129,8 +147,7 @@ export function CommitPanel({ onClean }) {
     if (KeyboardHelper.isSubmitShortcut(event)) commit();
   };
 
-  // What will be committed: how many files, and in a mono repo which repositories.
-  const summary = [TextHelper.countOf(fileCount, 'file'), ...repositories].join(' · ');
+  const scope = describeScope({ status, stageAll, fileCount, amend, repositories });
 
   return (
     <section className={styles.panel} aria-label="Commit">
@@ -164,26 +181,25 @@ export function CommitPanel({ onClean }) {
           {amending.pushed && ' It is already pushed, so this needs a force push.'}
         </p>
       )}
-      {/* It opens over the checkboxes above, so it must never catch a click meant for them. */}
-      <Tooltip
-        title={blocker ?? summary}
-        classNames={{ root: styles.commitTooltip }}
-        mouseLeaveDelay={0}
-      >
-        {/* A disabled button fires no hover events, so the wrapper carries the tooltip. */}
-        <span className={styles.commitButton}>
-          <Button
-            block
-            type="primary"
-            icon={<CheckOutlined />}
-            disabled={!canCommit}
-            loading={pendingAction === 'commit' || (pushAfterCommit && pendingAction === 'push')}
-            onClick={commit}
-          >
-            {buttonLabel}
-          </Button>
-        </span>
-      </Tooltip>
+      {/* Always on show, so a greyed out button says why without needing a hover. */}
+      {(blocker || scope) && (
+        <p className={styles.summary} role="status">
+          {blocker && <span className={styles.blocker}>{blocker}. </span>}
+          {scope}
+        </p>
+      )}
+      <span className={styles.commitButton}>
+        <Button
+          block
+          type="primary"
+          icon={<CheckOutlined />}
+          disabled={!canCommit}
+          loading={pendingAction === 'commit' || (pushAfterCommit && pendingAction === 'push')}
+          onClick={commit}
+        >
+          {buttonLabel}
+        </Button>
+      </span>
     </section>
   );
 }

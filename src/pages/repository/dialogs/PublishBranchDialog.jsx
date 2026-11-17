@@ -1,6 +1,7 @@
 import { Alert, Flex, Select, Typography } from 'antd';
 import { useState } from 'react';
 import { ActionDialog } from '../../../components/ActionDialog.jsx';
+import { Field, Outcome } from '../../../components/Field.jsx';
 import { useRemotes } from '../../../queries/git.js';
 import { useRepositoryContext } from '../RepositoryContext.js';
 import { BranchNameInput } from './BranchNameInput.jsx';
@@ -51,21 +52,31 @@ export function PublishBranchDialog({ onClose }) {
         <Flex vertical gap={12}>
           <Typography.Text>{explanation}</Typography.Text>
           {remotes.length > 1 && (
-            <Select
-              aria-label="Remote"
-              value={remote}
-              options={remotes.map((name) => ({ value: name, label: name }))}
-              onChange={setChosenRemote}
-            />
+            <Field label="Remote">
+              <Select
+                aria-label="Remote"
+                value={remote}
+                options={remotes.map((name) => ({ value: name, label: name }))}
+                onChange={setChosenRemote}
+              />
+            </Field>
           )}
-          <BranchNameInput
-            autoFocus
-            aria-label="Upstream branch name"
-            placeholder="Upstream branch name"
-            prefix={remote ? `${remote}/` : undefined}
-            value={upstreamName}
-            onChange={setUpstreamName}
-          />
+          <Field label="Name on the remote" hint="Usually the same as the local branch.">
+            <BranchNameInput
+              autoFocus
+              aria-label="Upstream branch name"
+              placeholder={branch}
+              prefix={remote ? `${remote}/` : undefined}
+              value={upstreamName}
+              onChange={setUpstreamName}
+            />
+          </Field>
+          {remote && upstreamName && (
+            <Outcome>
+              Pushes your commits to a new <strong>{`${remote}/${upstreamName}`}</strong>. Later
+              pushes and pulls of {branch} go there.
+            </Outcome>
+          )}
         </Flex>
       )}
     </ActionDialog>

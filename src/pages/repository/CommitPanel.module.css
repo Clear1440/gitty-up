@@ -25,8 +25,15 @@
   min-width: 0;
 }
 
-.commitTooltip {
-  pointer-events: none;
+.summary {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-body);
+}
+
+.blocker {
+  color: var(--color-warning);
 }
 
 .commitButton button span:last-child {

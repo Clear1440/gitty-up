@@ -1,9 +1,10 @@
 import { ClusterOutlined, HomeFilled, SettingFilled, SettingOutlined } from '@ant-design/icons';
-import { Button, Tabs, Tooltip } from 'antd';
+import { Button, Tabs } from 'antd';
 import clsx from 'clsx';
 import { cloneElement, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Logo } from '../components/Logo.jsx';
+import { Tooltip } from '../components/Tooltip.jsx';
 import { paths } from '../paths.js';
 import { useRepositories, useRepositoryGroups } from '../queries/repositories.js';
 import { useTabs } from '../tabs/TabsContext.jsx';

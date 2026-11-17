@@ -23,7 +23,8 @@
 
 .body {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 2fr);
+  /* The middle column has room for a branch name beside its three columns of counts. */
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) minmax(0, 2fr);
   align-items: center;
   gap: var(--space-4);
   /* The right side leaves room for the options button. */
@@ -65,10 +66,17 @@
   white-space: nowrap;
 }
 
+/*
+ * The branch, then a column apiece for commits ahead, behind and files changed. The
+ * columns keep their width when empty, so each kind of count lines up down the list.
+ */
 .meta {
-  display: flex;
+  --count-width: 3.25rem;
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(3, var(--count-width));
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
   min-width: 0;
   font-size: var(--font-size-sm);
 }
@@ -81,14 +89,9 @@
   white-space: nowrap;
 }
 
-/* A long branch name gives way first, so the counts beside it always show. */
-.syncState,
-.changes {
-  flex: none;
-}
-
 .changes {
   color: var(--color-file-modified);
+  white-space: nowrap;
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
 }
@@ -148,7 +151,8 @@
 }
 
 .condensed .body {
-  grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) minmax(72px, auto);
+  /* A set width for the time, as one sized to its text would shift the row's other columns. */
+  grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) 6.5rem;
   gap: var(--space-3);
   padding-top: var(--space-1);
   padding-right: calc(var(--space-5) + var(--space-3));
@@ -165,11 +169,14 @@
 }
 
 .condensed .meta {
+  --count-width: 3rem;
+
   font-size: var(--font-size-xs);
 }
 
 .condensed .lastCommit {
   justify-content: flex-end;
+  overflow: hidden;
   font-size: var(--font-size-xs);
   white-space: nowrap;
 }

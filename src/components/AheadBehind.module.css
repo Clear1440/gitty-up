@@ -6,3 +6,8 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* Each count becomes a cell of the parent's grid. */
+.aligned {
+  display: contents;
+}

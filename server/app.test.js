@@ -2184,6 +2184,45 @@ describe('acting on a commit', () => {
     expect(git(repo.work, 'log', '-1', '--format=%s')).toBe('Topic edit');
   });
 
+  it('reverts a commit with git\'s own message', async () => {
+    await writeAndCommit(repo.work, 'b.txt', 'b\n', 'Add b');
+    const reverted = head();
+
+    expect((await post('/revert', { hash: reverted })).status).toBe(204);
+    expect(git(repo.work, 'log', '-1', '--format=%s')).toBe('Revert "Add b"');
+    expect(git(repo.work, 'status', '--porcelain')).toBe('');
+  });
+
+  it('leaves a revert staged to be given a new message', async () => {
+    await writeAndCommit(repo.work, 'b.txt', 'b\n', 'Add b');
+    const reverted = head();
+
+    expect((await post('/revert', { hash: reverted, keepMessage: false })).status).toBe(204);
+    expect(head()).toBe(reverted);
+    expect(git(repo.work, 'status', '--porcelain')).toBe('D  b.txt');
+    expect((await request('GET', `${repo.api}/status`)).body.operation).toBe('revert');
+
+    expect((await post('/commit', { message: 'Take b back out' })).status).toBe(204);
+    expect(git(repo.work, 'log', '-1', '--format=%s')).toBe('Take b back out');
+    expect((await request('GET', `${repo.api}/status`)).body.operation).toBeNull();
+  });
+
+  it('pauses a conflicted revert until it is finished', async () => {
+    await writeAndCommit(repo.work, 'readme.txt', 'second\n', 'Second edit');
+    const reverted = head();
+    await writeAndCommit(repo.work, 'readme.txt', 'third\n', 'Third edit');
+
+    const { status, body } = await post('/revert', { hash: reverted });
+    expect(status).toBe(409);
+    expect(body.error.code).toBe('CONFLICTS');
+    expect((await request('GET', `${repo.api}/status`)).body.operation).toBe('revert');
+
+    await fs.writeFile(path.join(repo.work, 'readme.txt'), 'resolved\n');
+    git(repo.work, 'add', 'readme.txt');
+    expect((await post('/operation/continue')).status).toBe(204);
+    expect(git(repo.work, 'log', '-1', '--format=%s')).toBe('Revert "Second edit"');
+  });
+
   it('resets softly, keeping later changes staged', async () => {
     const first = head();
     await writeAndCommit(repo.work, 'b.txt', 'b\n', 'Second');

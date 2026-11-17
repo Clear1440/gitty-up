@@ -1,6 +1,7 @@
 import { Alert, Checkbox, Flex, Input, Segmented } from 'antd';
 import { useState } from 'react';
 import { ActionDialog } from '../../../components/ActionDialog.jsx';
+import { Field } from '../../../components/Field.jsx';
 import { useBranches, useWorktrees } from '../../../queries/git.js';
 import { useRepositoryContext } from '../RepositoryContext.js';
 import { useWorktreeActions } from '../useWorktreeActions.jsx';
@@ -65,28 +66,34 @@ export function CreateWorktreeDialog({ branch: initialBranch, startPoint, onClos
         <Segmented options={MODES} value={mode} onChange={setMode} />
         {isNew ? (
           <>
-            <BranchNameInput
-              autoFocus
-              aria-label="New branch name"
-              placeholder="New branch name"
-              value={newBranch}
-              onChange={setNewBranch}
-            />
-            <BranchSelect
-              aria-label="Start from"
-              placeholder="Start from HEAD"
-              value={base}
-              onChange={setBase}
-            />
+            <Field label="New branch name">
+              <BranchNameInput
+                autoFocus
+                aria-label="New branch name"
+                placeholder="feature/my-change"
+                value={newBranch}
+                onChange={setNewBranch}
+              />
+            </Field>
+            <Field label="Start from">
+              <BranchSelect
+                aria-label="Start from"
+                placeholder="The current commit"
+                value={base}
+                onChange={setBase}
+              />
+            </Field>
           </>
         ) : (
-          <BranchSelect
-            autoFocus
-            aria-label="Branch to check out"
-            excludeCurrent
-            value={branch}
-            onChange={setBranch}
-          />
+          <Field label="Branch to check out in the new folder">
+            <BranchSelect
+              autoFocus
+              aria-label="Branch to check out"
+              excludeCurrent
+              value={branch}
+              onChange={setBranch}
+            />
+          </Field>
         )}
         {takenBy && (
           <Alert
@@ -95,15 +102,14 @@ export function CreateWorktreeDialog({ branch: initialBranch, startPoint, onClos
             title={`${branchName} is already checked out in ${takenBy}.`}
           />
         )}
-        <label>
-          <span style={{ display: 'block', marginBottom: 4 }}>Folder</span>
+        <Field label="Folder" hint="Where the worktree is made. It must not exist yet, or be empty.">
           <Input
             aria-label="Folder"
             value={target}
             onChange={(event) => setFolder(event.target.value)}
             placeholder="Full path of a new, empty folder"
           />
-        </label>
+        </Field>
         <Checkbox checked={openAfter} onChange={(event) => setOpenAfter(event.target.checked)}>
           Open it in a new tab
         </Checkbox>

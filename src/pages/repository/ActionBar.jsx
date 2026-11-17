@@ -12,16 +12,18 @@ import {
   SyncOutlined,
 } from '@ant-design/icons';
 import { useQueryClient } from '@tanstack/react-query';
-import { App, Button, Divider, Dropdown, Space, Tooltip } from 'antd';
+import { App, Button, Divider, Dropdown, Space } from 'antd';
 import clsx from 'clsx';
 import { useNavigate } from 'react-router';
 import { AheadBehind } from '../../components/AheadBehind.jsx';
+import { Tooltip } from '../../components/Tooltip.jsx';
 import { useConfirmDanger } from '../../components/useConfirmDanger.js';
 import { paths } from '../../paths.js';
 import { useStashes } from '../../queries/git.js';
 import { queryKeys } from '../../queries/queryKeys.js';
 import { useIsFetchingAllRepositories } from '../../queries/repositories.js';
 import { useIsAutoFetching } from '../../queries/useAutoFetch.js';
+import { TextHelper } from '../../utils/TextHelper.js';
 import { CommitHelper } from './CommitHelper.js';
 import { MonoMembers } from './MonoMembers.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
@@ -135,6 +137,43 @@ export function ActionBar() {
     });
   };
 
+  // Each hint says what its count means, and why a greyed out button can't be used.
+  const waitHint = midOperation ? `Finish or abort the ${status.operation} first` : null;
+
+  const pullHint = () => {
+    if (!status.upstream) return 'Fetch and merge from the upstream branch';
+    return status.behind > 0
+      ? `Pull ${TextHelper.countOf(status.behind, 'commit')} from ${status.upstream}`
+      : `Fetch and merge from ${status.upstream}`;
+  };
+
+  const pushHint = () => {
+    if (!status.branch) return 'Check out a branch to push';
+    if (needsPublishing) return 'Publish this branch to a remote';
+    if (StatusHelper.tracksOtherName(status)) {
+      return `Push to ${status.upstream}, which is named differently from ${status.branch}`;
+    }
+    return status.ahead > 0
+      ? `Push ${TextHelper.countOf(status.ahead, 'commit')} to ${status.upstream}`
+      : `Nothing new to push to ${status.upstream}`;
+  };
+
+  const stagedCount = status.staged.length;
+  const commitHint =
+    stagedCount > 0
+      ? `${TextHelper.countOf(stagedCount, 'file')} staged. Write the commit message`
+      : 'Review your changes and write the commit message';
+
+  const stashHint =
+    changedFileCount > 0
+      ? `Set the changes to ${TextHelper.countOf(changedFileCount, 'file')} aside, to bring back later`
+      : 'No changes to set aside';
+
+  const popHint =
+    stashes.length > 0
+      ? 'Bring back the latest stash and remove it from the list'
+      : 'No stashes to bring back';
+
   const fetchMenu = [{ key: 'prune', label: 'Fetch & Prune', onClick: fetchAndPrune }];
 
   const pullMenu = [
@@ -171,7 +210,7 @@ export function ActionBar() {
       />
       <SplitActionButton
         label="Pull"
-        hint="Fetch and merge from the upstream branch"
+        hint={waitHint ?? pullHint()}
         icon={<CloudDownloadOutlined />}
         count={status.behind}
         loading={pendingAction === 'pull'}
@@ -181,13 +220,7 @@ export function ActionBar() {
       />
       <SplitActionButton
         label="Push"
-        hint={
-          needsPublishing
-            ? 'Publish this branch'
-            : StatusHelper.tracksOtherName(status)
-              ? `Push to ${status.upstream}, which is named differently from ${status.branch}`
-              : `Push to ${status.upstream}`
-        }
+        hint={waitHint ?? pushHint()}
         icon={<CloudUploadOutlined />}
         count={status.ahead}
         loading={pendingAction === 'push'}
@@ -199,7 +232,7 @@ export function ActionBar() {
 
       <ActionButton
         label="Commit"
-        hint="Jump to the commit message"
+        hint={commitHint}
         icon={<CheckOutlined />}
         count={status.staged.length}
         onClick={openCommitMessage}
@@ -214,9 +247,10 @@ export function ActionBar() {
       <ActionButton
         label="Merge"
         hint={
-          repository.isMono
+          waitHint ??
+          (repository.isMono
             ? 'Merge another branch, in every repository here'
-            : 'Merge or rebase with another branch'
+            : 'Merge or rebase with another branch')
         }
         icon={<MergeOutlined />}
         disabled={isBusy || midOperation}
@@ -227,16 +261,15 @@ export function ActionBar() {
         <>
           <ActionButton
             label="Stash"
-            hint="Set your changes aside"
+            hint={waitHint ?? stashHint}
             icon={<InboxOutlined />}
-            count={changedFileCount}
             loading={pendingAction === 'stash'}
             disabled={isBusy || midOperation || changedFileCount === 0}
             onClick={() => openDialog('stash')}
           />
           <ActionButton
             label="Pop"
-            hint="Restore the latest stash and remove it"
+            hint={waitHint ?? popHint}
             icon={<ExportOutlined />}
             loading={pendingAction === 'stashPop'}
             disabled={isBusy || midOperation || stashes.length === 0}
@@ -244,7 +277,9 @@ export function ActionBar() {
           />
           <SplitActionButton
             label="Patch"
-            hint="Apply a .patch or .diff file. You can also drop one onto the window."
+            hint={
+              waitHint ?? 'Apply a .patch or .diff file. You can also drop one onto the window.'
+            }
             icon={<FileTextOutlined />}
             loading={pendingAction === 'applyPatch'}
             disabled={isBusy || midOperation}

@@ -1,9 +1,11 @@
-import { SearchOutlined, SortAscendingOutlined } from '@ant-design/icons';
-import { Button, Collapse, Dropdown, Input, Spin, Tooltip } from 'antd';
+import { DisconnectOutlined, SearchOutlined, SortAscendingOutlined } from '@ant-design/icons';
+import { Button, Collapse, Dropdown, Input, Spin } from 'antd';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
+import { Tooltip } from '../../components/Tooltip.jsx';
 import { useBranches, useStashes, useWorktrees } from '../../queries/git.js';
 import { TextHelper } from '../../utils/TextHelper.js';
+import { useStoredState } from '../../utils/useStoredState.js';
 import { BRANCH_SORTS, buildBranchTree, sortBranches } from './branchTree.js';
 import { BranchTree, useFolderChoices } from './BranchTree.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
@@ -18,8 +20,31 @@ const SORT_ITEMS = BRANCH_SORTS.map(({ value, label, hint }) => ({
   title: hint,
 }));
 
+const HIDE_GONE_KEY = 'gitty-up.hide-gone-branches';
+
 function filterBranches(branches, filter) {
   return branches.filter((branch) => TextHelper.includesIgnoringCase(branch.name, filter));
+}
+
+/** A branch whose upstream was deleted. The checked out one always shows, gone or not. */
+const isHideableGone = (branch) => branch.upstreamGone && !branch.isCurrent;
+
+function GoneToggle({ hidden, goneCount, onChange }) {
+  const hint = hidden
+    ? `Show branches whose upstream is gone (${goneCount} hidden)`
+    : 'Hide branches whose upstream is gone';
+  return (
+    <Tooltip title={hint}>
+      <Button
+        icon={<DisconnectOutlined />}
+        aria-label={hint}
+        aria-pressed={hidden}
+        color={hidden ? 'primary' : 'default'}
+        variant={hidden ? 'filled' : 'outlined'}
+        onClick={() => onChange(!hidden)}
+      />
+    </Tooltip>
+  );
 }
 
 function SortMenu({ sort, onChange }) {
@@ -50,11 +75,20 @@ export function BranchSidebar({ resizeHandle }) {
   const { data: worktrees = [] } = useWorktrees(repository.id);
   const [filter, setFilter] = useState('');
   const [sort, setSort] = useBranchSort();
+  // One setting for the whole app, like the sort.
+  const [hideGone, setHideGone] = useStoredState(HIDE_GONE_KEY, false, {
+    isValid: (value) => typeof value === 'boolean',
+  });
   const [folderChoices, setFolderOpen] = useFolderChoices(repository.id);
   const [searchParams] = useSearchParams();
   const selectedRef = searchParams.get('focus') ?? searchParams.get('ref');
 
-  const local = sortBranches(filterBranches(branches?.local ?? [], filter), sort);
+  const matchingLocal = filterBranches(branches?.local ?? [], filter);
+  const goneCount = matchingLocal.filter(isHideableGone).length;
+  const local = sortBranches(
+    hideGone ? matchingLocal.filter((branch) => !isHideableGone(branch)) : matchingLocal,
+    sort,
+  );
   const remote = sortBranches(filterBranches(branches?.remote ?? [], filter), sort);
 
   // Counted before filtering, or the folders would come and go while typing.
@@ -78,7 +112,10 @@ export function BranchSidebar({ resizeHandle }) {
   const sections = [
     {
       key: 'local',
-      label: `Local (${local.length})`,
+      label:
+        hideGone && goneCount > 0
+          ? `Local (${local.length}, ${goneCount} gone hidden)`
+          : `Local (${local.length})`,
       children: renderBranches(local, 'local'),
     },
     {
@@ -114,6 +151,7 @@ export function BranchSidebar({ resizeHandle }) {
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
         />
+        <GoneToggle hidden={hideGone} goneCount={goneCount} onChange={setHideGone} />
         <SortMenu sort={sort} onChange={setSort} />
       </div>
       {status.mono && (

@@ -1,6 +1,7 @@
 import { CloseOutlined, DownOutlined, SearchOutlined, UpOutlined } from '@ant-design/icons';
-import { Button, Input, Tooltip } from 'antd';
+import { Button, Input } from 'antd';
 import { useEffect, useRef } from 'react';
+import { Tooltip } from '../../../components/Tooltip.jsx';
 import styles from './CommitSearch.module.css';
 
 /**

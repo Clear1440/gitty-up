@@ -31,8 +31,8 @@ export class StatusHelper {
   }
 
   /**
-   * Whether git actions should wait: one is already running, or a merge, rebase or
-   * cherry-pick is paused on conflicts.
+   * Whether git actions should wait: one is already running, or a merge, rebase,
+   * cherry-pick or revert is paused on conflicts.
    */
   static isBlocked(status, isBusy) {
     return isBusy || Boolean(status.operation);

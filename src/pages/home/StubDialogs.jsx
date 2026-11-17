@@ -1,7 +1,7 @@
 import { Alert } from 'antd';
 import { ActionDialog } from '../../components/ActionDialog.jsx';
 import { useCloneRepository, useLocateRepository } from '../../queries/repositories.js';
-import { FolderPicker, useFolderPicker } from './FolderPicker.jsx';
+import { ChosenFolder, FolderPicker, useFolderPicker } from './FolderPicker.jsx';
 import styles from './LinkRepositoryDialog.module.css';
 import { useOpenAfter } from './useOpenAfter.js';
 
@@ -27,7 +27,9 @@ export function CloneRepositoryDialog({ repository, onClose }) {
       onSubmit={() => cloneAndOpen(parentPath)}
       onClose={onClose}
     >
-      <p className={styles.hint}>Choose the folder to clone into.</p>
+      <p className={styles.hint}>
+        Choose the folder to clone into. The repository gets its own folder inside it.
+      </p>
       <FolderPicker picker={picker} onChange={clone.reset} />
       {parentPath && (
         <p className={styles.target}>
@@ -55,9 +57,11 @@ export function LocateRepositoryDialog({ repository, onClose }) {
       onClose={onClose}
     >
       <p className={styles.hint}>
-        Choose the folder that already holds this repository. Nothing is copied or moved.
+        Open the folder that already holds this repository, or paste its path. Nothing is
+        copied or moved.
       </p>
       <FolderPicker picker={picker} onChange={locate.reset} />
+      <ChosenFolder path={picker.selected} />
       {error && <Alert className={styles.error} type="error" showIcon title={error.message} />}
     </ActionDialog>
   );

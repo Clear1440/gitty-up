@@ -32,7 +32,7 @@ export function MergeIntoDialog({ target, onClose }) {
           checked={noFastForward}
           onChange={(event) => setNoFastForward(event.target.checked)}
         >
-          Always create a merge commit
+          Always create a merge commit, even if {target} could just move forward
         </Checkbox>
         <MergeBlockedAlert reasons={behind} />
       </Flex>

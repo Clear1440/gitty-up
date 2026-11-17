@@ -1,6 +1,8 @@
 import { Checkbox, Flex } from 'antd';
 import { useState } from 'react';
 import { ActionDialog } from '../../../components/ActionDialog.jsx';
+import { Field, Outcome } from '../../../components/Field.jsx';
+import { CommitHelper } from '../CommitHelper.js';
 import { useRepositoryContext } from '../RepositoryContext.js';
 import { BranchNameInput } from './BranchNameInput.jsx';
 import { BranchSelect } from './BranchSelect.jsx';
@@ -13,6 +15,11 @@ export function CreateBranchDialog({ startPoint: initialStartPoint, commit, onCl
     commit?.hash ?? initialStartPoint ?? status.branch ?? undefined,
   );
   const [switchTo, setSwitchTo] = useState(true);
+  const startLabel =
+    startPoint === commit?.hash
+      ? `commit ${commit.shortHash}`
+      : (startPoint ?? `commit ${CommitHelper.shortHash(status.headHash)}`);
+  const stayingOn = status.branch ?? 'the current commit';
 
   return (
     <ActionDialog
@@ -23,23 +30,33 @@ export function CreateBranchDialog({ startPoint: initialStartPoint, commit, onCl
       onClose={onClose}
     >
       <Flex vertical gap={12}>
-        <BranchNameInput
-          autoFocus
-          aria-label="Branch name"
-          placeholder="Branch name"
-          value={name}
-          onChange={setName}
-        />
-        <BranchSelect
-          aria-label="Start from"
-          placeholder="Start from HEAD"
-          value={startPoint}
-          onChange={setStartPoint}
-          commit={commit}
-        />
+        <Field label="Branch name">
+          <BranchNameInput
+            autoFocus
+            aria-label="Branch name"
+            placeholder="feature/my-change"
+            value={name}
+            onChange={setName}
+          />
+        </Field>
+        <Field label="Start from" hint="The new branch starts with the same commits.">
+          <BranchSelect
+            aria-label="Start from"
+            placeholder="The current commit"
+            value={startPoint}
+            onChange={setStartPoint}
+            commit={commit}
+          />
+        </Field>
         <Checkbox checked={switchTo} onChange={(event) => setSwitchTo(event.target.checked)}>
           Switch to the new branch
         </Checkbox>
+        {name && (
+          <Outcome>
+            Creates <strong>{name}</strong> from <strong>{startLabel}</strong>
+            {switchTo ? ' and switches to it.' : `. You stay on ${stayingOn}.`}
+          </Outcome>
+        )}
       </Flex>
     </ActionDialog>
   );

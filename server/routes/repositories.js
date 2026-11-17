@@ -324,6 +324,12 @@ function createGitRouter() {
   action(router, '/cherry-pick', (service, target, { hash }) =>
     service.cherryPick(target, { hash: ValidationHelper.requireString(hash, 'hash') }),
   );
+  action(router, '/revert', (service, target, { hash, keepMessage }) =>
+    service.revert(target, {
+      hash: ValidationHelper.requireString(hash, 'hash'),
+      keepMessage: keepMessage !== false,
+    }),
+  );
   action(router, '/reset', (service, target, { hash, mode }) =>
     service.resetToCommit(target, { hash: ValidationHelper.requireString(hash, 'hash'), mode }),
   );

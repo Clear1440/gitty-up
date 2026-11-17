@@ -26,6 +26,7 @@ import {
 } from '../../queries/repositories.js';
 import { useTabs } from '../../tabs/TabsContext.jsx';
 import { KeyboardHelper } from '../../utils/KeyboardHelper.js';
+import { TextHelper } from '../../utils/TextHelper.js';
 import { colorValueOf } from './groupColors.js';
 import { groupIdsOf, isInGroup, toggleGroup, UNGROUPED } from './groupMembership.js';
 import { GroupNameDialog } from './GroupNameDialog.jsx';
@@ -62,13 +63,17 @@ function RowStatus({ summary, condensed }) {
   const meta = (
     <div className={styles.meta}>
       <BranchLabel summary={summary} />
-      <span className={styles.syncState}>
-        <AheadBehind ahead={summary.ahead} behind={summary.behind} />
-      </span>
-      {summary.changeCount > 0 && (
-        <span className={styles.changes}>
+      {/* Each count keeps its own column, shown or not, so they line up from row to row. */}
+      <AheadBehind ahead={summary.ahead} behind={summary.behind} aligned />
+      {summary.changeCount > 0 ? (
+        <span
+          className={styles.changes}
+          title={`${TextHelper.countOf(summary.changeCount, 'file')} with uncommitted changes`}
+        >
           <EditOutlined /> {summary.changeCount}
         </span>
+      ) : (
+        <span />
       )}
     </div>
   );

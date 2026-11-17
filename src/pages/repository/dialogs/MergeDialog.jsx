@@ -1,6 +1,7 @@
 import { Checkbox, Flex, Segmented } from 'antd';
 import { useState } from 'react';
 import { ActionDialog } from '../../../components/ActionDialog.jsx';
+import { Field, Outcome } from '../../../components/Field.jsx';
 import { useBranches } from '../../../queries/git.js';
 import { useRepositoryContext } from '../RepositoryContext.js';
 import { StatusHelper } from '../StatusHelper.js';
@@ -25,6 +26,7 @@ export function MergeDialog({ branch: initialBranch, mode: initialMode = 'merge'
   const canRebase = !repository.isMono;
   const isMerge = mode === 'merge' || !canRebase;
   const behind = isMerge ? findBehindBranches(branches?.local ?? [], [status.branch, branch]) : [];
+  const other = branch ?? 'the branch you choose';
   const mergeTitle = repository.isMono
     ? `Merge into ${current}, in every repository`
     : `Merge into ${current}`;
@@ -39,20 +41,35 @@ export function MergeDialog({ branch: initialBranch, mode: initialMode = 'merge'
     >
       <Flex vertical gap={12} align="flex-start">
         {canRebase && <Segmented options={MODES} value={mode} onChange={setMode} />}
-        <BranchSelect
-          autoFocus
-          excludeCurrent
-          aria-label={isMerge ? 'Branch to merge' : 'Branch to rebase onto'}
-          value={branch}
-          onChange={setBranch}
-        />
+        <Field label={isMerge ? `Branch to merge into ${current}` : `Branch to rebase ${current} onto`}>
+          <BranchSelect
+            autoFocus
+            excludeCurrent
+            aria-label={isMerge ? 'Branch to merge' : 'Branch to rebase onto'}
+            value={branch}
+            onChange={setBranch}
+          />
+        </Field>
         {isMerge && (
           <Checkbox
             checked={noFastForward}
             onChange={(event) => setNoFastForward(event.target.checked)}
           >
-            Always create a merge commit
+            Always create a merge commit, even if {current} could just move forward
           </Checkbox>
+        )}
+        {isMerge ? (
+          <Outcome>
+            Brings the commits from <strong>{other}</strong> into <strong>{current}</strong>.
+            {' '}
+            {branch ? `${branch} is not changed.` : 'That branch is not changed.'}
+          </Outcome>
+        ) : (
+          <Outcome>
+            Replays the commits that are only on <strong>{current}</strong> on top of{' '}
+            <strong>{other}</strong>. This rewrites them, so if {current} is already pushed it
+            will need a force push.
+          </Outcome>
         )}
         <MergeBlockedAlert reasons={behind} />
       </Flex>

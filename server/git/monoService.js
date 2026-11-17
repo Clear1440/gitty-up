@@ -503,6 +503,10 @@ export async function cherryPick() {
   throw ApiError.badRequest('Open the repository on its own to cherry-pick a commit.');
 }
 
+export async function revert() {
+  throw ApiError.badRequest('Open the repository on its own to revert a commit.');
+}
+
 export async function resetToCommit() {
   throw ApiError.badRequest('Open the repository on its own to reset to a commit.');
 }
