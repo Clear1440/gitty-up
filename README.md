@@ -81,8 +81,10 @@ run the Release workflow from the repository's **Actions** tab.
 What's new**, and once after an update with the releases since the last version that ran. Add
 what changes under `## Unreleased` as you go, in `### Added`, `### Changed` and `### Fixed`
 sections of `- ` items (`**bold**`, `` `code` `` and links work). The release script moves those
-notes under the new version's heading, dated, in the release commit, and warns if there are
-none.
+notes under the new version's heading, dated, in the release commit. It stops if there are
+none, as every version needs its own section: the Release workflow's tests check for it, and a
+release without one fails before anything is built. When nothing in the app changed, a line
+under `## Unreleased` saying so is enough.
 
 #### Builds
 
