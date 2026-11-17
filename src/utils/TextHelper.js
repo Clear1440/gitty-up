@@ -13,6 +13,12 @@ export class TextHelper {
     return `${count} ${TextHelper.pluralize(count, singular, plural)}`;
   }
 
+  /** Joins names as a sentence would: "a", "a and b", or "a, b and c". */
+  static joinWithAnd(names) {
+    if (names.length < 2) return names.join('');
+    return `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+  }
+
   /** Whether `text` contains what was typed in a search box, ignoring case and outer spaces. */
   static includesIgnoringCase(text, query) {
     return text.toLowerCase().includes(query.trim().toLowerCase());

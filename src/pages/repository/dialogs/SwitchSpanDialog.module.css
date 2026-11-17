@@ -1,0 +1,18 @@
+.normal,
+.muted,
+.danger {
+  align-self: center;
+  white-space: nowrap;
+}
+
+.normal {
+  color: var(--color-text);
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
+
+.danger {
+  color: var(--color-danger);
+}

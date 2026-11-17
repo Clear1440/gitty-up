@@ -3,12 +3,18 @@ import { Button, Collapse, Dropdown, Input, Spin } from 'antd';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { Tooltip } from '../../components/Tooltip.jsx';
-import { useBranches, useStashes, useWorktrees } from '../../queries/git.js';
+import {
+  useBranches,
+  useSpanningBranches,
+  useStashes,
+  useWorktrees,
+} from '../../queries/git.js';
 import { TextHelper } from '../../utils/TextHelper.js';
 import { useStoredState } from '../../utils/useStoredState.js';
 import { BRANCH_SORTS, buildBranchTree, sortBranches } from './branchTree.js';
 import { BranchTree, useFolderChoices } from './BranchTree.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
+import { SpanningBranchList } from './SpanningBranchList.jsx';
 import { StashList } from './StashList.jsx';
 import { useBranchSort } from './useBranchSort.js';
 import { WorktreeList } from './WorktreeList.jsx';
@@ -73,6 +79,9 @@ export function BranchSidebar({ resizeHandle }) {
   const { data: branches, isPending } = useBranches(repository.id);
   const { data: stashes = [] } = useStashes(repository.id);
   const { data: worktrees = [] } = useWorktrees(repository.id);
+  const { data: spanningBranches = [] } = useSpanningBranches(repository.id, {
+    enabled: Boolean(repository.isMono),
+  });
   const [filter, setFilter] = useState('');
   const [sort, setSort] = useBranchSort();
   // One setting for the whole app, like the sort.
@@ -90,6 +99,7 @@ export function BranchSidebar({ resizeHandle }) {
     sort,
   );
   const remote = sortBranches(filterBranches(branches?.remote ?? [], filter), sort);
+  const spanning = filterBranches(spanningBranches, filter);
 
   // Counted before filtering, or the folders would come and go while typing.
   const showRemotes = new Set(branches?.remote.map(({ remote: name }) => name)).size > 1;
@@ -118,6 +128,16 @@ export function BranchSidebar({ resizeHandle }) {
           : `Local (${local.length})`,
       children: renderBranches(local, 'local'),
     },
+    // A mono repo also has the branches only some of its repositories have.
+    ...(repository.isMono
+      ? [
+          {
+            key: 'spanning',
+            label: `Across some repositories (${spanning.length})`,
+            children: <SpanningBranchList branches={spanning} />,
+          },
+        ]
+      : []),
     {
       key: 'remote',
       label: `Remote (${remote.length})`,
@@ -155,7 +175,10 @@ export function BranchSidebar({ resizeHandle }) {
         <SortMenu sort={sort} onChange={setSort} />
       </div>
       {status.mono && (
-        <p className={styles.monoNote}>Branches shared by every repository</p>
+        <p className={styles.monoNote}>
+          Only branches every repository here has. The rest are in each repository&apos;s own
+          tab.
+        </p>
       )}
       <div className={styles.body}>
         {isPending ? (
@@ -164,7 +187,7 @@ export function BranchSidebar({ resizeHandle }) {
           <Collapse
             ghost
             size="small"
-            defaultActiveKey={['local', 'remote', 'stashes', 'worktrees']}
+            defaultActiveKey={['local', 'remote', 'spanning', 'stashes', 'worktrees']}
             items={sections}
           />
         )}

@@ -79,6 +79,14 @@ async function findScript(request) {
   return script;
 }
 
+/** The mono service, for routes that only a mono repo has. */
+function requireMono(request) {
+  if (!request.repository.isMono) {
+    throw ApiError.badRequest('Only a group opened as a mono repo can switch across repositories.');
+  }
+  return mono;
+}
+
 /** A stub has no folder. Without this guard git would run in the server's own folder. */
 function requireWorkingCopy(request, _response, next) {
   if (!request.repository.path && !request.repository.isMono) {
@@ -266,6 +274,31 @@ function createGitRouter() {
       fullFile: fullFile === 'true',
     });
     response.json({ diff, hash: git.hashDiff(diff) });
+  });
+
+  // Branches across part of a group only mean something for a mono repo.
+  router.get('/spanning-branches', async (request, response) => {
+    response.json(request.repository.isMono ? await mono.getSpanningBranches(request.target) : []);
+  });
+
+  router.get('/span-plan', async (request, response) => {
+    const branch = ValidationHelper.requireString(request.query.branch, 'branch');
+    response.json(await requireMono(request).planSpan(request.target, { branch }));
+  });
+
+  router.post('/switch-span', async (request, response) => {
+    const branch = ValidationHelper.requireString(request.body?.branch, 'branch');
+    await requireMono(request).switchSpan(request.target, { branch });
+    response.status(204).end();
+  });
+
+  router.get('/merge-preview', async (request, response) => {
+    response.json(
+      await request.service.previewMerge(request.target, {
+        source: ValidationHelper.requireString(request.query.source, 'source'),
+        target: ValidationHelper.requireString(request.query.target, 'target'),
+      }),
+    );
   });
 
   router.get('/conflict', async (request, response) => {

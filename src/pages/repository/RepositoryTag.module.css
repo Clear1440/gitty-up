@@ -1,0 +1,26 @@
+.tag {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  max-width: 16ch;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--repository-color, var(--color-primary-strong)) 14%, transparent);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: baseline;
+}
+
+.dot {
+  display: inline-block;
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--repository-color, var(--color-primary-strong));
+}

@@ -39,7 +39,10 @@ export async function resolveMono(store, group) {
   if (!group.monoBranch) return null;
 
   const linked = (await store.list()).filter((entry) => groupIdsOf(entry).includes(group.id));
-  const repositories = await readEach(assignPrefixes(linked), async (repository) => {
+  // A slot is a repository's lasting place in the group, so the page can give each a color
+  // that stays put as others join or leave.
+  const placed = assignPrefixes(linked).map((repository, slot) => ({ ...repository, slot }));
+  const repositories = await readEach(placed, async (repository) => {
     const missing = { ...repository, branch: null, missing: true };
     // A stub has no folder, and git would otherwise run in the server's own.
     if (!repository.path) return missing;
@@ -180,10 +183,25 @@ function resolveCommit(mono, monoHash) {
 
 /** Says why a repository is left out, and whether switching branch would bring it in. */
 async function describeLeftOut(mono, repository) {
-  const { id, name, branch, missing, path } = repository;
-  if (missing) return { id, name, branch: null, missing: true, canJoin: false };
+  const { id, name, slot, branch, missing, path } = repository;
+  if (missing) return { id, name, slot, branch: null, missing: true, canJoin: false };
   const canJoin = await git.hasLocalBranch(path, mono.branch).catch(() => false);
-  return { id, name, branch, missing: false, canJoin };
+  return { id, name, slot, branch, missing: false, canJoin };
+}
+
+/**
+ * A repository with no copy of the branch, sitting on its own main line, is where a
+ * branch across some of the group puts it. That is no reason to warn: it rides along.
+ */
+const isFollowingMain = ({ missing, canJoin, branch }) =>
+  !missing && !canJoin && GitRefHelper.isMainBranch(branch);
+
+/** Where one member stands, so the page can say which repository a total comes from. */
+function describeMember({ member, status }) {
+  const { id, name, prefix, slot } = member;
+  const { upstream, upstreamGone, ahead, behind, staged, unstaged, conflicted, operation } = status;
+  const changes = new Set([...staged, ...unstaged, ...conflicted].map(({ path }) => path)).size;
+  return { id, name, prefix, slot, upstream, upstreamGone, ahead, behind, changes, operation };
 }
 
 export async function getStatus(mono) {
@@ -194,10 +212,134 @@ export async function getStatus(mono) {
   return {
     ...mergeStatuses(mono.branch, results),
     mono: {
-      members: mono.members.map(({ id, name }) => ({ id, name })),
-      leftOut,
+      members: results.map(describeMember),
+      following: leftOut.filter(isFollowingMain),
+      leftOut: leftOut.filter((repository) => !isFollowingMain(repository)),
     },
   };
+}
+
+const describeRepository = ({ id, name, slot }) => ({ id, name, slot });
+
+/**
+ * Branches that two or more of the group's repositories have, but not every member: a
+ * feature that only touches some of them. The shared branches are listed already.
+ */
+export async function getSpanningBranches(mono) {
+  const available = mono.repositories.filter(({ missing }) => !missing);
+  const lists = await readEach(available, async (repository) => ({
+    repository,
+    names: await git.listLocalBranchNames(repository.path).catch(() => []),
+  }));
+
+  const memberIds = new Set(mono.members.map(({ id }) => id));
+  const memberLists = lists.filter(({ repository }) => memberIds.has(repository.id));
+  const isShared = (name) =>
+    memberLists.length > 0 && memberLists.every(({ names }) => names.includes(name));
+
+  const byName = new Map();
+  for (const { repository, names } of lists) {
+    for (const name of names) byName.set(name, [...(byName.get(name) ?? []), repository]);
+  }
+
+  return [...byName]
+    .filter(([name, repositories]) => repositories.length > 1 && !isShared(name))
+    .map(([name, repositories]) => ({
+      name,
+      repositories: repositories.map(describeRepository),
+      total: available.length,
+    }))
+    .sort((a, b) => b.repositories.length - a.repositories.length || a.name.localeCompare(b.name));
+}
+
+/** Why one repository can't switch, or null when it can. */
+function findSwitchProblem({ status, to, branch }) {
+  if (status.operation) return `${status.operation} in progress`;
+  if (status.conflicted.length > 0) return 'has conflicts';
+  if (!to) return `has neither ${branch} nor a main or master branch`;
+  // Staged changes would be carried to another branch, or block the switch halfway.
+  if (status.staged.length > 0) {
+    return TextHelper.countOf(status.staged.length, 'staged change');
+  }
+  return null;
+}
+
+/**
+ * Where each of the group's repositories goes to work on `branch` across the group: onto
+ * it if it has a copy, else onto its main line, so they all start from the same place.
+ * Repositories not on this machine are left out. Nothing is changed.
+ */
+function readSwitchSteps(mono, branch) {
+  return readEach(mono.repositories, async (repository) => {
+    const described = describeRepository(repository);
+    if (repository.missing) return { ...described, missing: true, from: null, to: null };
+
+    const [names, status] = await Promise.all([
+      git.listLocalBranchNames(repository.path),
+      git.getStatus(repository.path),
+    ]);
+    const to = names.includes(branch) ? branch : GitRefHelper.pickMainBranch(names);
+    const from = status.branch ?? null;
+    const plan = { ...described, missing: false, from, fromHash: status.headHash, to };
+    // A repository already where it should be has nothing to switch, so nothing to block.
+    const problem = from === to ? null : findSwitchProblem({ status, to, branch });
+    return { ...plan, problem, unstaged: status.unstaged.length };
+  });
+}
+
+/** What switching the group to `branch` would do to each repository, and whether it can. */
+export async function planSpan(mono, { branch }) {
+  const steps = await readSwitchSteps(mono, branch);
+  const present = steps.filter(({ missing }) => !missing);
+  const onBranch = present.filter(({ to }) => to === branch).length;
+  return {
+    branch,
+    repositories: steps.map(({ id, name, slot, missing, from, to, problem, unstaged }) => ({
+      id,
+      name,
+      slot,
+      missing,
+      from,
+      to,
+      problem: problem ?? null,
+      unstaged: unstaged ?? 0,
+    })),
+    onBranch,
+    canSwitch: onBranch > 0 && present.every(({ problem }) => !problem),
+  };
+}
+
+/**
+ * Switches the whole group as planSpan says, then makes `branch` the mono repo's. All or
+ * nothing: any problem stops it before it starts, and a switch that fails puts every
+ * repository already switched back where it was.
+ */
+export async function switchSpan(mono, { branch }) {
+  const steps = await readSwitchSteps(mono, branch);
+  if (!steps.some(({ to }) => to === branch)) {
+    throw ApiError.badRequest(`No repository in ${mono.name} has ${branch}.`);
+  }
+  const blocked = steps.filter(({ problem }) => problem);
+  if (blocked.length > 0) {
+    const lines = blocked.map(({ name, problem }) => `${name}: ${problem}`);
+    throw ApiError.badRequest(
+      [`Nothing was switched, because ${namesOf(blocked)} can't switch yet.`, ...lines].join('\n'),
+    );
+  }
+
+  const byId = new Map(mono.repositories.map((repository) => [repository.id, repository]));
+  const moves = steps
+    .filter(({ missing, from, to }) => !missing && from !== to)
+    .map((step) => ({ ...step, path: byId.get(step.id).path }));
+
+  await allOrNone(
+    moves,
+    ({ path, to }) => git.checkout(path, { branch: to }),
+    ({ path, from, fromHash }) =>
+      from ? git.checkout(path, { branch: from }) : git.checkoutCommit(path, { hash: fromHash }),
+    ({ name, to }) => `Nothing was switched, because ${name} could not switch to ${to}.`,
+  );
+  await mono.setBranch(branch);
 }
 
 export async function getBranches(mono) {
@@ -377,11 +519,28 @@ async function assertMembersCanMerge(mono, branches) {
 const MERGE_NEXT_STEP =
   'Fix that, then merge again. Repositories already merged are not affected.';
 
+/** What merging `source` into `target` would do in each member, and in all of them. */
+export async function previewMerge(mono, { source, target }) {
+  const repositories = await readEach(mono.members, async (member) => ({
+    id: member.id,
+    name: member.name,
+    slot: member.slot,
+    ...(await git.previewMerge(member.path, { source, target })),
+  }));
+  return {
+    source,
+    target,
+    commits: repositories.reduce((total, { commits }) => total + commits, 0),
+    fastForward: repositories.every(({ commits, fastForward }) => fastForward || commits === 0),
+    repositories,
+  };
+}
+
 /** Merges `branch` into the mono repo's branch, in every member. */
 export async function merge(mono, options) {
   await assertMembersCanMerge(mono, [mono.branch, options.branch]);
   await forEachMember(mono.members, ({ path }) => git.merge(path, options), {
-    doneIn: 'Merged in',
+    doneIn: `Merged ${options.branch} into ${mono.branch} in`,
     nextStep: MERGE_NEXT_STEP,
   });
 }
@@ -395,7 +554,7 @@ export async function mergeInto(mono, options) {
   await assertMembersCanMerge(mono, [mono.branch, options.target]);
   try {
     await forEachMember(mono.members, ({ path }) => git.mergeInto(path, options), {
-      doneIn: 'Merged in',
+      doneIn: `Merged ${mono.branch} into ${options.target} in`,
       nextStep: MERGE_NEXT_STEP,
     });
   } finally {

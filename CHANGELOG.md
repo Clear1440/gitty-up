@@ -13,8 +13,26 @@ version's section.
   changes and commit them with a message of your own.
 - The branch list can hide local branches whose upstream is gone, with the button beside the
   filter. The checked out branch always shows.
+- **See a merge before you make it.** The merge dialogs show which branch goes into which, how
+  many commits that brings in, and whether it fast-forwards. In a mono repo they do so for each
+  repository, and name the ones the merge leaves alone.
+- **Branches across part of a mono repo.** A branch that two or more of a group's repositories
+  have is listed under **Across some repositories**. Choosing one lines the whole group up on
+  it: those with the branch switch to it, and the rest go to their main or master branch. The
+  dialog shows where each repository goes, and nothing switches if any of them has staged
+  changes, conflicts or something under way, or if one fails to switch.
+- Repositories riding along on their main branch show beside the branch name, with the branch
+  they are on, rather than as left out.
 
 ### Changed
+
+- **Mono repos read as one repository, made of several.** Each repository keeps one color
+  throughout the tab: on its commits, its folder in the file lists, and the member dots by the
+  branch name. The members list says where each one's branch stands, and opens any of them in a
+  tab of its own.
+- Merge messages name both branches, and in a mono repo the repositories they were merged in.
+- Opening a group as a mono repo picks **main**, or else **master**, when some of its repositories
+  are on it. The merge dialog offers the same branch to merge in.
 
 - **Clearer dialogs.** Fields in the branch, merge, stash, publish and worktree dialogs have
   labels that stay on show, and each dialog says in a sentence what its button will do.

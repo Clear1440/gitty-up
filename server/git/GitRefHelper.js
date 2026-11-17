@@ -10,6 +10,12 @@ const PREFERRED_REMOTE = 'origin';
  */
 const PROTECTED_REMOTE_BRANCHES = new Set(['main', 'master', 'prod', 'production']);
 
+/**
+ * The names a repository's main line goes by, the likelier first. The client has the
+ * same list in src/utils/BranchHelper.js.
+ */
+const MAIN_BRANCHES = ['main', 'master'];
+
 /** Names of branches, remotes and commits, as git spells them. */
 export class GitRefHelper {
   /** refs/heads/name: the full name, which can't be mistaken for a tag or an option. */
@@ -57,6 +63,16 @@ export class GitRefHelper {
   /** Whether a branch, named as it is on its remote (main, not origin/main), is protected. */
   static isProtectedOnRemote(localName) {
     return PROTECTED_REMOTE_BRANCHES.has(localName.toLowerCase());
+  }
+
+  /** Whether a branch is a main line, by name: main or master. */
+  static isMainBranch(name) {
+    return MAIN_BRANCHES.includes(name);
+  }
+
+  /** main if it is among `names`, else master, else null. */
+  static pickMainBranch(names) {
+    return MAIN_BRANCHES.find((main) => names.includes(main)) ?? null;
   }
 
   /** The abbreviated hash git shows by default. */
