@@ -6,6 +6,11 @@ version's section.
 
 ## Unreleased
 
+## 0.2.5 - 2026-11-17
+
+Nothing in the app changed. Releases are now prepared as a pull request, which the Release
+workflow tags and builds once it merges.
+
 ## 0.2.4 - 2026-11-17
 
 ### Added
