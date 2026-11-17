@@ -28,6 +28,13 @@ export const gitApi = {
   getDiff: (id, { path, staged, untracked, fullFile }) =>
     http.get(route(id, '/diff'), { path, staged, untracked, fullFile }),
   getConflict: (id, { path }) => http.get(route(id, '/conflict'), { path }),
+  /** Branches that some, but not all, of a mono repo's group have. */
+  getSpanningBranches: (id) => http.get(route(id, '/spanning-branches')),
+  /** Where each of a mono repo's repositories would go to work on `branch` across them. */
+  getSpanPlan: (id, { branch }) => http.get(route(id, '/span-plan'), { branch }),
+  /** What merging `source` into `target` would bring in, per repository in a mono repo. */
+  previewMerge: (id, { source, target }) =>
+    http.get(route(id, '/merge-preview'), { source, target }),
 
   // Syncing
   fetch: (id) => http.post(route(id, '/fetch')),
@@ -38,6 +45,7 @@ export const gitApi = {
 
   // Branches
   checkout: (id, { branch, remote }) => http.post(route(id, '/checkout'), { branch, remote }),
+  switchSpan: (id, { branch }) => http.post(route(id, '/switch-span'), { branch }),
   createBranch: (id, { name, startPoint, switchTo }) =>
     http.post(route(id, '/branches'), { name, startPoint, switchTo }),
   deleteBranch: (id, { name, force, deleteRemote }) =>

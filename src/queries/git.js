@@ -152,3 +152,37 @@ export function useDiff(repositoryId, file, { fullFile }) {
     enabled: Boolean(file),
   });
 }
+
+/**
+ * What merging `source` into `target` would bring in. Waits for both, and keeps the last
+ * answer on screen while the next branch's loads, so the dialog doesn't jump.
+ */
+export function useMergePreview(repositoryId, source, target) {
+  return useQuery({
+    queryKey: queryKeys.mergePreview(repositoryId, source, target),
+    queryFn: () => gitApi.previewMerge(repositoryId, { source, target }),
+    enabled: Boolean(source && target),
+    placeholderData: (previous) => previous,
+    retry: false,
+  });
+}
+
+/** Branches that some of a mono repo's repositories have. None outside a mono repo. */
+export function useSpanningBranches(repositoryId, { enabled }) {
+  return useQuery({
+    queryKey: queryKeys.spanningBranches(repositoryId),
+    queryFn: () => gitApi.getSpanningBranches(repositoryId),
+    enabled,
+  });
+}
+
+/** Where each repository would go to work on `branch` across a mono repo's group. */
+export function useSpanPlan(repositoryId, branch) {
+  return useQuery({
+    queryKey: queryKeys.spanPlan(repositoryId, branch),
+    queryFn: () => gitApi.getSpanPlan(repositoryId, { branch }),
+    // Read fresh each time, as staged changes anywhere decide whether it can go ahead.
+    staleTime: 0,
+    retry: false,
+  });
+}

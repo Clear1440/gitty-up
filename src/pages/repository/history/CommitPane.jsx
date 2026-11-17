@@ -8,6 +8,7 @@ import { DiffContent, DiffViewToggle, useDiffViewMode } from '../diff/DiffConten
 import { parseDiff } from '../diff/diffRows.js';
 import { FileSection } from '../FileSection.jsx';
 import { useRepositoryContext } from '../RepositoryContext.js';
+import { RepositoryTag } from '../RepositoryTag.jsx';
 import styles from './CommitPane.module.css';
 import { FilesAndDiff } from './FilesAndDiff.jsx';
 
@@ -81,7 +82,11 @@ export function CommitPane({ hash, onClose, resizeHandle }) {
           <h3 className={styles.subject}>{commit.subject}</h3>
           {body && <p className={styles.body}>{body}</p>}
           <p className={styles.meta}>
-            {commit.repository && `${commit.repository} · `}
+            {commit.repository && (
+              <>
+                <RepositoryTag name={commit.repository} /> ·{' '}
+              </>
+            )}
             {commit.author} · <RelativeTime date={commit.date} /> ·{' '}
             <code className={styles.hash} title={commit.hash}>
               {commit.shortHash}

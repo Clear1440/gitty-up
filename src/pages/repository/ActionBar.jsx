@@ -25,7 +25,7 @@ import { useIsFetchingAllRepositories } from '../../queries/repositories.js';
 import { useIsAutoFetching } from '../../queries/useAutoFetch.js';
 import { TextHelper } from '../../utils/TextHelper.js';
 import { CommitHelper } from './CommitHelper.js';
-import { MonoMembers } from './MonoMembers.jsx';
+import { AlongsideBranches, MonoMembers } from './MonoMembers.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { ScriptsMenu } from './ScriptsMenu.jsx';
 import { StatusHelper } from './StatusHelper.js';
@@ -78,6 +78,7 @@ function CurrentBranch({ status }) {
           <AheadBehind ahead={status.ahead} behind={status.behind} />
         </div>
       </Tooltip>
+      {status.mono && <AlongsideBranches />}
       {status.mono && <MonoMembers />}
     </div>
   );
@@ -248,8 +249,8 @@ export function ActionBar() {
         label="Merge"
         hint={
           waitHint ??
-          (repository.isMono
-            ? 'Merge another branch, in every repository here'
+          (status.mono
+            ? `Merge another branch into ${status.branch}, in ${TextHelper.joinWithAnd(status.mono.members.map(({ name }) => name))}`
             : 'Merge or rebase with another branch')
         }
         icon={<MergeOutlined />}
