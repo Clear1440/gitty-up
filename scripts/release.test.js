@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { nextVersion, parseArguments, pullRequestUrl, ReleaseError } from './release.js';
+import {
+  nextVersion,
+  parseArguments,
+  planChangelog,
+  pullRequestUrl,
+  ReleaseError,
+} from './release.js';
 
 describe('nextVersion', () => {
   it('bumps the current version', () => {
@@ -40,5 +46,27 @@ describe('pullRequestUrl', () => {
     expect(url.searchParams.get('expand')).toBe('1');
     expect(url.searchParams.get('title')).toBe('Release v0.3.0');
     expect(url.searchParams.get('body')).toBe('Body & more');
+  });
+});
+
+describe('planChangelog', () => {
+  const HEADER = '# Changelog\n\n## Unreleased\n';
+
+  it('moves the Unreleased notes under the new version', () => {
+    const text = planChangelog(`${HEADER}\n- A fix\n`, '0.2.6', '2026-11-18');
+    expect(text).toContain('## 0.2.6 - 2026-11-18\n\n- A fix');
+  });
+
+  it('leaves alone a version that already has its notes', () => {
+    expect(planChangelog(`${HEADER}\n## 0.2.6 - 2026-11-18\n\n- A fix\n`, '0.2.6', '2026-11-18')).toBe(
+      null,
+    );
+  });
+
+  it('stops a release with nothing under Unreleased, as its build would fail', () => {
+    expect(() => planChangelog(`${HEADER}\n## 0.2.5 - 2026-11-17\n\n- Old\n`, '0.2.6', '2026-11-18')).toThrow(
+      /nothing under Unreleased/,
+    );
+    expect(() => planChangelog(null, '0.2.6', '2026-11-18')).toThrow(ReleaseError);
   });
 });

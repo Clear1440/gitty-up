@@ -122,17 +122,21 @@ function writeJson(file, data) {
 }
 
 /**
- * What the release does to CHANGELOG.md: moves the Unreleased notes under the new version,
- * whose section the app shows as what's new. `text` is null when nothing changes.
+ * What the release does to CHANGELOG.md, given its text on main: moves the Unreleased notes
+ * under the new version, whose section the app shows as what's new. Gives null when the
+ * version has a section already. A release with no notes stops here, as the Release
+ * workflow's tests need a section for every version and would fail the build.
  */
-function planChangelog(version) {
-  const current = readBase(CHANGELOG);
-  if (current === null) return { text: null, note: `there is no ${CHANGELOG}` };
-  const date = new Date().toISOString().slice(0, 10);
+export function planChangelog(current, version, date) {
+  if (current === null) throw new ReleaseError(`There is no ${CHANGELOG} on ${BASE}.`);
   const { text, stamped } = stampUnreleased(`${current}\n`, version, date);
-  if (stamped) return { text, note: null };
-  if (hasRelease(current, version)) return { text: null, note: null };
-  return { text: null, note: `${CHANGELOG} has nothing under Unreleased for this release` };
+  if (stamped) return text;
+  if (hasRelease(current, version)) return null;
+  throw new ReleaseError(
+    `${CHANGELOG} has nothing under Unreleased, so ${version} would have no notes and its ` +
+      `build would fail. Add what changed under ## Unreleased through a pull request first, ` +
+      `even if it is only that nothing in the app did.`,
+  );
 }
 
 function setVersion(version) {
@@ -193,13 +197,11 @@ function hasGitHubCli() {
 }
 
 function pullRequestBody(tag, changelog) {
-  const lines = [
-    `Sets the version to ${tag.slice(1)}${changelog.text ? ` and moves the Unreleased notes in ${CHANGELOG} under it` : ''}.`,
+  return [
+    `Sets the version to ${tag.slice(1)}${changelog ? ` and moves the Unreleased notes in ${CHANGELOG} under it` : ''}.`,
     '',
     `Merging this starts the Release workflow, which tags the merged commit as ${tag}, builds the installers and publishes the release.`,
-  ];
-  if (changelog.note) lines.push('', `Note: ${changelog.note}, so the app has no notes for it.`);
-  return lines.join('\n');
+  ].join('\n');
 }
 
 async function main() {
@@ -220,14 +222,17 @@ async function main() {
   }
   checkRepository(tag, branch);
 
-  const changelog = planChangelog(version);
+  const changelog = planChangelog(
+    readBase(CHANGELOG),
+    version,
+    new Date().toISOString().slice(0, 10),
+  );
   const useCli = hasGitHubCli();
 
   console.log(`\nRelease ${tag} (from ${current} on ${BASE}):`);
   console.log(`  - create ${branch} from ${BASE}`);
   console.log(`  - commit the new version in package.json`);
-  if (changelog.text) console.log(`  - move the Unreleased notes in ${CHANGELOG} under ${tag}`);
-  if (changelog.note) console.log(`  - warning: ${changelog.note}, so the app has no notes for it`);
+  if (changelog) console.log(`  - move the Unreleased notes in ${CHANGELOG} under ${tag}`);
   console.log(`  - push ${branch} to ${REMOTE} and open a pull request into ${BASE_BRANCH}`);
   console.log(`  Merging the pull request tags ${tag} and starts the build.`);
 
@@ -247,8 +252,8 @@ async function main() {
   try {
     setVersion(version);
     git(['add', 'package.json', 'package-lock.json']);
-    if (changelog.text) {
-      fs.writeFileSync(path.join(ROOT, CHANGELOG), changelog.text);
+    if (changelog) {
+      fs.writeFileSync(path.join(ROOT, CHANGELOG), changelog);
       git(['add', CHANGELOG]);
     }
     git(['commit', '--quiet', '-m', `Release ${tag}`]);
