@@ -36,6 +36,17 @@ const GIT_ACTIONS = {
     title: 'Checkout',
     success: ({ branch }) => `Checked out ${branch}`,
   },
+  switchSpan: {
+    run: gitApi.switchSpan,
+    title: 'Switch branch',
+    success: ({ branch, onBranch, otherBranches = [] }) =>
+      [
+        `Switched ${TextHelper.countOf(onBranch, 'repository', 'repositories')} to ${branch}`,
+        otherBranches.length > 0 && `The rest are on ${otherBranches.join(' and ')}`,
+      ]
+        .filter(Boolean)
+        .join('. '),
+  },
   createBranch: {
     run: gitApi.createBranch,
     title: 'Create branch',

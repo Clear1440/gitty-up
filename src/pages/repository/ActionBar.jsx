@@ -25,7 +25,7 @@ import { useIsFetchingAllRepositories } from '../../queries/repositories.js';
 import { useIsAutoFetching } from '../../queries/useAutoFetch.js';
 import { TextHelper } from '../../utils/TextHelper.js';
 import { CommitHelper } from './CommitHelper.js';
-import { MonoMembers } from './MonoMembers.jsx';
+import { AlongsideBranches, MonoMembers } from './MonoMembers.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { ScriptsMenu } from './ScriptsMenu.jsx';
 import { StatusHelper } from './StatusHelper.js';
@@ -78,6 +78,7 @@ function CurrentBranch({ status }) {
           <AheadBehind ahead={status.ahead} behind={status.behind} />
         </div>
       </Tooltip>
+      {status.mono && <AlongsideBranches />}
       {status.mono && <MonoMembers />}
     </div>
   );

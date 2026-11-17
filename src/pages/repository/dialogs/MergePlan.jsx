@@ -15,10 +15,10 @@ function BranchName({ children }) {
   );
 }
 
-/** source → target, the way round a merge goes. */
-export function MergeDirection({ source, target }) {
+/** source → target, the way round a merge goes, or from where to where a switch goes. */
+export function MergeDirection({ source, target, label = `${source} into ${target}` }) {
   return (
-    <span className={styles.direction} aria-label={`${source} into ${target}`}>
+    <span className={styles.direction} aria-label={label}>
       <BranchName>{source}</BranchName>
       <ArrowRightOutlined className={styles.arrow} />
       <BranchName>{target}</BranchName>
@@ -70,7 +70,7 @@ export function MergePlan({ source, target, noFastForward = false }) {
     );
   }
 
-  const leftOut = status.mono.leftOut;
+  const leftOut = [...(status.mono.following ?? []), ...status.mono.leftOut];
   const byId = new Map((preview?.repositories ?? []).map((entry) => [entry.id, entry]));
 
   return (

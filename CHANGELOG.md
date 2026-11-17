@@ -16,6 +16,13 @@ version's section.
 - **See a merge before you make it.** The merge dialogs show which branch goes into which, how
   many commits that brings in, and whether it fast-forwards. In a mono repo they do so for each
   repository, and name the ones the merge leaves alone.
+- **Branches across part of a mono repo.** A branch that two or more of a group's repositories
+  have is listed under **Across some repositories**. Choosing one lines the whole group up on
+  it: those with the branch switch to it, and the rest go to their main or master branch. The
+  dialog shows where each repository goes, and nothing switches if any of them has staged
+  changes, conflicts or something under way, or if one fails to switch.
+- Repositories riding along on their main branch show beside the branch name, with the branch
+  they are on, rather than as left out.
 
 ### Changed
 

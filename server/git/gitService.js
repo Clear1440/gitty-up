@@ -188,6 +188,13 @@ async function listBranchRefs(repoPath) {
   return parseBranches(output, remotes);
 }
 
+/** Just the names of the local branches, which is all a group-wide count needs. */
+export async function listLocalBranchNames(repoPath) {
+  // The full name, as the short one becomes heads/x when a tag is also called x.
+  const output = await runGit(repoPath, ['for-each-ref', '--format=%(refname)', 'refs/heads']);
+  return output.split('\n').filter(Boolean).map(GitRefHelper.fromLocalRef);
+}
+
 /** Every branch, each with `lastCheckout`, for showing and sorting the branch list. */
 export async function getBranches(repoPath) {
   const [{ local, remote }, checkouts] = await Promise.all([

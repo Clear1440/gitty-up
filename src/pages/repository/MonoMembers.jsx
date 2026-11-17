@@ -84,9 +84,70 @@ function LeftOutRow({ repository }) {
   );
 }
 
+function FollowingRow({ repository }) {
+  const { status } = useRepositoryContext();
+  const { id, name, slot, branch } = repository;
+  return (
+    <li className={styles.row}>
+      <div className={styles.text}>
+        <RepositoryTag name={name} slot={slot} className={styles.tag} />
+        <span className={styles.detail}>
+          On {branch}, as it has no {status.branch} branch
+        </span>
+      </div>
+      <OpenOnItsOwn id={id} name={name} />
+    </li>
+  );
+}
+
+/** The repositories riding along on their main line, by branch: main → docs, web. */
+function groupByBranch(repositories) {
+  const groups = new Map();
+  for (const repository of repositories) {
+    groups.set(repository.branch, [...(groups.get(repository.branch) ?? []), repository]);
+  }
+  return [...groups].map(([branch, list]) => ({ branch, repositories: list }));
+}
+
+/**
+ * The other branches in play beside the mono repo's own: the main lines that the
+ * repositories without a copy of it are on. Shown next to the branch name.
+ */
+export function AlongsideBranches() {
+  const { status } = useRepositoryContext();
+  const following = status.mono?.following ?? [];
+  if (following.length === 0) return null;
+
+  const groups = groupByBranch(following);
+  const hint = groups
+    .map(({ branch, repositories }) => {
+      const names = TextHelper.joinWithAnd(repositories.map(({ name }) => name));
+      return `${names} ${repositories.length === 1 ? 'is' : 'are'} on ${branch}`;
+    })
+    .join(', ');
+
+  return (
+    <Tooltip title={`${hint}, as ${following.length === 1 ? 'it has' : 'they have'} no ${status.branch}.`}>
+      <span className={styles.alongside}>
+        {groups.map(({ branch, repositories }) => (
+          <span key={branch} className={styles.alongsideBranch}>
+            <span className={styles.dots}>
+              {repositories.map(({ id, slot }) => (
+                <RepositoryDot key={id} slot={slot} />
+              ))}
+            </span>
+            {branch}
+          </span>
+        ))}
+      </span>
+    </Tooltip>
+  );
+}
+
 function MembersList() {
   const { status } = useRepositoryContext();
   const { members, leftOut } = status.mono;
+  const following = status.mono.following ?? [];
 
   return (
     <div className={styles.popover}>
@@ -98,6 +159,16 @@ function MembersList() {
           <MemberRow key={member.id} member={member} />
         ))}
       </ul>
+      {following.length > 0 && (
+        <>
+          <h4 className={styles.heading}>Alongside, on their main branch</h4>
+          <ul className={styles.list}>
+            {following.map((repository) => (
+              <FollowingRow key={repository.id} repository={repository} />
+            ))}
+          </ul>
+        </>
+      )}
       {leftOut.length > 0 && (
         <>
           <h4 className={styles.heading}>Left out</h4>

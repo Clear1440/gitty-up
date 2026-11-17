@@ -19,6 +19,6 @@ export function colorOfSlot(slot) {
 export function mapRepositoryColors(mono) {
   if (!mono) return new Map();
   return new Map(
-    [...mono.members, ...mono.leftOut].map(({ name, slot }) => [name, colorOfSlot(slot)]),
+    [...mono.members, ...(mono.following ?? []), ...mono.leftOut].map(({ name, slot }) => [name, colorOfSlot(slot)]),
   );
 }
