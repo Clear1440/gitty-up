@@ -96,7 +96,10 @@ export function MergeDialog({ branch: initialBranch, mode: initialMode = 'merge'
             will need a force push.
           </Outcome>
         )}
-        {isMerge && <MergePlan source={branch} target={status.branch} noFastForward={noFastForward} />}
+        {/* Only a mono repo needs the breakdown: one repository's outcome says it all. */}
+        {isMerge && status.mono && (
+          <MergePlan source={branch} target={status.branch} noFastForward={noFastForward} />
+        )}
         <MergeBlockedAlert reasons={behind} />
       </Flex>
     </ActionDialog>

@@ -46,7 +46,7 @@ export function MergeIntoDialog({ target, onClose }) {
             ? `They all stay on ${target} afterwards, and so does this tab.`
             : `You stay on ${target} afterwards.`}
         </Outcome>
-        <MergePlan source={source} target={target} noFastForward={noFastForward} />
+        {status.mono && <MergePlan source={source} target={target} noFastForward={noFastForward} />}
         <MergeBlockedAlert reasons={behind} />
       </Flex>
     </ActionDialog>

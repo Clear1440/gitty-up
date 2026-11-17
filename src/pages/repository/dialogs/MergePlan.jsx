@@ -31,8 +31,8 @@ function describeLeftOut({ name, branch, missing }) {
 }
 
 /**
- * Says which branch goes into which, and what that brings in. In a mono repo it says so
- * per repository, and names the ones the merge leaves alone.
+ * Says, for each repository in a mono repo, what merging `source` into `target` brings in,
+ * and names the ones the merge leaves alone. Mono repos only.
  */
 export function MergePlan({ source, target, noFastForward = false }) {
   const { repository, status } = useRepositoryContext();
@@ -41,17 +41,6 @@ export function MergePlan({ source, target, noFastForward = false }) {
   if (!source || !target) return null;
 
   const pending = isError ? null : <Spin size="small" />;
-
-  if (!status.mono) {
-    return (
-      <div className={styles.plan}>
-        <div className={styles.row}>
-          <MergeDirection source={source} target={target} />
-          {preview ? <Result preview={preview} noFastForward={noFastForward} /> : pending}
-        </div>
-      </div>
-    );
-  }
 
   const leftOut = [...(status.mono.following ?? []), ...status.mono.leftOut];
   const byId = new Map((preview?.repositories ?? []).map((entry) => [entry.id, entry]));
