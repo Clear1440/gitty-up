@@ -6,6 +6,8 @@ version's section.
 
 ## Unreleased
 
+## 0.3.0 - 2026-11-17
+
 ### Added
 
 - **Revert a commit.** Right-click a commit in the history and choose **Revert commit…**. Keep
