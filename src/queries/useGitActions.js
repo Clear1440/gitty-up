@@ -37,6 +37,11 @@ const GIT_ACTIONS = {
     title: 'Create branch',
     success: ({ name }) => `Created ${name}`,
   },
+  renameBranch: {
+    run: gitApi.renameBranch,
+    title: 'Rename branch',
+    success: ({ name, newName }) => `Renamed ${name} to ${newName}`,
+  },
   deleteBranch: {
     run: gitApi.deleteBranch,
     title: 'Delete branch',

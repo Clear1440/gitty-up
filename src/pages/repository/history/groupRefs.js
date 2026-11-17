@@ -38,3 +38,28 @@ export function groupRefs(refs) {
 
   return [...groups.values()];
 }
+
+/** Lower comes first: the selected branch, then HEAD's, local branches, remote ones, tags. */
+function stackRank(group, selectedBranch) {
+  if (selectedBranch && group.type !== 'tag' && groupHasBranch(group, selectedBranch)) return 0;
+  if (group.type === 'head') return 1;
+  if (group.type === 'branch') return group.local ? 2 : 3;
+  return 4;
+}
+
+/**
+ * Orders a commit's label groups for stacking, front first: the branch selected in the
+ * sidebar or by a click, else the checked out branch, then other local branches, remote
+ * branches and tags. Groups that rank the same keep their order.
+ */
+export function orderForStack(groups, selectedBranch) {
+  return groups
+    .map((group, index) => ({ group, index, rank: stackRank(group, selectedBranch) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map(({ group }) => group);
+}
+
+/** The branch a label group selects: its local branch, or else its first remote copy. */
+export function branchOfGroup(group) {
+  return group.local ? group.name : group.remotes[0];
+}

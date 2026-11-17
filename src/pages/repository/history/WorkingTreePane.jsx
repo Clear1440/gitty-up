@@ -35,6 +35,32 @@ function IconAction({ label, icon, ...buttonProps }) {
   );
 }
 
+/**
+ * An icon button for the whole working tree, named by its tooltip. A disabled button
+ * fires no hover events, so a wrapper carries the tooltip, which says why it is greyed out.
+ */
+function PaneAction({ label, hint, icon, ...buttonProps }) {
+  return (
+    <Tooltip
+      title={
+        hint ? (
+          <>
+            {label}
+            <br />
+            {hint}
+          </>
+        ) : (
+          label
+        )
+      }
+    >
+      <span>
+        <Button size="small" icon={icon} aria-label={label} {...buttonProps} />
+      </span>
+    </Tooltip>
+  );
+}
+
 const toSelection = (file, staged) => ({
   path: file.path,
   staged,
@@ -246,35 +272,29 @@ export function WorkingTreePane({ onClose, resizeHandle }) {
             {/* Stashes and patches belong to one repository, so a mono repo leaves them out. */}
             {!repository.isMono && (
               <>
-                <Button
-                  size="small"
+                <PaneAction
+                  label="Stash all changes"
                   icon={<InboxOutlined />}
                   loading={pendingAction === 'stash'}
                   disabled={isBusy || Boolean(status.operation)}
                   onClick={() => openDialog('stash')}
-                >
-                  Stash all changes
-                </Button>
-                <Button
-                  size="small"
+                />
+                <PaneAction
+                  label="Save as patch"
                   icon={<FileTextOutlined />}
                   onClick={() => savePatch({ source: 'uncommitted' })}
-                >
-                  Save as patch
-                </Button>
+                />
               </>
             )}
-            <Button
-              size="small"
+            <PaneAction
+              label="Discard all changes…"
+              hint={status.operation ? `Abort the ${status.operation} instead` : undefined}
               danger
               icon={<DeleteOutlined />}
               loading={pendingAction === 'discardAll'}
               disabled={isBusy || Boolean(status.operation)}
-              title={status.operation ? `Abort the ${status.operation} instead` : undefined}
               onClick={confirmDiscardAll}
-            >
-              Discard all…
-            </Button>
+            />
           </div>
         )}
       </header>

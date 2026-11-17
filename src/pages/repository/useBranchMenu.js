@@ -108,6 +108,20 @@ export function useBranchMenu(branch, kind) {
     },
     ...worktreeItems,
     { type: 'divider' },
+    ...(isRemote
+      ? []
+      : [
+          {
+            key: 'rename',
+            label: repository.isMono ? 'Rename in every repository…' : 'Rename…',
+            disabled: isBusy,
+            onClick: () =>
+              openDialog('renameBranch', {
+                name: branch.name,
+                upstream: branch.upstreamGone ? null : branch.upstream,
+              }),
+          },
+        ]),
     { key: 'copy-name', label: 'Copy branch name', onClick: copyName },
     { type: 'divider' },
     isRemote

@@ -13,6 +13,12 @@ version's section.
   changes and commit them with a message of your own.
 - The branch list can hide local branches whose upstream is gone, with the button beside the
   filter. The checked out branch always shows.
+- **Rename a branch.** Right-click a local branch and choose **Rename…**. Its commits and
+  upstream stay with it. In a mono repo, **Rename in every repository…** renames it in each
+  repository of the group that has it, so the names stay together, or in none if any can't.
+- **Stacked branch labels.** A commit with several branches shows them as a stack in the tree,
+  the selected or checked out branch in front and readable in full. Hover to drop the rest
+  down, and click one to select it.
 
 ### Changed
 
@@ -25,7 +31,13 @@ version's section.
 - Discarding a file's changes shows as a trash can.
 - Tooltips show below their button, and go away as soon as the pointer leaves it, even onto
   the tooltip.
-- The repository list keeps its counts and times in columns that line up from row to row.
+- The repository list keeps its counts and times in columns that line up from row to row, with
+  uncommitted changes right beside the branch.
+- Toasts show at the top right, clear of the toolbar and branches.
+- Stash, save as patch and discard in Uncommitted changes, and Open as mono repo, are icon
+  buttons named by their tooltips.
+- The branch list makes the checked out branch bold, sets back branches whose upstream is
+  gone, and says on hover what each branch tracks.
 - The Stash button no longer shows a count.
 
 ## 0.2.3 - 2026-11-12

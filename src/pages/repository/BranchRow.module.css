@@ -50,6 +50,26 @@
   white-space: nowrap;
 }
 
+/* The checked out branch stands out by more than its icon. */
+.current .name {
+  color: var(--color-primary-strong);
+  font-weight: var(--font-weight-semibold);
+}
+
+/* A branch whose upstream was deleted is usually finished with, so it steps back. */
+.gone .name {
+  color: var(--color-text-muted);
+}
+
+.goneMark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  color: var(--color-warning);
+  font-size: var(--font-size-xs);
+}
+
 .worktree {
   flex: none;
   color: var(--color-text-muted);

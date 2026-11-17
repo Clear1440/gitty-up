@@ -25,7 +25,8 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AppearanceProvider>
-        <AntApp>
+        {/* Toasts show in the tab bar, at the right: see antd-overrides.css. */}
+        <AntApp message={{ top: 2 }}>
           <TabsProvider>
             <RouterProvider router={router} />
           </TabsProvider>

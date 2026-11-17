@@ -323,6 +323,27 @@ export async function createBranch(mono, options) {
   if (switchTo) await mono.setBranch(name);
 }
 
+/**
+ * Renames a shared branch in every repository at once, so the mono repo's branches stay
+ * named together. Repositories of the group that are left out, being on another branch,
+ * are renamed too where they have it. If any one can't be renamed, those already done
+ * are put back, so the name is never split between repositories.
+ */
+export async function renameBranch(mono, { name, newName }) {
+  const others = await readEach(
+    mono.leftOut.filter(({ missing }) => !missing),
+    async (repository) => ((await git.hasLocalBranch(repository.path, name)) ? repository : null),
+  );
+  await allOrNone(
+    [...mono.members, ...others.filter(Boolean)],
+    ({ path }) => git.renameBranch(path, { name, newName }),
+    ({ path }) => git.renameBranch(path, { name: newName, newName: name }),
+    (member) => `No branch was renamed, because ${member.name} could not rename ${name}.`,
+  );
+  // The members are found by the branch they are on, which now has its new name.
+  if (name === mono.branch) await mono.setBranch(newName);
+}
+
 export async function deleteBranch(mono, options) {
   await forEachMember(mono.members, ({ path }) => git.deleteBranch(path, options), {
     doneIn: 'Deleted in',

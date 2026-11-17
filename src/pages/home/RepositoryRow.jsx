@@ -63,8 +63,8 @@ function RowStatus({ summary, condensed }) {
   const meta = (
     <div className={styles.meta}>
       <BranchLabel summary={summary} />
-      {/* Each count keeps its own column, shown or not, so they line up from row to row. */}
-      <AheadBehind ahead={summary.ahead} behind={summary.behind} aligned />
+      {/* Each count keeps its own column, shown or not, so they line up from row to row.
+          Uncommitted changes come first, beside the branch they are on. */}
       {summary.changeCount > 0 ? (
         <span
           className={styles.changes}
@@ -75,6 +75,7 @@ function RowStatus({ summary, condensed }) {
       ) : (
         <span />
       )}
+      <AheadBehind ahead={summary.ahead} behind={summary.behind} aligned />
     </div>
   );
 

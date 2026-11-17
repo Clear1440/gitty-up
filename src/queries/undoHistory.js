@@ -23,6 +23,7 @@ const KEEPS_HISTORY = new Set([
   'discard',
   'ignore',
   'rewordLastCommit',
+  'renameBranch',
   'addWorktree',
   'removeWorktree',
   'lockWorktree',
@@ -87,6 +88,12 @@ export function undoStepFor(name, input = {}, statusBefore = null) {
         kind: 'actions',
         actions: [{ name: 'unresolveConflict', input: { path: input.path } }],
         label: `${input.path} is back in conflict`,
+      };
+    case 'renameBranch':
+      return {
+        kind: 'actions',
+        actions: [{ name: 'renameBranch', input: { name: input.newName, newName: input.name } }],
+        label: `Renamed ${input.newName} back to ${input.name}`,
       };
     case 'commit':
       return { kind: 'commit' };

@@ -90,8 +90,8 @@ export function OpenMonoButton({ group }) {
   const isSplit = choices.length > 1 || choices[0]?.repositories.length < repositories.length;
   const hint =
     choices.length === 0
-      ? 'None of these repositories are on a branch'
-      : 'Work on these repositories together in one tab';
+      ? 'Open as mono repo: none of these repositories are on a branch'
+      : 'Open as mono repo: work on these repositories together in one tab';
 
   return (
     <>
@@ -102,12 +102,11 @@ export function OpenMonoButton({ group }) {
             type="text"
             size="small"
             icon={<ClusterOutlined />}
+            aria-label="Open as mono repo"
             disabled={choices.length === 0}
             loading={openMono.isPending}
             onClick={() => (isSplit ? setChoosing(true) : open(choices[0].branch))}
-          >
-            Open as mono repo
-          </Button>
+          />
         </span>
       </Tooltip>
       {choosing && (

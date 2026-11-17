@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { findBranchTip, groupHasBranch, groupRefs } from './groupRefs.js';
+import {
+  branchOfGroup,
+  findBranchTip,
+  groupHasBranch,
+  groupRefs,
+  orderForStack,
+} from './groupRefs.js';
 
 const remote = (name, remoteName = 'origin') => ({
   type: 'remote',
@@ -90,5 +96,37 @@ describe('groupRefs', () => {
       { name: 'v1', type: 'tag', local: false },
       { name: 'v1', type: 'branch', local: true },
     ]);
+  });
+});
+
+describe('orderForStack', () => {
+  const head = { key: 'branch:main', name: 'main', type: 'head', local: true, remotes: ['origin/main'] };
+  const local = { key: 'branch:topic', name: 'topic', type: 'branch', local: true, remotes: [] };
+  const remote = { key: 'branch:other', name: 'other', type: 'branch', local: false, remotes: ['origin/other'] };
+  const tag = { key: 'tag:v1', name: 'v1', type: 'tag', local: false, remotes: [] };
+  const names = (groups) => groups.map((group) => group.name);
+
+  it('puts the checked out branch in front, then local, remote and tags', () => {
+    expect(names(orderForStack([tag, remote, local, head]))).toEqual(['main', 'topic', 'other', 'v1']);
+  });
+
+  it('puts the selected branch in front of the checked out one', () => {
+    expect(names(orderForStack([head, local, remote], 'topic'))).toEqual(['topic', 'main', 'other']);
+  });
+
+  it('matches a selected remote branch by its full name', () => {
+    expect(names(orderForStack([head, remote], 'origin/other'))).toEqual(['other', 'main']);
+  });
+
+  it('keeps the order of groups that rank the same', () => {
+    const second = { ...local, key: 'branch:second', name: 'second' };
+    expect(names(orderForStack([second, local]))).toEqual(['second', 'topic']);
+  });
+});
+
+describe('branchOfGroup', () => {
+  it('names the local branch, or else the first remote copy', () => {
+    expect(branchOfGroup({ name: 'main', local: true, remotes: ['origin/main'] })).toBe('main');
+    expect(branchOfGroup({ name: 'other', local: false, remotes: ['origin/other'] })).toBe('origin/other');
   });
 });
