@@ -23,7 +23,13 @@ import { CommitPane } from './history/CommitPane.jsx';
 import { CommitSearch } from './history/CommitSearch.jsx';
 import { findMatches } from './history/commitSearch.js';
 import { GraphTooltipArea } from './history/GraphTooltipArea.jsx';
-import { findBranchTip, groupHasBranch, groupRefs } from './history/groupRefs.js';
+import {
+  branchOfGroup,
+  findBranchTip,
+  groupHasBranch,
+  groupRefs,
+  orderForStack,
+} from './history/groupRefs.js';
 import { RefBranchActions } from './history/RefBranchActions.jsx';
 import { StashPane } from './history/StashPane.jsx';
 import { interleaveStashes } from './history/stashRows.js';
@@ -102,14 +108,27 @@ function PullRequestLink({ pullRequest }) {
   );
 }
 
-/** `focusRequest` plays the pulse around it, and a new value plays it again. */
-function RefTag({ group, pullRequest, focusRequest }) {
+/**
+ * `focusRequest` plays the pulse around it, and a new value plays it again. `onSelect`,
+ * for a branch, picks it on a click: see RefStack.
+ */
+function RefTag({ group, pullRequest, focusRequest, onSelect }) {
+  const isBranch = group.type !== 'tag';
   return (
     <RefBranchActions group={group}>
       <Tag
         key={focusRequest}
         className={clsx(REF_TAG_STYLES[group.type], focusRequest && styles.focusPulse)}
-        title={group.type === 'tag' ? group.name : describeRefGroup(group)}
+        title={isBranch ? describeRefGroup(group) : group.name}
+        onClick={
+          isBranch
+            ? (event) => {
+                // The row would open the commit too, which onSelect does itself.
+                event.stopPropagation();
+                onSelect(branchOfGroup(group));
+              }
+            : undefined
+        }
       >
         <span className={styles.refName}>{group.name}</span>
         {group.local && <LaptopOutlined className={styles.refIcon} aria-label="Local" />}
@@ -119,6 +138,45 @@ function RefTag({ group, pullRequest, focusRequest }) {
         {pullRequest && <PullRequestLink pullRequest={pullRequest} />}
       </Tag>
     </RefBranchActions>
+  );
+}
+
+/**
+ * A commit's labels, stacked like cards so the one in front can be read in full: the
+ * selected branch, or else the checked out one. The rest peek out behind it, and drop
+ * down one to a line on hover, where a click selects one and brings it to the front.
+ */
+function RefStack({ groups, selectedBranch, offset, renderTag }) {
+  const [front, ...rest] = orderForStack(groups, selectedBranch);
+  if (rest.length === 0) {
+    return (
+      <div className={styles.refs} style={{ marginLeft: offset }}>
+        {renderTag(front)}
+      </div>
+    );
+  }
+  return (
+    <div className={clsx(styles.refs, styles.stacked)} style={{ marginLeft: offset }}>
+      <div className={styles.refStack}>
+        <div className={styles.refFront}>{renderTag(front)}</div>
+        {rest.map((group, index) => (
+          <div
+            key={group.key}
+            className={clsx(styles.refLayer, index >= 2 && styles.refLayerDeep)}
+            style={{ '--layer': index + 1 }}
+          >
+            {renderTag(group)}
+          </div>
+        ))}
+      </div>
+      <span
+        className={styles.refMore}
+        title={rest.map((group) => group.name).join('\n')}
+        aria-label={`${rest.length} more ${TextHelper.pluralize(rest.length, 'label')}`}
+      >
+        +{rest.length}
+      </span>
+    </div>
   );
 }
 
@@ -203,8 +261,10 @@ function CommitRow({
   columnCount,
   selected,
   focus,
+  selectedBranch,
   pullRequests,
   onSelect,
+  onSelectBranch,
   searchState,
 }) {
   const groups = groupRefs(commit.refs);
@@ -227,18 +287,21 @@ function CommitRow({
           isMerge={CommitHelper.isMerge(commit)}
         />
         {groups.length > 0 && (
-          <div className={styles.refs} style={{ marginLeft: labelOffset(graphRow) }}>
-            {groups.map((group) => (
+          <RefStack
+            groups={groups}
+            selectedBranch={selectedBranch}
+            offset={labelOffset(graphRow)}
+            renderTag={(group) => (
               <RefTag
-                key={group.key}
                 group={group}
                 pullRequest={group.type === 'tag' ? undefined : pullRequests.get(group.name)}
                 focusRequest={
                   focus && groupHasBranch(group, focus.branch) ? focus.request : undefined
                 }
+                onSelect={(branch) => onSelectBranch(branch, commit.hash)}
               />
-            ))}
-          </div>
+            )}
+          />
         )}
       </div>
       <span className={styles.author} title={`${commit.author} <${commit.email}>`}>
@@ -383,6 +446,19 @@ export function HistoryPage() {
     );
   };
 
+  /** Picks a branch from a commit's labels, as the sidebar would, and opens that commit. */
+  const selectBranch = (branch, hash) => {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.set('focus', branch);
+        next.set('commit', hash);
+        return next;
+      },
+      { replace: true },
+    );
+  };
+
   const showAllBranches = (
     <Link to={paths.history(repository.id)}>
       <Button size="small">Show all branches</Button>
@@ -480,8 +556,10 @@ export function HistoryPage() {
                           ? { branch: focusedBranch, request: focusRequest }
                           : undefined
                       }
+                      selectedBranch={focusedBranch}
                       pullRequests={pullRequests}
                       onSelect={toggleCommit}
+                      onSelectBranch={selectBranch}
                       searchState={searchStateOf(commit.hash)}
                     />
                   ),

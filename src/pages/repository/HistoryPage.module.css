@@ -264,6 +264,99 @@
   white-space: nowrap;
 }
 
+/*
+ * Several labels on one commit stack like cards, the front one readable in full and the
+ * others peeking out behind it. Hovering the stack drops them down one to a line, on a
+ * panel over the rows below, where each can be read and clicked.
+ */
+.stacked {
+  align-items: center;
+}
+
+.refStack {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  isolation: isolate;
+}
+
+.refFront,
+.refLayer {
+  display: flex;
+  min-width: 0;
+  padding-block: 2px;
+}
+
+.refFront {
+  position: relative;
+  z-index: 10;
+}
+
+.refLayer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: calc(10 - var(--layer));
+  opacity: 0.7;
+  pointer-events: none;
+  transform: translate(calc(var(--layer) * 3px), calc(var(--layer) * -3px));
+  transition:
+    transform 0.18s ease,
+    opacity 0.18s ease;
+}
+
+/* Two cards behind are enough to say there are more. */
+.refLayerDeep {
+  opacity: 0;
+}
+
+.refMore {
+  flex: none;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.stacked:hover .refLayer,
+.stacked:focus-within .refLayer {
+  right: auto;
+  max-width: 360px;
+  padding-inline: var(--space-1);
+  margin-left: calc(var(--space-1) * -1);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-popup);
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(calc(var(--layer) * 100%));
+  /* Each card lands just after the one above it. */
+  transition-delay: calc((var(--layer) - 1) * 25ms);
+}
+
+.stacked:hover .refMore,
+.stacked:focus-within .refMore {
+  visibility: hidden;
+}
+
+/* The open stack hangs over the rows below, so its row comes forward and stops cropping. */
+.commit:has(.stacked:hover),
+.commit:has(.stacked:focus-within) {
+  position: relative;
+  z-index: 2;
+}
+
+.commit:has(.stacked:hover) .tree,
+.commit:has(.stacked:focus-within) .tree {
+  clip-path: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refLayer {
+    transition: none;
+  }
+}
+
 /* The name gives way first, so a long one never pushes these out of the tag. */
 .refIcon {
   flex: none;

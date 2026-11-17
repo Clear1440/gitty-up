@@ -17,6 +17,14 @@ const status = ({ staged = [], unstaged = [], conflicted = [] } = {}) => ({
 afterEach(() => clearUndoHistories());
 
 describe('undoStepFor', () => {
+  it('renames a branch back', () => {
+    expect(undoStepFor('renameBranch', { name: 'old', newName: 'new' })).toEqual({
+      kind: 'actions',
+      actions: [{ name: 'renameBranch', input: { name: 'new', newName: 'old' } }],
+      label: 'Renamed new back to old',
+    });
+  });
+
   it('unstages what was staged, and stages what was unstaged', () => {
     expect(undoStepFor('stage', { paths: ['a.txt'] }, status())).toEqual({
       kind: 'actions',

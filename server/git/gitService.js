@@ -496,6 +496,24 @@ export async function createBranch(repoPath, { name, startPoint = 'HEAD', switch
   );
 }
 
+/**
+ * Renames a local branch. Git moves its history, reflog and upstream setting along with
+ * it, so it still pushes to and pulls from the branch it did before. It refuses a name
+ * that another branch already has.
+ */
+export async function renameBranch(repoPath, { name, newName }) {
+  assertRef(name);
+  await assertValidBranchName(repoPath, newName);
+  if (name === newName) return;
+  if (!(await hasLocalBranch(repoPath, name))) {
+    throw ApiError.badRequest(`There is no local branch named ${name}.`);
+  }
+  if (await hasLocalBranch(repoPath, newName)) {
+    throw ApiError.badRequest(`A branch named ${newName} already exists.`);
+  }
+  await runGit(repoPath, ['branch', '--move', name, newName]);
+}
+
 /** With `deleteRemote`, also deletes the branch's upstream, once the local branch is gone. */
 export async function deleteBranch(repoPath, { name, force = false, deleteRemote = false }) {
   assertRef(name);

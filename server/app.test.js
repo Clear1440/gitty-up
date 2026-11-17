@@ -2184,6 +2184,23 @@ describe('acting on a commit', () => {
     expect(git(repo.work, 'log', '-1', '--format=%s')).toBe('Topic edit');
   });
 
+  it('renames a branch, keeping its commits', async () => {
+    git(repo.work, 'branch', 'topic');
+    const tip = git(repo.work, 'rev-parse', 'topic');
+
+    expect((await post('/branches/rename', { name: 'topic', newName: 'feature/topic' })).status).toBe(204);
+    expect(git(repo.work, 'branch', '--list', 'topic')).toBe('');
+    expect(git(repo.work, 'rev-parse', 'feature/topic')).toBe(tip);
+  });
+
+  it('refuses to rename a branch onto one that exists', async () => {
+    git(repo.work, 'branch', 'topic');
+    git(repo.work, 'branch', 'other');
+
+    expect((await post('/branches/rename', { name: 'topic', newName: 'other' })).status).toBe(400);
+    expect(git(repo.work, 'branch', '--list', 'topic')).not.toBe('');
+  });
+
   it('reverts a commit with git\'s own message', async () => {
     await writeAndCommit(repo.work, 'b.txt', 'b\n', 'Add b');
     const reverted = head();

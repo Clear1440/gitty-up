@@ -20,3 +20,15 @@
 .ant-tooltip {
   pointer-events: none;
 }
+
+/*
+ * Toasts sit at the top right, in the tab bar just left of the settings button, so they
+ * cover none of the toolbar, branches or history.
+ * Ant centers each one with left: 50% and a translateX(-50%) that its animations reuse,
+ * so `translate` cancels that half width rather than overriding the transform.
+ */
+.ant-message.ant-message-top .ant-message-notice.ant-message-notice {
+  right: 44px;
+  left: auto;
+  translate: 50% 0;
+}

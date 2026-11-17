@@ -61,9 +61,10 @@
   color: var(--color-text-muted);
 }
 
+/* Clear of where a branch row has its menu button, so counts line up down the list. */
 .folderCount {
   flex: none;
-  padding-right: var(--space-2);
+  padding-right: calc(24px + var(--space-1));
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
 }

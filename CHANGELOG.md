@@ -6,6 +6,27 @@ version's section.
 
 ## Unreleased
 
+## 0.3.0 - 2026-11-17
+
+### Added
+
+- **Rename a branch.** Right-click a local branch and choose **Rename…**. Its commits and
+  upstream stay with it. In a mono repo, **Rename in every repository…** renames it in each
+  repository of the group that has it, so the names stay together, or in none if any can't.
+- **Stacked branch labels.** A commit with several branches shows them as a stack in the tree,
+  the selected or checked out branch in front and readable in full. Hover to drop the rest
+  down, and click one to select it.
+
+### Changed
+
+- The repository list shows uncommitted changes right beside the branch, with the counts after
+  the widest branch name so they still line up.
+- Toasts show at the top right, clear of the toolbar and branches.
+- Stash, save as patch and discard in Uncommitted changes, and Open as mono repo, are icon
+  buttons named by their tooltips.
+- The branch list makes the checked out branch bold, sets back branches whose upstream is
+  gone, and says on hover what each branch tracks.
+
 ## 0.2.5 - 2026-11-17
 
 Nothing in the app changed. Releases are now prepared as a pull request, which the Release

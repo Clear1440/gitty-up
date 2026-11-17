@@ -410,6 +410,49 @@ describe('branch actions', () => {
     expect(git(mono.api.work, 'branch', '--list', 'taken')).toBe('');
   });
 
+  it('renames the checked out branch everywhere, keeping its history, and follows it', async () => {
+    const heads = [mono.api, mono.web, mono.docs].map(({ work }) => git(work, 'rev-parse', 'HEAD'));
+    const { status } = await request('POST', `${mono.route}/branches/rename`, {
+      name: 'main',
+      newName: 'trunk',
+    });
+    expect(status).toBe(204);
+    expect(allBranches()).toEqual(['trunk', 'trunk', 'trunk']);
+    expect([mono.api, mono.web, mono.docs].map(({ work }) => git(work, 'rev-parse', 'HEAD'))).toEqual(
+      heads,
+    );
+    expect((await getStatus()).branch).toBe('trunk');
+    // The upstream goes with it, so it still pulls from where it did.
+    expect(git(mono.api.work, 'rev-parse', '--abbrev-ref', 'trunk@{upstream}')).toBe('origin/main');
+  });
+
+  it('renames a branch in left out repositories too, so the names stay together', async () => {
+    for (const { work } of [mono.api, mono.web, mono.docs]) git(work, 'branch', 'old');
+    git(mono.docs.work, 'switch', '--create', 'elsewhere');
+
+    await request('POST', `${mono.route}/branches/rename`, { name: 'old', newName: 'new' });
+    for (const { work } of [mono.api, mono.web, mono.docs]) {
+      expect(git(work, 'branch', '--list', 'old')).toBe('');
+      expect(git(work, 'branch', '--list', 'new')).not.toBe('');
+    }
+  });
+
+  it('renames no branch anywhere if one repository already has the new name', async () => {
+    for (const { work } of [mono.api, mono.web, mono.docs]) git(work, 'branch', 'old');
+    git(mono.docs.work, 'branch', 'taken');
+
+    const { status, body } = await request('POST', `${mono.route}/branches/rename`, {
+      name: 'old',
+      newName: 'taken',
+    });
+    expect(status).toBeGreaterThanOrEqual(400);
+    expect(body.error.message).toContain('No branch was renamed');
+    for (const { work } of [mono.api, mono.web, mono.docs]) {
+      expect(git(work, 'branch', '--list', 'old')).not.toBe('');
+    }
+    expect(git(mono.api.work, 'branch', '--list', 'taken')).toBe('');
+  });
+
   it('deletes a branch everywhere', async () => {
     for (const { work } of [mono.api, mono.web, mono.docs]) git(work, 'branch', 'old');
     await request('DELETE', `${mono.route}/branches/old`);

@@ -345,6 +345,12 @@ function createGitRouter() {
       switchTo: switchTo !== false,
     }),
   );
+  action(router, '/branches/rename', (service, target, { name, newName }) =>
+    service.renameBranch(target, {
+      name: ValidationHelper.requireString(name, 'name'),
+      newName: ValidationHelper.requireString(newName, 'newName'),
+    }),
+  );
   action(router, '/checkout', (service, target, { branch, remote }) =>
     service.checkout(target, {
       branch: ValidationHelper.requireString(branch, 'branch'),

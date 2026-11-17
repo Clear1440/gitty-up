@@ -48,6 +48,8 @@ export const gitApi = {
   switchSpan: (id, { branch }) => http.post(route(id, '/switch-span'), { branch }),
   createBranch: (id, { name, startPoint, switchTo }) =>
     http.post(route(id, '/branches'), { name, startPoint, switchTo }),
+  renameBranch: (id, { name, newName }) =>
+    http.post(route(id, '/branches/rename'), { name, newName }),
   deleteBranch: (id, { name, force, deleteRemote }) =>
     http.delete(route(id, `/branches/${encodeURIComponent(name)}`), { force, deleteRemote }),
   deleteRemoteBranch: (id, { name }) =>
