@@ -1,32 +1,36 @@
 #!/usr/bin/env node
 /**
- * Releases a version: commits any pending changes, sets the version in package.json,
- * moves CHANGELOG.md's Unreleased notes under it, tags it, and pushes main and the tag. The tag starts the Release workflow, which builds
- * the installers and publishes them as a GitHub release.
+ * Prepares a release as a pull request. On a new `release/v<version>` branch cut from
+ * origin's main, it sets the version in package.json, moves CHANGELOG.md's Unreleased notes
+ * under it, commits that, pushes the branch and opens a pull request into main. Merging the
+ * pull request starts the Release workflow, which tags the merged commit, builds the
+ * installers and publishes them as a GitHub release.
  *
- *   npm run release -- 0.2.0          a version of your choosing
- *   npm run release -- patch          0.1.0 -> 0.1.1 (or minor, major)
- *   npm run release -- 0.2.0 -m "Fix the diff view" -y
+ *   npm run release -- 0.3.0          a version of your choosing
+ *   npm run release -- patch          0.2.3 -> 0.2.4 (or minor, major)
+ *   npm run release -- 0.3.0 -y
  *
- * -m  the message for committing pending changes, instead of being asked for one
  * -y  skips the final confirmation
- * Giving the version already in package.json tags it as it is, which suits a first release.
+ * It runs from any branch with no uncommitted changes, and leaves that branch checked out.
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
+import { pathToFileURL } from 'node:url';
 import { hasRelease, stampUnreleased } from './changelog.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
-const RELEASE_BRANCH = 'main';
+const BASE_BRANCH = 'main';
 const REMOTE = 'origin';
+const BASE = `${REMOTE}/${BASE_BRANCH}`;
+const CHANGELOG = 'CHANGELOG.md';
 const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const BUMPS = ['major', 'minor', 'patch'];
 
 const STOPPED = 'Stopped. Nothing was changed.';
 
-class ReleaseError extends Error {}
+export class ReleaseError extends Error {}
 
 /**
  * Asks questions on the terminal. Reading lines through one iterator keeps answers
@@ -46,13 +50,15 @@ function createPrompt() {
   };
 }
 
-function git(args, { quiet = true } = {}) {
-  return execFileSync('git', args, {
+function run(command, args, { quiet = true } = {}) {
+  return execFileSync(command, args, {
     cwd: ROOT,
     encoding: 'utf8',
     stdio: quiet ? ['ignore', 'pipe', 'pipe'] : 'inherit',
   })?.trim();
 }
+
+const git = (args, options) => run('git', args, options);
 
 function gitSucceeds(args) {
   try {
@@ -63,22 +69,25 @@ function gitSucceeds(args) {
   }
 }
 
-function parseArguments(argv) {
-  const options = { target: null, message: null, yes: false };
-  for (let index = 0; index < argv.length; index += 1) {
-    const argument = argv[index];
+export function parseArguments(argv) {
+  const options = { target: null, yes: false };
+  for (const argument of argv) {
     if (argument === '-y' || argument === '--yes') options.yes = true;
-    else if (argument === '-m' || argument === '--message') options.message = argv[(index += 1)];
-    else if (!options.target) options.target = argument.replace(/^v/, '');
+    else if (argument === '-m' || argument === '--message') {
+      throw new ReleaseError(
+        'The release no longer commits pending changes, so -m is gone. Changes reach ' +
+          `${BASE_BRANCH} through their own pull requests.`,
+      );
+    } else if (!options.target) options.target = argument.replace(/^v/, '');
     else throw new ReleaseError(`Unexpected argument "${argument}".`);
   }
   if (!options.target) {
-    throw new ReleaseError('Give a version, such as 0.2.0, or one of patch, minor or major.');
+    throw new ReleaseError('Give a version, such as 0.3.0, or one of patch, minor or major.');
   }
   return options;
 }
 
-function nextVersion(current, target) {
+export function nextVersion(current, target) {
   if (!BUMPS.includes(target)) {
     if (!VERSION_PATTERN.test(target)) throw new ReleaseError(`"${target}" is not a version.`);
     return target;
@@ -89,6 +98,21 @@ function nextVersion(current, target) {
   return `${major}.${minor}.${patch + 1}`;
 }
 
+/** The GitHub page that opens a pull request from `branch` into the base branch. */
+export function pullRequestUrl(web, branch, title, body) {
+  const query = new URLSearchParams({ expand: '1', title, body });
+  return `${web}/compare/${BASE_BRANCH}...${branch}?${query}`;
+}
+
+/** A file as it is on origin's main, which the release branch starts from. */
+function readBase(file) {
+  try {
+    return git(['show', `${BASE}:${file}`]);
+  } catch {
+    return null;
+  }
+}
+
 function readJson(file) {
   return JSON.parse(fs.readFileSync(path.join(ROOT, file), 'utf8'));
 }
@@ -97,18 +121,15 @@ function writeJson(file, data) {
   fs.writeFileSync(path.join(ROOT, file), `${JSON.stringify(data, null, 2)}\n`);
 }
 
-const CHANGELOG = 'CHANGELOG.md';
-
 /**
  * What the release does to CHANGELOG.md: moves the Unreleased notes under the new version,
  * whose section the app shows as what's new. `text` is null when nothing changes.
  */
 function planChangelog(version) {
-  const file = path.join(ROOT, CHANGELOG);
-  if (!fs.existsSync(file)) return { text: null, note: `there is no ${CHANGELOG}` };
-  const current = fs.readFileSync(file, 'utf8');
+  const current = readBase(CHANGELOG);
+  if (current === null) return { text: null, note: `there is no ${CHANGELOG}` };
   const date = new Date().toISOString().slice(0, 10);
-  const { text, stamped } = stampUnreleased(current, version, date);
+  const { text, stamped } = stampUnreleased(`${current}\n`, version, date);
   if (stamped) return { text, note: null };
   if (hasRelease(current, version)) return { text: null, note: null };
   return { text: null, note: `${CHANGELOG} has nothing under Unreleased for this release` };
@@ -124,30 +145,36 @@ function setVersion(version) {
   writeJson('package-lock.json', lock);
 }
 
-/** Stops before changing anything if the release could not be pushed cleanly. */
-function checkRepository(tag) {
-  const branch = git(['branch', '--show-current']);
-  if (branch !== RELEASE_BRANCH) {
-    throw new ReleaseError(
-      `Releases come from ${RELEASE_BRANCH}, but ${branch || 'no branch'} is checked out.`,
-    );
-  }
-
-  console.log(`Fetching ${REMOTE}...`);
-  git(['fetch', REMOTE, RELEASE_BRANCH, '--tags']);
-  const behind = Number(git(['rev-list', '--count', `HEAD..${REMOTE}/${RELEASE_BRANCH}`]));
-  if (behind > 0) {
-    throw new ReleaseError(
-      `${RELEASE_BRANCH} is ${behind} commit(s) behind ${REMOTE}. Pull first, then release.`,
-    );
-  }
-  if (gitSucceeds(['rev-parse', '--quiet', '--verify', `refs/tags/${tag}`])) {
-    throw new ReleaseError(`${tag} already exists. Choose a newer version.`);
-  }
+function remoteHas(kind, name) {
+  return git(['ls-remote', `--${kind}`, REMOTE, `refs/${kind}/${name}`]) !== '';
 }
 
-function pendingChanges() {
-  return git(['status', '--porcelain']).split('\n').filter(Boolean);
+/** Stops before changing anything if the release branch could not be pushed cleanly. */
+function checkRepository(tag, branch) {
+  const pending = git(['status', '--porcelain']).split('\n').filter(Boolean);
+  if (pending.length > 0) {
+    throw new ReleaseError(
+      `There are uncommitted changes:\n  ${pending.join('\n  ')}\n` +
+        'Commit or set them aside first. They reach main through their own pull request.',
+    );
+  }
+  if (remoteHas('tags', tag)) throw new ReleaseError(`${tag} already exists. Choose a newer version.`);
+  if (gitSucceeds(['rev-parse', '--quiet', '--verify', `refs/tags/${tag}`])) {
+    throw new ReleaseError(
+      `There is a local ${tag} tag that is not on ${REMOTE}, perhaps from an earlier release ` +
+        `that did not push. The Release workflow makes the tag now, so delete this one with: ` +
+        `git tag -d ${tag}`,
+    );
+  }
+  if (remoteHas('heads', branch)) {
+    throw new ReleaseError(
+      `${branch} is already on ${REMOTE}, so a pull request for ${tag} may be open. ` +
+        `Merge or close it, and delete the branch, before starting again.`,
+    );
+  }
+  if (gitSucceeds(['rev-parse', '--quiet', '--verify', `refs/heads/${branch}`])) {
+    throw new ReleaseError(`There is a local ${branch} branch. Delete it with: git branch -D ${branch}`);
+  }
 }
 
 function remoteWebUrl() {
@@ -156,80 +183,116 @@ function remoteWebUrl() {
   return match ? `https://github.com/${match[1]}` : null;
 }
 
+function hasGitHubCli() {
+  try {
+    run('gh', ['auth', 'status']);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function pullRequestBody(tag, changelog) {
+  const lines = [
+    `Sets the version to ${tag.slice(1)}${changelog.text ? ` and moves the Unreleased notes in ${CHANGELOG} under it` : ''}.`,
+    '',
+    `Merging this starts the Release workflow, which tags the merged commit as ${tag}, builds the installers and publishes the release.`,
+  ];
+  if (changelog.note) lines.push('', `Note: ${changelog.note}, so the app has no notes for it.`);
+  return lines.join('\n');
+}
+
 async function main() {
   const options = parseArguments(process.argv.slice(2));
-  const current = readJson('package.json').version;
+
+  console.log(`Fetching ${REMOTE}...`);
+  git(['fetch', '--quiet', REMOTE, BASE_BRANCH]);
+  const current = JSON.parse(readBase('package.json')).version;
   const version = nextVersion(current, options.target);
   const tag = `v${version}`;
+  const branch = `release/${tag}`;
 
-  checkRepository(tag);
+  if (version === current) {
+    throw new ReleaseError(
+      `${current} is already the version on ${BASE_BRANCH}, so there is nothing to merge. To ` +
+        `release it as it is, run the Release workflow from GitHub Actions, which tags it as ${tag}.`,
+    );
+  }
+  checkRepository(tag, branch);
 
   const changelog = planChangelog(version);
-  const changes = pendingChanges();
-  const prompt = createPrompt();
-  let commitMessage = options.message;
-  try {
-    if (changes.length > 0) {
-      console.log(`\nThese uncommitted changes will be committed first:\n  ${changes.join('\n  ')}`);
-      commitMessage ||= await prompt.ask('Commit message (leave empty to stop): ');
-      if (!commitMessage) throw new ReleaseError(STOPPED);
-    }
+  const useCli = hasGitHubCli();
 
-    console.log(`\nRelease ${tag}${version === current ? '' : ` (from ${current})`}:`);
-    if (changes.length > 0) {
-      console.log(`  - commit ${changes.length} changed path(s): "${commitMessage}"`);
-    }
-    if (version !== current) console.log(`  - commit the new version in package.json`);
-    if (changelog.text) console.log(`  - move the Unreleased notes in ${CHANGELOG} under ${tag}`);
-    if (changelog.note) console.log(`  - warning: ${changelog.note}, so the app has no notes for it`);
-    console.log(`  - tag ${tag}`);
-    console.log(`  - push ${RELEASE_BRANCH} and ${tag} to ${REMOTE}, which starts the build`);
+  console.log(`\nRelease ${tag} (from ${current} on ${BASE}):`);
+  console.log(`  - create ${branch} from ${BASE}`);
+  console.log(`  - commit the new version in package.json`);
+  if (changelog.text) console.log(`  - move the Unreleased notes in ${CHANGELOG} under ${tag}`);
+  if (changelog.note) console.log(`  - warning: ${changelog.note}, so the app has no notes for it`);
+  console.log(`  - push ${branch} to ${REMOTE} and open a pull request into ${BASE_BRANCH}`);
+  console.log(`  Merging the pull request tags ${tag} and starts the build.`);
 
-    if (!options.yes) {
+  if (!options.yes) {
+    const prompt = createPrompt();
+    try {
       const answer = (await prompt.ask('\nContinue? (y/N) ')).toLowerCase();
       if (answer !== 'y' && answer !== 'yes') throw new ReleaseError(STOPPED);
+    } finally {
+      prompt.close();
     }
-  } finally {
-    prompt.close();
   }
 
-  if (changes.length > 0) {
-    git(['add', '--all']);
-    git(['commit', '--quiet', '-m', commitMessage]);
-  }
-  if (version !== current || changelog.text) {
-    if (version !== current) {
-      setVersion(version);
-      git(['add', 'package.json', 'package-lock.json']);
-    }
+  const startingBranch = git(['branch', '--show-current']);
+  const returnTo = startingBranch ? [startingBranch] : ['--detach', git(['rev-parse', 'HEAD'])];
+  git(['switch', '--quiet', '--no-track', '-c', branch, BASE]);
+  try {
+    setVersion(version);
+    git(['add', 'package.json', 'package-lock.json']);
     if (changelog.text) {
       fs.writeFileSync(path.join(ROOT, CHANGELOG), changelog.text);
       git(['add', CHANGELOG]);
     }
     git(['commit', '--quiet', '-m', `Release ${tag}`]);
+  } finally {
+    git(['switch', '--quiet', ...returnTo]);
   }
-  git(['tag', '-a', tag, '-m', `Release ${tag}`]);
 
-  console.log(`\nPushing to ${REMOTE}...`);
+  console.log(`\nPushing ${branch} to ${REMOTE}...`);
   try {
-    git(['push', '--atomic', REMOTE, RELEASE_BRANCH, `refs/tags/${tag}`], { quiet: false });
+    git(['push', '--quiet', REMOTE, `refs/heads/${branch}`], { quiet: false });
   } catch {
     throw new ReleaseError(
-      `The push failed, so nothing reached ${REMOTE}. The commits and tag are still here.\n` +
-        `Fix the problem and run: git push --atomic ${REMOTE} ${RELEASE_BRANCH} refs/tags/${tag}\n` +
-        `Or drop the tag with: git tag -d ${tag}`,
+      `The push failed, so nothing reached ${REMOTE}. The release commit is on ${branch} here.\n` +
+        `Fix the problem and run: git push ${REMOTE} ${branch}\n` +
+        `Or drop it with: git branch -D ${branch}`,
     );
   }
 
+  const title = `Release ${tag}`;
+  const body = pullRequestBody(tag, changelog);
   const web = remoteWebUrl();
-  console.log(`\n${tag} is pushed and the installers are building.`);
-  if (web) {
-    console.log(`  Build progress: ${web}/actions`);
-    console.log(`  Release:        ${web}/releases (published once every installer is built)`);
+  if (useCli) {
+    try {
+      const url = run('gh', [
+        'pr', 'create', '--base', BASE_BRANCH, '--head', branch, '--title', title, '--body', body,
+      ]);
+      console.log(`\nOpened the pull request for ${tag}: ${url}`);
+    } catch {
+      console.log(`\nCould not open the pull request with gh. Open it here instead:`);
+      if (web) console.log(`  ${pullRequestUrl(web, branch, title, body)}`);
+    }
+  } else if (web) {
+    console.log(`\n${branch} is pushed. Open its pull request here:`);
+    console.log(`  ${pullRequestUrl(web, branch, title, body)}`);
+  } else {
+    console.log(`\n${branch} is pushed. Open a pull request from it into ${BASE_BRANCH}.`);
   }
+  console.log(`Once it merges, the Release workflow tags ${tag} and builds the installers.`);
+  if (web) console.log(`  Build progress: ${web}/actions`);
 }
 
-main().catch((error) => {
-  console.error(`\n${error instanceof ReleaseError ? error.message : error.stack}`);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(`\n${error instanceof ReleaseError ? error.message : error.stack}`);
+    process.exit(1);
+  });
+}
