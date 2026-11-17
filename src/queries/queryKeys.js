@@ -30,6 +30,7 @@ export const queryKeys = {
   directories: (path) => ['directories', path ?? null],
   repositoryScan: (path) => ['repository-scan', path],
   settings: () => ['settings'],
+  updates: () => ['updates'],
 };
 
 export const mutationKeys = {

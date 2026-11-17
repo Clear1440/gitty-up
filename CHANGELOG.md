@@ -13,6 +13,9 @@ version's section.
   changes and commit them with a message of your own.
 - The branch list can hide local branches whose upstream is gone, with the button beside the
   filter. The checked out branch always shows.
+- **Updates from inside the app.** Gitty Up checks for a new release when it starts, and shows
+  **Update available** beside the settings button when there is one. Click it to download and
+  install the update; the app restarts into it. **Settings › About › Updates** checks on demand.
 
 ### Changed
 
