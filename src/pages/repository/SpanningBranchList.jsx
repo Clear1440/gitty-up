@@ -1,7 +1,6 @@
 import { ClusterOutlined } from '@ant-design/icons';
 import { TextHelper } from '../../utils/TextHelper.js';
 import { useRepositoryContext } from './RepositoryContext.js';
-import { RepositoryDot } from './RepositoryTag.jsx';
 import rowStyles from './BranchRow.module.css';
 import styles from './SpanningBranchList.module.css';
 
@@ -28,12 +27,7 @@ export function SpanningBranchList({ branches }) {
             >
               <ClusterOutlined />
               <span className={rowStyles.name}>{name}</span>
-              <span className={styles.dots} aria-label={`In ${names}`}>
-                {repositories.map(({ id, slot }) => (
-                  <RepositoryDot key={id} slot={slot} />
-                ))}
-              </span>
-              <span className={styles.count}>
+              <span className={styles.count} aria-label={`In ${names}`}>
                 {repositories.length}/{total}
               </span>
             </button>

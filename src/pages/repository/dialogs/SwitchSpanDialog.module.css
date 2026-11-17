@@ -1,8 +1,12 @@
 .normal,
 .muted,
 .danger {
-  align-self: center;
+  flex: none;
   white-space: nowrap;
+}
+
+.move {
+  color: var(--color-text-muted);
 }
 
 .normal {

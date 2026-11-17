@@ -4,7 +4,6 @@ import { Outcome } from '../../../components/Field.jsx';
 import { useSpanPlan } from '../../../queries/git.js';
 import { TextHelper } from '../../../utils/TextHelper.js';
 import { useRepositoryContext } from '../RepositoryContext.js';
-import { RepositoryTag } from '../RepositoryTag.jsx';
 import { MergeDirection } from './MergePlan.jsx';
 import planStyles from './MergePlan.module.css';
 import styles from './SwitchSpanDialog.module.css';
@@ -23,16 +22,23 @@ function StepRow({ step }) {
   const { text, tone } = describeStep(step);
   return (
     <li className={planStyles.row}>
-      <RepositoryTag name={step.name} slot={step.slot} />
-      {step.missing ? (
-        <span />
-      ) : (
-        <MergeDirection
-          source={step.from ?? 'detached'}
-          target={step.to ?? '?'}
-          label={`From ${step.from ?? 'a detached HEAD'} to ${step.to ?? 'nowhere'}`}
-        />
-      )}
+      <span className={planStyles.name}>
+        {step.name}
+        {!step.missing && (
+          <span className={styles.move}>
+            {' '}
+            {step.from === step.to ? (
+              `on ${step.to}`
+            ) : (
+              <MergeDirection
+                source={step.from ?? 'detached HEAD'}
+                target={step.to ?? '?'}
+                label={`From ${step.from ?? 'a detached HEAD'} to ${step.to ?? 'nowhere'}`}
+              />
+            )}
+          </span>
+        )}
+      </span>
       <span className={styles[tone]}>{text}</span>
     </li>
   );
@@ -61,6 +67,7 @@ export function SwitchSpanDialog({ branch, onClose }) {
       title={`Switch ${repository.name} to ${branch}`}
       okText={`Switch to ${branch}`}
       canSubmit={Boolean(plan?.canSwitch)}
+      wide
       onSubmit={() => run('switchSpan', { branch, onBranch: plan.onBranch, otherBranches })}
       onClose={onClose}
     >

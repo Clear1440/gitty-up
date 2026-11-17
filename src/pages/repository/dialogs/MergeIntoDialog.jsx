@@ -26,6 +26,7 @@ export function MergeIntoDialog({ target, onClose }) {
       title={`Merge ${source} into ${target}${where}`}
       okText={`Merge into ${target}`}
       canSubmit={behind.length === 0}
+      wide={Boolean(status.mono)}
       onSubmit={() =>
         run('mergeInto', { source, target, noFastForward, repositoryCount: memberCount })
       }

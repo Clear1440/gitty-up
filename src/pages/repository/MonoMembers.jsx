@@ -7,11 +7,7 @@ import { Tooltip } from '../../components/Tooltip.jsx';
 import { paths } from '../../paths.js';
 import { TextHelper } from '../../utils/TextHelper.js';
 import { useRepositoryContext } from './RepositoryContext.js';
-import { RepositoryDot, RepositoryTag } from './RepositoryTag.jsx';
 import styles from './MonoMembers.module.css';
-
-/** How many dots the chip shows before it just counts. */
-const MAX_DOTS = 6;
 
 function describeLeftOut({ branch, missing, canJoin }, monoBranch) {
   if (missing) return 'Not on this machine';
@@ -48,7 +44,7 @@ function MemberRow({ member }) {
   return (
     <li className={styles.row}>
       <div className={styles.text}>
-        <RepositoryTag name={member.name} slot={member.slot} className={styles.tag} />
+        <span className={styles.name}>{member.name}</span>
         <span className={styles.detail}>{describeMember(member)}</span>
       </div>
       <AheadBehind ahead={member.ahead} behind={member.behind} />
@@ -59,14 +55,14 @@ function MemberRow({ member }) {
 
 function LeftOutRow({ repository }) {
   const { status, run, isBusy } = useRepositoryContext();
-  const { id, name, slot, canJoin, missing } = repository;
+  const { id, name, canJoin, missing } = repository;
 
   return (
     <li className={styles.row}>
       <div className={styles.text}>
         <span className={styles.leftOutName}>
           <WarningOutlined className={styles.leftOutIcon} />
-          <RepositoryTag name={name} slot={slot} className={styles.tag} />
+          <span className={styles.name}>{name}</span>
         </span>
         <span className={styles.detail}>{describeLeftOut(repository, status.branch)}</span>
       </div>
@@ -86,11 +82,11 @@ function LeftOutRow({ repository }) {
 
 function FollowingRow({ repository }) {
   const { status } = useRepositoryContext();
-  const { id, name, slot, branch } = repository;
+  const { id, name, branch } = repository;
   return (
     <li className={styles.row}>
       <div className={styles.text}>
-        <RepositoryTag name={name} slot={slot} className={styles.tag} />
+        <span className={styles.name}>{name}</span>
         <span className={styles.detail}>
           On {branch}, as it has no {status.branch} branch
         </span>
@@ -128,18 +124,7 @@ export function AlongsideBranches() {
 
   return (
     <Tooltip title={`${hint}, as ${following.length === 1 ? 'it has' : 'they have'} no ${status.branch}.`}>
-      <span className={styles.alongside}>
-        {groups.map(({ branch, repositories }) => (
-          <span key={branch} className={styles.alongsideBranch}>
-            <span className={styles.dots}>
-              {repositories.map(({ id, slot }) => (
-                <RepositoryDot key={id} slot={slot} />
-              ))}
-            </span>
-            {branch}
-          </span>
-        ))}
-      </span>
+      <span className={styles.alongside}>+ {groups.map(({ branch }) => branch).join(', ')}</span>
     </Tooltip>
   );
 }
@@ -187,7 +172,7 @@ function MembersList() {
   );
 }
 
-/** Says who is in the mono repo, each in its color, and offers a way back to any that are not. */
+/** Says who is in the mono repo, and offers a way back to any that are not. */
 export function MonoMembers() {
   const { status } = useRepositoryContext();
   const { members, leftOut } = status.mono;
@@ -202,15 +187,7 @@ export function MonoMembers() {
         title={names}
       >
         <ClusterOutlined />
-        {members.length <= MAX_DOTS ? (
-          <span className={styles.dots}>
-            {members.map(({ id, slot }) => (
-              <RepositoryDot key={id} slot={slot} />
-            ))}
-          </span>
-        ) : (
-          members.length
-        )}
+        {members.length}
         {leftOut.length > 0 && ` · ${leftOut.length} left out`}
       </button>
     </Popover>
