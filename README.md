@@ -79,7 +79,8 @@ none.
 
 The tag starts [the Release workflow](.github/workflows/release.yml). It builds a Windows
 installer (`.exe`), a macOS disk image (`.dmg`, for both Intel and Apple Silicon) and a Linux
-AppImage (`.AppImage`, x64) and attaches them to a **draft** GitHub release, which you then publish.
+AppImage (`.AppImage`, x64), attaches them to a GitHub release, and publishes it as the latest
+release once all three have built. If one fails, the release stays a draft with whatever did build.
 
 ### Code signing
 

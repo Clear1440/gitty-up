@@ -2,7 +2,7 @@
 /**
  * Releases a version: commits any pending changes, sets the version in package.json,
  * moves CHANGELOG.md's Unreleased notes under it, tags it, and pushes main and the tag. The tag starts the Release workflow, which builds
- * the installers onto a draft GitHub release.
+ * the installers and publishes them as a GitHub release.
  *
  *   npm run release -- 0.2.0          a version of your choosing
  *   npm run release -- patch          0.1.0 -> 0.1.1 (or minor, major)
@@ -225,7 +225,7 @@ async function main() {
   console.log(`\n${tag} is pushed and the installers are building.`);
   if (web) {
     console.log(`  Build progress: ${web}/actions`);
-    console.log(`  Draft release:  ${web}/releases (publish it once the files are attached)`);
+    console.log(`  Release:        ${web}/releases (published once every installer is built)`);
   }
 }
 

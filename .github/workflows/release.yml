@@ -1,4 +1,6 @@
-# Builds the desktop installers and attaches them to a draft GitHub release.
+# Builds the desktop installers, attaches them to a GitHub release and publishes it.
+# Each build uploads to a draft, and the release goes public only once all three have
+# succeeded, so nobody (and no app checking for updates) sees it half filled.
 # Start it by pushing a version tag, for example: npm version 0.2.0 && git push --follow-tags
 # The tag must match the version in package.json, which names the release.
 name: Release
@@ -40,5 +42,15 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish:
+    needs: desktop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Publish the release
+        run: gh release edit "v$(node -p "require('./package.json').version")" --draft=false --latest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

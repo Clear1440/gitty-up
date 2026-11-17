@@ -11,6 +11,7 @@ import { useTabs } from '../tabs/TabsContext.jsx';
 import { findNeighbourTab } from '../tabs/tabsModel.js';
 import { MonoIdHelper } from '../utils/MonoIdHelper.js';
 import styles from './TabBar.module.css';
+import { UpdateButton } from './UpdateButton.jsx';
 
 const HOME_TAB = 'home';
 /** Shown only while the settings page is open, and never saved with the other tabs. */
@@ -174,15 +175,18 @@ export function TabBar({ activeRepositoryId, isSettings = false }) {
         tabBarExtraContent={{
           left: <Logo />,
           right: (
-            <Tooltip title="Settings" placement="bottomRight">
-              <Button
-                type="text"
-                aria-label="Settings"
-                aria-pressed={isSettings}
-                icon={isSettings ? <SettingFilled /> : <SettingOutlined />}
-                onClick={() => navigate(paths.settings())}
-              />
-            </Tooltip>
+            <div className={styles.actions}>
+              <UpdateButton />
+              <Tooltip title="Settings" placement="bottomRight">
+                <Button
+                  type="text"
+                  aria-label="Settings"
+                  aria-pressed={isSettings}
+                  icon={isSettings ? <SettingFilled /> : <SettingOutlined />}
+                  onClick={() => navigate(paths.settings())}
+                />
+              </Tooltip>
+            </div>
           ),
         }}
         renderTabBar={(tabBarProps, DefaultTabBar) => (
