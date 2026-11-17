@@ -152,3 +152,17 @@ export function useDiff(repositoryId, file, { fullFile }) {
     enabled: Boolean(file),
   });
 }
+
+/**
+ * What merging `source` into `target` would bring in. Waits for both, and keeps the last
+ * answer on screen while the next branch's loads, so the dialog doesn't jump.
+ */
+export function useMergePreview(repositoryId, source, target) {
+  return useQuery({
+    queryKey: queryKeys.mergePreview(repositoryId, source, target),
+    queryFn: () => gitApi.previewMerge(repositoryId, { source, target }),
+    enabled: Boolean(source && target),
+    placeholderData: (previous) => previous,
+    retry: false,
+  });
+}

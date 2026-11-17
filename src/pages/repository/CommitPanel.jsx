@@ -37,7 +37,7 @@ function placeholderFor({ status, amend }) {
 function describeScope({ status, stageAll, fileCount, amend, repositories }) {
   // An amend has its own note, which says what it adds.
   if (fileCount === 0 || amend) return null;
-  const where = repositories.length > 0 ? ` in ${repositories.join(', ')}` : '';
+  const where = repositories.length > 0 ? ` in ${TextHelper.joinWithAnd(repositories)}` : '';
   if (stageAll) {
     const all = fileCount === 1 ? 'the 1 changed file' : `all ${fileCount} changed files`;
     return `Nothing is staged, so ${all}${where} will be committed.`;

@@ -268,6 +268,15 @@ function createGitRouter() {
     response.json({ diff, hash: git.hashDiff(diff) });
   });
 
+  router.get('/merge-preview', async (request, response) => {
+    response.json(
+      await request.service.previewMerge(request.target, {
+        source: ValidationHelper.requireString(request.query.source, 'source'),
+        target: ValidationHelper.requireString(request.query.target, 'target'),
+      }),
+    );
+  });
+
   router.get('/conflict', async (request, response) => {
     const filePath = ValidationHelper.requireString(request.query.path, 'path');
     response.json(await request.service.getConflict(request.target, { filePath }));

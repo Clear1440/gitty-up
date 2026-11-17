@@ -486,6 +486,59 @@ describe('merging and stashing', () => {
     }
   });
 
+  it('previews a merge per member, saying which branch goes where', async () => {
+    for (const { work } of members()) git(work, 'branch', 'feature');
+    // api gains two commits on feature, web one, and docs none.
+    git(mono.api.work, 'switch', 'feature');
+    await writeAndCommit(mono.api.work, 'a.txt', 'a\n', 'A1');
+    await writeAndCommit(mono.api.work, 'b.txt', 'b\n', 'A2');
+    git(mono.api.work, 'switch', 'main');
+    git(mono.web.work, 'switch', 'feature');
+    await writeAndCommit(mono.web.work, 'w.txt', 'w\n', 'W1');
+    git(mono.web.work, 'switch', 'main');
+    await writeAndCommit(mono.web.work, 'm.txt', 'm\n', 'On main too');
+
+    const { status, body } = await request(
+      'GET',
+      `${mono.route}/merge-preview?source=feature&target=main`,
+    );
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ source: 'feature', target: 'main', commits: 3 });
+    expect(body.fastForward).toBe(false);
+    expect(body.repositories).toEqual([
+      expect.objectContaining({ name: 'api', commits: 2, fastForward: true, slot: 0 }),
+      expect.objectContaining({ name: 'web', commits: 1, fastForward: false, slot: 1 }),
+      expect.objectContaining({ name: 'docs', commits: 0, fastForward: false, slot: 2 }),
+    ]);
+  });
+
+  it('says where each member stands, and words a partial merge with both branches', async () => {
+    await fs.writeFile(path.join(mono.api.work, 'readme.txt'), 'changed\n');
+    await writeAndCommit(mono.web.work, 'w.txt', 'w\n', 'Unpushed');
+    const { mono: parts } = await getStatus();
+    expect(parts.members).toEqual([
+      expect.objectContaining({ name: 'api', prefix: 'api', changes: 1, ahead: 0 }),
+      expect.objectContaining({ name: 'web', upstream: 'origin/main', ahead: 1, changes: 0 }),
+      expect.objectContaining({ name: 'docs', slot: 2 }),
+    ]);
+
+    // web can't merge, as its copy of other conflicts; the rest merge, and the report says what.
+    for (const { work } of members()) git(work, 'branch', 'other', 'HEAD~0');
+    git(mono.web.work, 'switch', 'other');
+    await writeAndCommit(mono.web.work, 'w.txt', 'theirs\n', 'Theirs');
+    git(mono.web.work, 'switch', 'main');
+    await writeAndCommit(mono.web.work, 'w.txt', 'ours\n', 'Ours');
+    for (const { work } of [mono.api, mono.docs]) {
+      git(work, 'switch', 'other');
+      await writeAndCommit(work, 'o.txt', 'o\n', 'Other');
+      git(work, 'switch', 'main');
+    }
+    git(mono.api.work, 'stash', '--include-untracked');
+
+    const { body } = await request('POST', `${mono.route}/merge`, { branch: 'other' });
+    expect(body.error.message).toContain('Merged other into main in api and docs.');
+  });
+
   it('merges into another branch everywhere, and the mono repo follows', async () => {
     for (const { work } of members()) git(work, 'branch', 'release');
     for (const { work } of members()) await writeAndCommit(work, 'fix.txt', 'fix\n', 'Fix');

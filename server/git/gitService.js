@@ -577,6 +577,26 @@ export async function assertNotBehind(repoPath, names) {
   throw ApiError.branchBehind(`Merge cancelled: ${summary}. Pull first.`);
 }
 
+/**
+ * What merging `source` into `target` would do, without doing it: how many commits it
+ * brings in, and whether `target` could simply move forward to `source`.
+ */
+export async function previewMerge(repoPath, { source, target }) {
+  assertRef(source);
+  assertRef(target);
+  // Left: commits only on target. Right: commits only on source, which the merge brings in.
+  const output = await runGit(repoPath, [
+    'rev-list',
+    '--left-right',
+    '--count',
+    `${target}...${source}`,
+    '--',
+  ]);
+  const [onlyTarget = 0, onlySource = 0] = output.trim().split(/\s+/).map(Number);
+  // With nothing of its own, target can just move forward, unless a merge commit is asked for.
+  return { source, target, commits: onlySource, fastForward: onlySource > 0 && onlyTarget === 0 };
+}
+
 function runMerge(repoPath, { branch, noFastForward }) {
   return reportingConflicts(repoPath, () =>
     runGit(repoPath, ['merge', '--no-edit', ...(noFastForward ? ['--no-ff'] : []), branch]),

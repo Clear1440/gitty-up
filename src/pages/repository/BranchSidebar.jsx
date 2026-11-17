@@ -155,7 +155,10 @@ export function BranchSidebar({ resizeHandle }) {
         <SortMenu sort={sort} onChange={setSort} />
       </div>
       {status.mono && (
-        <p className={styles.monoNote}>Branches shared by every repository</p>
+        <p className={styles.monoNote}>
+          Only branches every repository here has. The rest are in each repository&apos;s own
+          tab.
+        </p>
       )}
       <div className={styles.body}>
         {isPending ? (

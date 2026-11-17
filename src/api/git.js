@@ -28,6 +28,9 @@ export const gitApi = {
   getDiff: (id, { path, staged, untracked, fullFile }) =>
     http.get(route(id, '/diff'), { path, staged, untracked, fullFile }),
   getConflict: (id, { path }) => http.get(route(id, '/conflict'), { path }),
+  /** What merging `source` into `target` would bring in, per repository in a mono repo. */
+  previewMerge: (id, { source, target }) =>
+    http.get(route(id, '/merge-preview'), { source, target }),
 
   // Syncing
   fetch: (id) => http.post(route(id, '/fetch')),

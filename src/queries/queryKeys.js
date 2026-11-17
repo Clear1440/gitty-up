@@ -20,6 +20,7 @@ export const queryKeys = {
   /** Inside `repository`, so a checkout rereads the branch's own .gitty file. */
   scripts: (id) => [ROOT, 'detail', id, 'scripts'],
   diff: (id, file) => [ROOT, 'detail', id, 'diff', file],
+  mergePreview: (id, source, target) => [ROOT, 'detail', id, 'merge-preview', source, target],
   /**
    * Outside `repository` on purpose: git actions refetch everything under it, and
    * resolving a conflict would then refetch, and fail to find, the conflict just resolved.

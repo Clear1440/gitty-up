@@ -248,8 +248,8 @@ export function ActionBar() {
         label="Merge"
         hint={
           waitHint ??
-          (repository.isMono
-            ? 'Merge another branch, in every repository here'
+          (status.mono
+            ? `Merge another branch into ${status.branch}, in ${TextHelper.joinWithAnd(status.mono.members.map(({ name }) => name))}`
             : 'Merge or rebase with another branch')
         }
         icon={<MergeOutlined />}

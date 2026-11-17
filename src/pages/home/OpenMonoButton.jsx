@@ -7,6 +7,7 @@ import { Tooltip } from '../../components/Tooltip.jsx';
 import { paths } from '../../paths.js';
 import { useOpenMono, useRepositories } from '../../queries/repositories.js';
 import { MonoIdHelper } from '../../utils/MonoIdHelper.js';
+import { BranchHelper } from '../../utils/BranchHelper.js';
 import { TextHelper } from '../../utils/TextHelper.js';
 import { isInGroup } from './groupMembership.js';
 import { describeLeftOut, findMonoBranches } from './monoBranches.js';
@@ -14,8 +15,13 @@ import styles from './OpenMonoButton.module.css';
 
 const describeCount = (count) => TextHelper.countOf(count, 'repository', 'repositories');
 
+/** main or master when some repository is on it, as that is where a group usually meets. */
+function pickInitialBranch(choices) {
+  return BranchHelper.pickMainBranch(choices.map(({ branch }) => branch)) ?? choices[0].branch;
+}
+
 function ChooseBranchDialog({ group, repositories, choices, onOpen, onClose }) {
-  const [branch, setBranch] = useState(choices[0].branch);
+  const [branch, setBranch] = useState(() => pickInitialBranch(choices));
   const { repositories: members } = choices.find((choice) => choice.branch === branch);
   const leftOut = repositories.filter((repository) => !members.includes(repository));
 

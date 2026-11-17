@@ -28,6 +28,7 @@ import { RefBranchActions } from './history/RefBranchActions.jsx';
 import { StashPane } from './history/StashPane.jsx';
 import { interleaveStashes } from './history/stashRows.js';
 import { useCommitMenu } from './history/useCommitMenu.js';
+import { RepositoryTag } from './RepositoryTag.jsx';
 import { WorkingTreePane } from './history/WorkingTreePane.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { StatusHelper } from './StatusHelper.js';
@@ -254,7 +255,9 @@ function CommitRow({
         title={commit.subject}
         aria-pressed={selected}
       >
-        {commit.repository && <span className={styles.repository}>{commit.repository}</span>}
+        {commit.repository && (
+          <RepositoryTag name={commit.repository} className={styles.repository} />
+        )}
         {commit.subject}
       </button>
       <RelativeTime className={styles.time} date={commit.date} />

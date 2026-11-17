@@ -39,7 +39,10 @@ export async function resolveMono(store, group) {
   if (!group.monoBranch) return null;
 
   const linked = (await store.list()).filter((entry) => groupIdsOf(entry).includes(group.id));
-  const repositories = await readEach(assignPrefixes(linked), async (repository) => {
+  // A slot is a repository's lasting place in the group, so the page can give each a color
+  // that stays put as others join or leave.
+  const placed = assignPrefixes(linked).map((repository, slot) => ({ ...repository, slot }));
+  const repositories = await readEach(placed, async (repository) => {
     const missing = { ...repository, branch: null, missing: true };
     // A stub has no folder, and git would otherwise run in the server's own.
     if (!repository.path) return missing;
@@ -180,10 +183,18 @@ function resolveCommit(mono, monoHash) {
 
 /** Says why a repository is left out, and whether switching branch would bring it in. */
 async function describeLeftOut(mono, repository) {
-  const { id, name, branch, missing, path } = repository;
-  if (missing) return { id, name, branch: null, missing: true, canJoin: false };
+  const { id, name, slot, branch, missing, path } = repository;
+  if (missing) return { id, name, slot, branch: null, missing: true, canJoin: false };
   const canJoin = await git.hasLocalBranch(path, mono.branch).catch(() => false);
-  return { id, name, branch, missing: false, canJoin };
+  return { id, name, slot, branch, missing: false, canJoin };
+}
+
+/** Where one member stands, so the page can say which repository a total comes from. */
+function describeMember({ member, status }) {
+  const { id, name, prefix, slot } = member;
+  const { upstream, upstreamGone, ahead, behind, staged, unstaged, conflicted, operation } = status;
+  const changes = new Set([...staged, ...unstaged, ...conflicted].map(({ path }) => path)).size;
+  return { id, name, prefix, slot, upstream, upstreamGone, ahead, behind, changes, operation };
 }
 
 export async function getStatus(mono) {
@@ -194,7 +205,7 @@ export async function getStatus(mono) {
   return {
     ...mergeStatuses(mono.branch, results),
     mono: {
-      members: mono.members.map(({ id, name }) => ({ id, name })),
+      members: results.map(describeMember),
       leftOut,
     },
   };
@@ -377,11 +388,28 @@ async function assertMembersCanMerge(mono, branches) {
 const MERGE_NEXT_STEP =
   'Fix that, then merge again. Repositories already merged are not affected.';
 
+/** What merging `source` into `target` would do in each member, and in all of them. */
+export async function previewMerge(mono, { source, target }) {
+  const repositories = await readEach(mono.members, async (member) => ({
+    id: member.id,
+    name: member.name,
+    slot: member.slot,
+    ...(await git.previewMerge(member.path, { source, target })),
+  }));
+  return {
+    source,
+    target,
+    commits: repositories.reduce((total, { commits }) => total + commits, 0),
+    fastForward: repositories.every(({ commits, fastForward }) => fastForward || commits === 0),
+    repositories,
+  };
+}
+
 /** Merges `branch` into the mono repo's branch, in every member. */
 export async function merge(mono, options) {
   await assertMembersCanMerge(mono, [mono.branch, options.branch]);
   await forEachMember(mono.members, ({ path }) => git.merge(path, options), {
-    doneIn: 'Merged in',
+    doneIn: `Merged ${options.branch} into ${mono.branch} in`,
     nextStep: MERGE_NEXT_STEP,
   });
 }
@@ -395,7 +423,7 @@ export async function mergeInto(mono, options) {
   await assertMembersCanMerge(mono, [mono.branch, options.target]);
   try {
     await forEachMember(mono.members, ({ path }) => git.mergeInto(path, options), {
-      doneIn: 'Merged in',
+      doneIn: `Merged ${mono.branch} into ${options.target} in`,
       nextStep: MERGE_NEXT_STEP,
     });
   } finally {

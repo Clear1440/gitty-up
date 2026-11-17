@@ -26,7 +26,7 @@
 }
 
 .popover {
-  width: 300px;
+  width: 340px;
   max-height: 360px;
   overflow: auto;
 }
@@ -78,10 +78,22 @@
   margin: 0;
 }
 
-.memberIcon {
-  color: var(--color-primary-strong);
-}
-
 .leftOutIcon {
   color: var(--color-warning);
+}
+
+.dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.tag {
+  align-self: flex-start;
+}
+
+.leftOutName {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
 }
