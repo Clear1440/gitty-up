@@ -7,7 +7,7 @@ import styles from './MergePlan.module.css';
 /** source → target in plain text: the way round a merge goes, or where a switch goes. */
 export function MergeDirection({ source, target, label = `${source} into ${target}` }) {
   return (
-    <span className={styles.direction} aria-label={label}>
+    <span className={styles.direction} aria-label={label} title={`${source} → ${target}`}>
       {source} → {target}
     </span>
   );

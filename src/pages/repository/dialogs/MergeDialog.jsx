@@ -55,6 +55,8 @@ export function MergeDialog({ branch: initialBranch, mode: initialMode = 'merge'
       title={isMerge ? `Merge into ${current}${where}` : `Rebase ${current}`}
       okText={isMerge && branch ? `Merge ${branch} into ${current}` : isMerge ? 'Merge' : 'Rebase'}
       canSubmit={Boolean(branch) && behind.length === 0}
+      // Each repository's line names both branches, which can be long.
+      wide={Boolean(status.mono)}
       onSubmit={() =>
         isMerge
           ? run('merge', { branch, noFastForward, into: current, repositoryCount: memberCount })

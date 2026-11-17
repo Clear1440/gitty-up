@@ -67,6 +67,7 @@ export function SwitchSpanDialog({ branch, onClose }) {
       title={`Switch ${repository.name} to ${branch}`}
       okText={`Switch to ${branch}`}
       canSubmit={Boolean(plan?.canSwitch)}
+      wide
       onSubmit={() => run('switchSpan', { branch, onBranch: plan.onBranch, otherBranches })}
       onClose={onClose}
     >
