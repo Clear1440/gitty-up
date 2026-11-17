@@ -4,12 +4,6 @@
   list-style: none;
 }
 
-.dots {
-  display: inline-flex;
-  flex: none;
-  gap: 3px;
-}
-
 .count {
   flex: none;
   margin-right: var(--space-2);
