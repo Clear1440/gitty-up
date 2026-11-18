@@ -235,6 +235,21 @@ export class RepositoryStore {
     await this.#update(id, (repository) => withGroups(repository, groupIds));
   }
 
+  /**
+   * Puts each repository in exactly the groups given for it, in one write.
+   * `changes` maps repository ids to lists of group ids.
+   */
+  async setGroupsOfMany(changes) {
+    const repositories = await this.list();
+    await this.#save({
+      repositories: repositories.map((repository) =>
+        Object.hasOwn(changes, repository.id)
+          ? withGroups(repository, changes[repository.id])
+          : repository,
+      ),
+    });
+  }
+
   async #update(id, change) {
     const repositories = await this.list();
     await this.#save({

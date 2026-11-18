@@ -17,7 +17,7 @@ import {
   useReorderGroups,
   useRepositories,
   useSetGroupColor,
-  useSetRepositoryGroups,
+  useSetGroupsOfMany,
 } from '../../queries/repositories.js';
 import { useTabs } from '../../tabs/TabsContext.jsx';
 import { MonoIdHelper } from '../../utils/MonoIdHelper.js';
@@ -41,7 +41,7 @@ function useSectionDrop(section, groups) {
   const { notification } = App.useApp();
   const { drag, setDrag } = useRepositoryList();
   const { data: repositories = [] } = useRepositories();
-  const setGroups = useSetRepositoryGroups();
+  const setGroupsOfMany = useSetGroupsOfMany();
   const reorder = useReorderGroups();
   const [dropAt, setDropAt] = useState(null);
 
@@ -76,16 +76,13 @@ function useSectionDrop(section, groups) {
         repository && groupIdsAfterDrop(repository, drag.fromSectionId, section.id, { copy });
       return groupIds ? [{ repositoryId, groupIds }] : [];
     });
-    // One at a time: the server rewrites the whole list for each change.
-    for (const change of changes) {
-      try {
-        await setGroups.mutateAsync(change);
-      } catch (error) {
-        const title =
-          changes.length > 1 ? 'Could not move the repositories' : 'Could not move the repository';
-        notification.error({ title, description: error.message });
-        return;
-      }
+    if (changes.length === 0) return;
+    try {
+      await setGroupsOfMany.mutateAsync(changes);
+    } catch (error) {
+      const title =
+        changes.length > 1 ? 'Could not move the repositories' : 'Could not move the repository';
+      notification.error({ title, description: error.message });
     }
   };
 

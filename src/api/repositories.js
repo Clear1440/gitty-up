@@ -13,6 +13,8 @@ export const repositoriesApi = {
   locate: (repositoryId, path) => http.post(`/repositories/${repositoryId}/locate`, { path }),
   setGroups: (repositoryId, groupIds) =>
     http.put(`/repositories/${repositoryId}/groups`, { groupIds }),
+  /** `changes` is a list of `{ repositoryId, groupIds }`, saved together. */
+  setGroupsOfMany: (changes) => http.put('/repositories/groups/membership', { changes }),
   listGroups: () => http.get('/repositories/groups'),
   reorderGroups: (ids) => http.put('/repositories/groups/order', { ids }),
   createGroup: (name) => http.post('/repositories/groups', { name }),
