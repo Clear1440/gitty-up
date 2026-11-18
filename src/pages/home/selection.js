@@ -28,3 +28,9 @@ export function clickSelection(selection, id, orderedIds, { toggle = false, rang
 export function selectedInOrder(selection, orderedIds) {
   return orderedIds.filter((id) => selection.ids.includes(id));
 }
+
+/**
+ * The rows a drag from `id` carries: the whole selection when that row is part of it,
+ * as file managers do, and otherwise just that row.
+ */
+export const idsToDrag = (id, selectedIds) => (selectedIds.includes(id) ? selectedIds : [id]);

@@ -3,8 +3,8 @@ import { createContext, useContext } from 'react';
 /**
  * What every row and section on the repositories page shares: whether the list is
  * condensed, and what is being dragged right now. `drag` is
- * `{ kind: 'repository', repositoryId, fromSectionId }`, `{ kind: 'group', groupId }`
- * or null. Browsers hide what is dragged until the drop, so it is kept here instead.
+ * `{ kind: 'repository', repositoryIds, fromSectionId }`, `{ kind: 'group', groupId }`
+ * or null. Dragging a selected row drags every selected repository with it. Browsers hide what is dragged until the drop, so it is kept here instead.
  */
 export const RepositoryListContext = createContext({
   condensed: false,

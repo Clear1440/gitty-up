@@ -6,6 +6,16 @@ version's section.
 
 ## Unreleased
 
+### Added
+
+- **Drag several repositories at once.** Ctrl-click or shift-click repositories on the home
+  page, then drag any one of them to move them all into a group. Hold Ctrl (Option on a Mac)
+  to copy instead. The drag shows how many repositories it carries.
+
+### Fixed
+
+- A group's repository count now lines up with the group's name.
+
 ## 0.3.0 - 2026-11-17
 
 ### Added

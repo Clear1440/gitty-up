@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EMPTY_SELECTION, clickSelection, selectedInOrder } from './selection.js';
+import { EMPTY_SELECTION, clickSelection, idsToDrag, selectedInOrder } from './selection.js';
 
 const ROWS = ['a', 'b', 'c', 'd', 'e'];
 
@@ -49,5 +49,16 @@ describe('clickSelection', () => {
 describe('selectedInOrder', () => {
   it('lists the selected rows on show, top to bottom', () => {
     expect(selectedInOrder({ ids: ['d', 'hidden', 'a'], anchor: 'a' }, ROWS)).toEqual(['a', 'd']);
+  });
+});
+
+describe('idsToDrag', () => {
+  it('drags the whole selection from a selected row', () => {
+    expect(idsToDrag('b', ['a', 'b', 'c'])).toEqual(['a', 'b', 'c']);
+  });
+
+  it('drags just the row when it is not selected', () => {
+    expect(idsToDrag('d', ['a', 'b'])).toEqual(['d']);
+    expect(idsToDrag('d', [])).toEqual(['d']);
   });
 });

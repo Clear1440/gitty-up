@@ -150,6 +150,34 @@
   opacity: 0.4;
 }
 
+/* The copy of a row drawn under the pointer while several repositories are dragged. */
+.dragImage {
+  position: fixed;
+  top: -10000px;
+  left: 0;
+  pointer-events: none;
+}
+
+/* How many repositories the drag carries, over the options button of the drag image. */
+.dragCount {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  right: var(--space-2);
+  transform: translateY(-50%);
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: 22px;
+  text-align: center;
+}
+
 /* Condensed: one short line per repository. */
 .condensed {
   border-radius: var(--radius-md);

@@ -68,17 +68,24 @@ function useSectionDrop(section, groups) {
     if (!event.currentTarget.contains(event.relatedTarget)) setDropAt(null);
   };
 
-  const dropRepository = async (event) => {
-    const repository = repositories.find(({ id }) => id === drag.repositoryId);
-    if (!repository) return;
-    const groupIds = groupIdsAfterDrop(repository, drag.fromSectionId, section.id, {
-      copy: wantsCopy(event),
+  const dropRepositories = async (event) => {
+    const copy = wantsCopy(event);
+    const changes = drag.repositoryIds.flatMap((repositoryId) => {
+      const repository = repositories.find(({ id }) => id === repositoryId);
+      const groupIds =
+        repository && groupIdsAfterDrop(repository, drag.fromSectionId, section.id, { copy });
+      return groupIds ? [{ repositoryId, groupIds }] : [];
     });
-    if (!groupIds) return;
-    try {
-      await setGroups.mutateAsync({ repositoryId: repository.id, groupIds });
-    } catch (error) {
-      notification.error({ title: 'Could not move the repository', description: error.message });
+    // One at a time: the server rewrites the whole list for each change.
+    for (const change of changes) {
+      try {
+        await setGroups.mutateAsync(change);
+      } catch (error) {
+        const title =
+          changes.length > 1 ? 'Could not move the repositories' : 'Could not move the repository';
+        notification.error({ title, description: error.message });
+        return;
+      }
     }
   };
 
@@ -99,7 +106,7 @@ function useSectionDrop(section, groups) {
 
   const onDrop = (event) => {
     event.preventDefault();
-    if (acceptsRepository) dropRepository(event);
+    if (acceptsRepository) dropRepositories(event);
     else if (acceptsGroup) dropGroup();
     setDropAt(null);
     setDrag(null);

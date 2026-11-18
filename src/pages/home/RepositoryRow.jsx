@@ -31,11 +31,37 @@ import { colorValueOf } from './groupColors.js';
 import { groupIdsOf, isInGroup, toggleGroup, UNGROUPED } from './groupMembership.js';
 import { GroupNameDialog } from './GroupNameDialog.jsx';
 import styles from './RepositoryRow.module.css';
+import { idsToDrag } from './selection.js';
 import { CloneRepositoryDialog, LocateRepositoryDialog } from './StubDialogs.jsx';
 import { DRAG_TYPE, useRepositoryList } from './useRepositoryList.js';
 import { useRepositorySelectionContext } from './useRepositorySelection.js';
 
 const MIDDLE_BUTTON = 1;
+
+/**
+ * What the pointer carries while dragging: the row itself, with a badge counting the
+ * repositories when there is more than one. Browsers snapshot the image as the drag
+ * starts, so a copy is put out of sight just long enough for that.
+ */
+function setDragImage(event, row, count) {
+  const rect = row.getBoundingClientRect();
+  const offsetX = event.clientX - rect.left;
+  const offsetY = event.clientY - rect.top;
+  if (count < 2) {
+    event.dataTransfer.setDragImage(row, offsetX, offsetY);
+    return;
+  }
+  const image = row.cloneNode(true);
+  image.classList.add(styles.dragImage);
+  image.style.width = `${rect.width}px`;
+  const badge = document.createElement('span');
+  badge.className = styles.dragCount;
+  badge.textContent = String(count);
+  image.append(badge);
+  document.body.append(image);
+  event.dataTransfer.setDragImage(image, offsetX, offsetY);
+  setTimeout(() => image.remove());
+}
 
 function Identity({ repository, condensed }) {
   const location = repository.path ?? repository.remoteUrl;
@@ -173,7 +199,7 @@ export function RepositoryRow({ repository, groups, sectionId = UNGROUPED, color
   const canDrag = groups.length > 0;
   const isDragging =
     drag?.kind === 'repository' &&
-    drag.repositoryId === repository.id &&
+    drag.repositoryIds.includes(repository.id) &&
     drag.fromSectionId === sectionId;
 
   const openInBackground = (event) => {
@@ -192,16 +218,12 @@ export function RepositoryRow({ repository, groups, sectionId = UNGROUPED, color
   };
 
   const handleDragStart = (event) => {
+    const repositoryIds = idsToDrag(repository.id, selection.selectedIds);
     event.dataTransfer.effectAllowed = 'copyMove';
-    event.dataTransfer.setData(DRAG_TYPE, repository.id);
+    event.dataTransfer.setData(DRAG_TYPE, repositoryIds.join(','));
     // Drag the whole row, not just the link text the pointer happened to be on.
-    const rect = rowRef.current.getBoundingClientRect();
-    event.dataTransfer.setDragImage(
-      rowRef.current,
-      event.clientX - rect.left,
-      event.clientY - rect.top,
-    );
-    setDrag({ kind: 'repository', repositoryId: repository.id, fromSectionId: sectionId });
+    setDragImage(event, rowRef.current, repositoryIds.length);
+    setDrag({ kind: 'repository', repositoryIds, fromSectionId: sectionId });
   };
 
   const selectedCount = selection.selectedIds.length;
