@@ -807,16 +807,12 @@ describe('syncing with the remote', () => {
     expect(fetched.body).toEqual({ changed: true });
     const { body } = await request('GET', `${repo.api}/status`);
     expect(body.behind).toBe(1);
+    // Nothing new the second time, so the client can skip rereading the repository.
+    expect((await request('POST', `${repo.api}/fetch`, {})).body).toEqual({ changed: false });
 
     expect((await request('POST', `${repo.api}/pull`, { mode: 'ff-only' })).status).toBe(204);
     const { body: pulled } = await request('GET', `${repo.api}/status`);
     expect(pulled.behind).toBe(0);
-  });
-
-  it('says when a fetch brought in nothing new', async () => {
-    const { status, body } = await request('POST', `${repo.api}/fetch`, {});
-    expect(status).toBe(200);
-    expect(body).toEqual({ changed: false });
   });
 
   it('fetches every linked repository at once, reporting each one that fails', async () => {

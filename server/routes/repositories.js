@@ -326,7 +326,7 @@ function createGitRouter() {
   });
 
   // Syncing
-  /** Answers `{ changed }`: whether the fetch brought in anything new. */
+  // Answers whether anything moved, so a fetch that brought nothing needs no reread.
   router.post('/fetch', async (request, response) => {
     response.json(await request.service.fetchAll(request.target));
   });

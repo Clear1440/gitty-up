@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  arrangeLabels,
   branchOfGroup,
   findBranchTip,
   groupHasBranch,
@@ -121,6 +122,31 @@ describe('orderForStack', () => {
   it('keeps the order of groups that rank the same', () => {
     const second = { ...local, key: 'branch:second', name: 'second' };
     expect(names(orderForStack([second, local]))).toEqual(['second', 'topic']);
+  });
+});
+
+describe('arrangeLabels', () => {
+  const head = { key: 'branch:main', name: 'main', type: 'head', local: true, remotes: [] };
+  const local = { key: 'branch:topic', name: 'topic', type: 'branch', local: true, remotes: [] };
+  const tag = { key: 'tag:0.3.0', name: '0.3.0', type: 'tag', local: false, remotes: [] };
+  const older = { key: 'tag:v0.3', name: 'v0.3', type: 'tag', local: false, remotes: [] };
+  const names = (groups) => groups.map((group) => group.name);
+
+  it('keeps tags out of the branch stack, so they always show', () => {
+    const { branches, tags } = arrangeLabels([tag, local, head]);
+    expect(names(branches)).toEqual(['main', 'topic']);
+    expect(names(tags)).toEqual(['0.3.0']);
+  });
+
+  it('still puts the selected branch in front, and keeps the tags in order', () => {
+    const { branches, tags } = arrangeLabels([older, head, tag, local], 'topic');
+    expect(names(branches)).toEqual(['topic', 'main']);
+    expect(names(tags)).toEqual(['v0.3', '0.3.0']);
+  });
+
+  it('handles a commit with only tags, or only branches', () => {
+    expect(arrangeLabels([tag])).toEqual({ branches: [], tags: [tag] });
+    expect(arrangeLabels([head])).toEqual({ branches: [head], tags: [] });
   });
 });
 

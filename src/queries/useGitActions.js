@@ -215,7 +215,7 @@ export function useGitActions(repositoryId) {
       await queryClient.cancelQueries({ queryKey: queryKeys.status(repositoryId) });
       const cached = queryClient.getQueryData(queryKeys.status(repositoryId));
       // Undoing "stage all" or "unstage all" takes back exactly the files it touched, so
-      // it needs them as they are now rather than as of the last poll.
+      // it needs them as they are now rather than as of the last read.
       const touchesEverything = (name === 'stage' || name === 'unstage') && !input?.paths;
       if (isUndo || !touchesEverything) return { statusBefore: cached };
       const statusBefore = await queryClient
@@ -258,11 +258,16 @@ export function useGitActions(repositoryId) {
       }
     },
     // Failed commands can still change the repository, as a conflicted merge does.
-    // Everything on screen changes in one go, rather than a panel at a time.
+    // Everything on screen changes in one go, rather than a panel at a time. The
+    // repository list is only shown on the repositories page, which rereads it on opening,
+    // so it is just marked stale: rereading it runs git in every linked repository.
     onSettled: () =>
       Promise.all([
         refreshTogether(queryClient, affectedKey),
-        queryClient.invalidateQueries({ queryKey: queryKeys.repositoryList() }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.repositoryList(),
+          refetchType: 'none',
+        }),
       ]),
   });
 

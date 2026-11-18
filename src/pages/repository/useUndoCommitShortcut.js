@@ -43,7 +43,7 @@ export function useUndoCommitShortcut() {
   const { message } = App.useApp();
   const confirmDanger = useConfirmDanger();
   const isChecking = useRef(false);
-  // Read when the key is pressed, without listening again on every status poll.
+  // Read when the key is pressed, without listening again on every status change.
   const statusRef = useRef(status);
   useEffect(() => {
     statusRef.current = status;

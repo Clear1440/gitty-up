@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntApp } from 'antd';
 import { RouterProvider } from 'react-router/dom';
 import { AppearanceProvider } from './appearance/AppearanceContext.jsx';
+import { trimHiddenPages } from './queries/trimHiddenPages.js';
 import { router } from './router.jsx';
 import { TabsProvider } from './tabs/TabsContext.jsx';
 
@@ -20,6 +21,9 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// For as long as the app runs: a history left behind keeps only its first page.
+trimHiddenPages(queryClient);
 
 export function App() {
   return (

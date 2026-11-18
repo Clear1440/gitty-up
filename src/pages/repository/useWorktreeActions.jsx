@@ -1,7 +1,12 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { App, Checkbox } from 'antd';
 import { useNavigate } from 'react-router';
 import { paths } from '../../paths.js';
-import { useLinkRepository, useRepositories, useUnlinkRepository } from '../../queries/repositories.js';
+import {
+  repositoryListQuery,
+  useLinkRepository,
+  useUnlinkRepository,
+} from '../../queries/repositories.js';
 import { useTabs } from '../../tabs/TabsContext.jsx';
 import { useConfirmDanger } from '../../components/useConfirmDanger.js';
 import { PathHelper } from '../../utils/PathHelper.js';
@@ -22,7 +27,7 @@ export function useWorktreeActions() {
   const { openTab, closeTab } = useTabs();
   const link = useLinkRepository();
   const unlink = useUnlinkRepository();
-  const { data: repositories = [] } = useRepositories();
+  const queryClient = useQueryClient();
   const blocked = StatusHelper.isBlocked(status, isBusy);
 
   const open = async (folder) => {
@@ -37,6 +42,10 @@ export function useWorktreeActions() {
 
   /** A removed working tree's folder is gone, so its tab and listing would only fail. */
   const forget = async (folder) => {
+    // Read only when needed: watching the list would reread it, and run git in every
+    // linked repository, each time a repository's page opens. Folders only change when
+    // a repository is linked or unlinked, which rereads it anyway.
+    const repositories = await queryClient.ensureQueryData(repositoryListQuery());
     const linked = repositories.find((repository) => PathHelper.isSame(repository.path, folder));
     if (!linked) return;
     closeTab(linked.id);
