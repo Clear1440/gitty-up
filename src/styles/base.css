@@ -1,5 +1,16 @@
 /* App-wide element defaults. Component styles live next to each component. */
 
+/*
+ * Inter's disambiguation set: a tail on l, serifs on I, a flat-topped 1 and a slashed
+ * zero, so branch names, hashes and versions read without guessing. Named for Inter
+ * alone, so the monospace font, which tells them apart already, is left as it is.
+ */
+@font-feature-values InterVariable {
+  @styleset {
+    disambiguation: 2;
+  }
+}
+
 html,
 body,
 #root,
@@ -13,9 +24,18 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
+  font-variant-alternates: styleset(disambiguation);
   font-size: var(--font-size-md);
   line-height: var(--line-height-body);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Form fields reset their font settings rather than inheriting them. */
+input,
+textarea,
+select,
+button {
+  font-variant-alternates: inherit;
 }
 
 * {

@@ -21,6 +21,10 @@ version's section.
 
 ### Changed
 
+- **Easier to tell characters apart.** Text uses the complete Inter font with its
+  disambiguation set: a tail on l, serifs on I, a flagged 1 and a slashed zero, so branch
+  names, hashes and versions such as `illegal-Il1` or `1.10.0` read without guessing.
+- Lines divide the local branches, remote branches, stashes and worktrees in the sidebar.
 - **Counts beside the branch.** On the home page, a repository's changed files and commits to
   push and pull now follow its branch name directly, centered on it, instead of sitting in
   columns sized to the longest branch in the list.
