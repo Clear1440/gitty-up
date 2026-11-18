@@ -82,34 +82,57 @@ export function diffWords(before, after) {
  * Marks what changed inside lines that were edited rather than replaced. In each run of
  * changes, the nth deleted line pairs with the nth added one, as the split view shows
  * them. Each line that has a highlight gets `segments`.
+ *
+ * Only lines that can be among the first `maxRows` rows on screen are compared, as a huge
+ * diff shows no more than that and comparing every line of it could stall the page.
+ * Either layout may be on show, so this counts the fewest rows either could put first.
  */
-export function annotateWordChanges(hunks) {
+export function annotateWordChanges(hunks, { maxRows = Infinity } = {}) {
+  // Rows before the current run of changes: one per context line, and one per pair of
+  // changes, as the split view draws them. Hunk headers only add to that, so are left out.
+  let rowsBefore = 0;
   for (const hunk of hunks) {
+    if (rowsBefore >= maxRows) break;
     let deleted = [];
     let added = [];
-    const flush = () => {
-      deleted.forEach((line, index) => {
-        const partner = added[index];
-        if (!partner) return;
-        const result = diffWords(line.text, partner.text);
-        if (!result) return;
-        line.segments = result.before;
-        partner.segments = result.after;
-      });
+    // Changes earlier in the same run, which the split view pairs with these.
+    let runDeleted = 0;
+    let runAdded = 0;
+
+    const pairUp = () => {
+      const firstRow = rowsBefore + Math.min(runDeleted, runAdded);
+      const pairCount = Math.min(deleted.length, added.length, maxRows - firstRow);
+      for (let index = 0; index < pairCount; index += 1) {
+        const result = diffWords(deleted[index].text, added[index].text);
+        if (!result) continue;
+        deleted[index].segments = result.before;
+        added[index].segments = result.after;
+      }
+      runDeleted += deleted.length;
+      runAdded += added.length;
       deleted = [];
       added = [];
     };
+    const endRun = () => {
+      pairUp();
+      rowsBefore += Math.max(runDeleted, runAdded);
+      runDeleted = 0;
+      runAdded = 0;
+    };
 
     for (const line of hunk.lines) {
-      if (line.kind === 'context') flush();
+      if (line.kind === 'context') {
+        endRun();
+        rowsBefore += 1;
+      }
       // A deletion after additions starts a new edit, as git lists deletions first.
       else if (line.kind === 'deleted' && added.length > 0) {
-        flush();
+        pairUp();
         deleted.push(line);
       } else if (line.kind === 'deleted') deleted.push(line);
       else added.push(line);
     }
-    flush();
+    endRun();
   }
   return hunks;
 }

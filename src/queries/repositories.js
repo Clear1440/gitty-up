@@ -9,8 +9,12 @@ import {
 import { filesystemApi, repositoriesApi } from '../api';
 import { mutationKeys, queryKeys } from './queryKeys.js';
 
+/** Every linked repository, with a summary that takes git a moment per repository. */
+export const repositoryListQuery = () =>
+  queryOptions({ queryKey: queryKeys.repositoryList(), queryFn: repositoriesApi.list });
+
 export function useRepositories() {
-  return useQuery({ queryKey: queryKeys.repositoryList(), queryFn: repositoriesApi.list });
+  return useQuery(repositoryListQuery());
 }
 
 export const repositoryQuery = (repositoryId) =>

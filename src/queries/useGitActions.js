@@ -258,11 +258,16 @@ export function useGitActions(repositoryId) {
       }
     },
     // Failed commands can still change the repository, as a conflicted merge does.
-    // Everything on screen changes in one go, rather than a panel at a time.
+    // Everything on screen changes in one go, rather than a panel at a time. The
+    // repository list is only shown on the repositories page, which rereads it on opening,
+    // so it is just marked stale: rereading it runs git in every linked repository.
     onSettled: () =>
       Promise.all([
         refreshTogether(queryClient, affectedKey),
-        queryClient.invalidateQueries({ queryKey: queryKeys.repositoryList() }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.repositoryList(),
+          refetchType: 'none',
+        }),
       ]),
   });
 

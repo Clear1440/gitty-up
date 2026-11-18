@@ -420,7 +420,8 @@ export function unresolveConflict(mono, { filePath }) {
 }
 
 export async function fetchAll(mono) {
-  await forEachMember(mono.members, ({ path }) => git.fetchAll(path));
+  const results = await forEachMember(mono.members, ({ path }) => git.fetchAll(path));
+  return { changed: results.some(({ changed }) => changed) };
 }
 
 export async function pull(mono, options) {

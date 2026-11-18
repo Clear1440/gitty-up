@@ -31,22 +31,29 @@ export function useIsAutoFetching(repositoryId) {
   return useSyncExternalStore(watchFetching, () => fetching.has(repositoryId));
 }
 
-/** Rereads everything on screen for a repository, in one go, and the repository list. */
+/**
+ * Rereads everything on screen for a repository, in one go. The repository list is only
+ * marked stale: rereading it runs git in every linked repository, and only the
+ * repositories page shows what changed, which rereads it on opening.
+ */
 function refreshRepository(queryClient, repositoryId) {
   return Promise.all([
     refreshTogether(queryClient, queryKeys.repository(repositoryId)),
-    queryClient.invalidateQueries({ queryKey: queryKeys.repositoryList() }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.repositoryList(), refetchType: 'none' }),
   ]);
 }
 
-/** Fetches a repository from its remotes quietly, then refreshes it. */
+/**
+ * Fetches a repository from its remotes quietly, then refreshes it if anything came in.
+ * Usually nothing has, and the page read everything a moment ago on opening.
+ */
 function fetchRepository(queryClient, repositoryId) {
   if (fetching.has(repositoryId)) return;
   setFetching(repositoryId, true);
   fetchedAt.set(repositoryId, Date.now());
   gitApi
     .fetch(repositoryId)
-    .then(() => refreshRepository(queryClient, repositoryId))
+    .then((result) => result?.changed !== false && refreshRepository(queryClient, repositoryId))
     .catch(() => {})
     .finally(() => setFetching(repositoryId, false));
 }

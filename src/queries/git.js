@@ -14,6 +14,12 @@ const COMMIT_PAGE_SIZE = 100;
 const MAX_COMMITS_PER_REQUEST = 500;
 const STATUS_POLL_MS = 5_000;
 const PULL_REQUESTS_STALE_MS = 5 * 60_000;
+/**
+ * Diffs are the biggest answers there are, one per file looked at, so they are let go
+ * soon after leaving them rather than kept as long as the rest. Going back to a recent
+ * one still shows it at once.
+ */
+const DIFF_GC_MS = 2 * 60_000;
 
 export const statusQuery = (repositoryId) =>
   queryOptions({
@@ -99,6 +105,7 @@ export function useCommitDiff(repositoryId, hash, file, { fullFile }) {
     queryKey: queryKeys.commitDiff(repositoryId, hash, { ...file, fullFile }),
     queryFn: ({ signal }) =>
       gitApi.getCommitDiff(repositoryId, hash, { ...file, fullFile }, { signal }),
+    gcTime: DIFF_GC_MS,
     enabled: Boolean(file),
   });
 }
@@ -137,6 +144,7 @@ export function useStashDiff(repositoryId, hash, file, { fullFile }) {
     queryKey: queryKeys.stashDiff(repositoryId, hash, { ...file, fullFile }),
     queryFn: ({ signal }) =>
       gitApi.getStashDiff(repositoryId, hash, { ...file, fullFile }, { signal }),
+    gcTime: DIFF_GC_MS,
     enabled: Boolean(file),
   });
 }
@@ -169,6 +177,7 @@ export function useDiff(repositoryId, file, { fullFile }) {
   return useQuery({
     queryKey: queryKeys.diff(repositoryId, { ...file, fullFile }),
     queryFn: ({ signal }) => gitApi.getDiff(repositoryId, { ...file, fullFile }, { signal }),
+    gcTime: DIFF_GC_MS,
     enabled: Boolean(file),
   });
 }

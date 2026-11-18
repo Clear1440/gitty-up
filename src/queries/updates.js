@@ -7,7 +7,11 @@ const PROGRESS_INTERVAL_MS = 500;
 /** Otherwise read hourly. The server only asks GitHub again once its last check is stale. */
 const IDLE_INTERVAL_MS = 60 * 60_000;
 
-export const isUpdating = (status) => Boolean(status) && status.phase !== 'idle';
+/**
+ * Whether an update is downloading or installing. Without an updater, as in a browser or
+ * Docker, the status is only `{ supported: false }`, which has no phase at all.
+ */
+export const isUpdating = (status) => Boolean(status?.supported) && status.phase !== 'idle';
 
 /**
  * Whether a newer release can be installed, and how installing it is going. The server
