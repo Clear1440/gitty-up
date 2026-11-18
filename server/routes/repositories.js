@@ -326,7 +326,10 @@ function createGitRouter() {
   });
 
   // Syncing
-  action(router, '/fetch', (service, target) => service.fetchAll(target));
+  // Answers whether anything moved, so a fetch that brought nothing needs no reread.
+  router.post('/fetch', async (request, response) => {
+    response.json(await request.service.fetchAll(request.target));
+  });
   action(router, '/pull', (service, target, { mode }) => service.pull(target, { mode }));
   action(router, '/push', (service, target, { force, remote, upstreamName, toUpstream }) =>
     service.push(target, {

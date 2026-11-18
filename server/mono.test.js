@@ -473,7 +473,10 @@ describe('branch actions', () => {
       git(work, 'push', 'origin', '--delete', 'done');
     }
     git(mono.api.work, 'push', 'origin', '--delete', 'mine');
-    await request('POST', `${mono.route}/fetch`);
+    const fetched = await request('POST', `${mono.route}/fetch`);
+    expect(fetched.body).toEqual({ changed: expect.any(Boolean) });
+    // Nothing new in any member the second time.
+    expect((await request('POST', `${mono.route}/fetch`)).body).toEqual({ changed: false });
 
     const { body } = await request('POST', `${mono.route}/prune-branches`, { force: true });
 
@@ -593,6 +596,19 @@ describe('merging and stashing', () => {
       expect(git(work, 'rev-parse', 'release')).toBe(git(work, 'rev-parse', 'main'));
     }
     expect((await getStatus()).branch).toBe('release');
+  });
+
+  it('says a fetch changed something when any one member got new commits', async () => {
+    await request('POST', `${mono.route}/fetch`);
+    const clone = path.join(path.dirname(mono.web.work), 'web-fetch-clone');
+    git(path.dirname(clone), 'clone', `${mono.web.work}.git`, clone);
+    git(clone, 'config', 'user.name', 'Test');
+    git(clone, 'config', 'user.email', 'test@example.com');
+    await writeAndCommit(clone, 'remote.txt', 'remote\n', 'Remote work');
+    git(clone, 'push', 'origin', 'main');
+
+    expect((await request('POST', `${mono.route}/fetch`)).body).toEqual({ changed: true });
+    expect((await request('POST', `${mono.route}/fetch`)).body).toEqual({ changed: false });
   });
 
   it('stops before merging anywhere when a member is behind its remote', async () => {

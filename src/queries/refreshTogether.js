@@ -18,21 +18,29 @@ async function fetchInfinite(query, fetchPage) {
   return { pages, pageParams };
 }
 
-/** Runs a query's own fetch without putting the result in the cache. */
+/**
+ * Runs a query's own fetch without putting the result in the cache. An infinite query
+ * whose `meta.readPages(pageCount, { signal })` is set rereads its pages through that
+ * instead, as the commit history does to read many pages in one request.
+ */
 function fetchFresh(queryClient, query) {
   const { queryFn } = query.options;
   if (typeof queryFn !== 'function') throw new Error('No query function to call');
+  const signal = new AbortController().signal;
   const fetchPage = (pageParam) =>
     queryFn({
       client: queryClient,
       queryKey: query.queryKey,
       meta: query.meta,
-      signal: new AbortController().signal,
+      signal,
       pageParam,
       direction: 'forward',
     });
   const isInfinite = typeof query.options.getNextPageParam === 'function';
-  return isInfinite ? fetchInfinite(query, fetchPage) : fetchPage(undefined);
+  if (!isInfinite) return fetchPage(undefined);
+  const readPages = query.meta?.readPages;
+  if (typeof readPages !== 'function') return fetchInfinite(query, fetchPage);
+  return readPages(Math.max(query.state.data?.pages.length ?? 1, 1), { signal });
 }
 
 /**
@@ -40,7 +48,7 @@ function fetchFresh(queryClient, query) {
  * the cache at once. Invalidating instead lets each one land as it arrives, so the page
  * changes several times over, the status before the branches before the history, and
  * can show a mix of before and after. Those not on screen are marked stale, to refetch
- * when next shown.
+ * when next shown, and so are any that left the screen while this was reading them.
  *
  * A query that fails is left to refetch the usual way, so it shows its error as usual.
  */
@@ -60,7 +68,8 @@ export async function refreshTogether(queryClient, queryKey) {
 
   notifyManager.batch(() => {
     for (const { query, ok, data } of results) {
-      if (ok) queryClient.setQueryData(query.queryKey, data);
+      // One left meanwhile may have been trimmed, and must not get every page back.
+      if (ok && query.isActive()) queryClient.setQueryData(query.queryKey, data);
     }
   });
 

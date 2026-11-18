@@ -768,9 +768,12 @@ describe('syncing with the remote', () => {
     await writeAndCommit(other, 'theirs.txt', 'theirs\n', 'Their work');
     git(other, 'push');
 
-    await request('POST', `${repo.api}/fetch`, {});
+    const fetched = await request('POST', `${repo.api}/fetch`, {});
+    expect(fetched.body).toEqual({ changed: true });
     const { body } = await request('GET', `${repo.api}/status`);
     expect(body.behind).toBe(1);
+    // Nothing new the second time, so the client can skip rereading the repository.
+    expect((await request('POST', `${repo.api}/fetch`, {})).body).toEqual({ changed: false });
 
     expect((await request('POST', `${repo.api}/pull`, { mode: 'ff-only' })).status).toBe(204);
     const { body: pulled } = await request('GET', `${repo.api}/status`);

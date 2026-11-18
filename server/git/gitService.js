@@ -383,8 +383,19 @@ async function reportingConflicts(
   }
 }
 
+/** Every ref and the commit it points at, to tell whether a fetch brought anything. */
+function readRefs(repoPath) {
+  return runGit(repoPath, ['for-each-ref', '--format=%(objectname) %(refname)']);
+}
+
+/**
+ * Fetches from every remote. `changed` is false when no branch or tag moved, so the
+ * client can skip rereading a repository that the fetch left as it was.
+ */
 export async function fetchAll(repoPath) {
+  const before = await readRefs(repoPath);
   await runGit(repoPath, ['fetch', '--all', '--prune'], { timeout: NETWORK_TIMEOUT_MS });
+  return { changed: (await readRefs(repoPath)) !== before };
 }
 
 export async function pull(repoPath, { mode = 'merge' } = {}) {

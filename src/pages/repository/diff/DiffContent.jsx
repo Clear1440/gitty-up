@@ -100,7 +100,7 @@ export function DiffContent({
   onApply,
 }) {
   const { layout } = toDiffView(view);
-  const annotated = useMemo(() => annotateWordChanges(hunks), [hunks]);
+  const annotated = useMemo(() => annotateWordChanges(hunks, { maxRows: MAX_ROWS }), [hunks]);
   const rows = useMemo(() => {
     const allRows = buildRows(annotated, view);
     // Outside the hunk view, a hunk row only exists to hold its action.
