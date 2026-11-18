@@ -39,14 +39,17 @@ function refreshRepository(queryClient, repositoryId) {
   ]);
 }
 
-/** Fetches a repository from its remotes quietly, then refreshes it. */
+/**
+ * Fetches a repository from its remotes quietly, then refreshes it if that brought in
+ * anything new. Usually it brings in nothing, and what is on screen is already current.
+ */
 function fetchRepository(queryClient, repositoryId) {
   if (fetching.has(repositoryId)) return;
   setFetching(repositoryId, true);
   fetchedAt.set(repositoryId, Date.now());
   gitApi
     .fetch(repositoryId)
-    .then(() => refreshRepository(queryClient, repositoryId))
+    .then((result) => result?.changed !== false && refreshRepository(queryClient, repositoryId))
     .catch(() => {})
     .finally(() => setFetching(repositoryId, false));
 }

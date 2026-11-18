@@ -16,6 +16,8 @@ version's section.
 
 - A group's repository count now lines up with the group's name.
 - Outside the desktop app, the page no longer asks the server about updates twice a second.
+- Opening a repository's tab no longer loads everything in it twice. The quiet fetch from the
+  remotes on opening it only reloads the tab when it brings in something new.
 
 ### Changed
 

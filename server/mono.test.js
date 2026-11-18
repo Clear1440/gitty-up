@@ -595,6 +595,19 @@ describe('merging and stashing', () => {
     expect((await getStatus()).branch).toBe('release');
   });
 
+  it('says whether fetching brought in anything new for any member', async () => {
+    expect((await request('POST', `${mono.route}/fetch`)).body).toEqual({ changed: false });
+
+    const clone = path.join(path.dirname(mono.web.work), 'web-fetch-clone');
+    git(path.dirname(clone), 'clone', `${mono.web.work}.git`, clone);
+    git(clone, 'config', 'user.name', 'Test');
+    git(clone, 'config', 'user.email', 'test@example.com');
+    await writeAndCommit(clone, 'remote.txt', 'remote\n', 'Remote work');
+    git(clone, 'push', 'origin', 'main');
+
+    expect((await request('POST', `${mono.route}/fetch`)).body).toEqual({ changed: true });
+  });
+
   it('stops before merging anywhere when a member is behind its remote', async () => {
     for (const { work } of members()) git(work, 'branch', 'other');
     // Someone else pushed to web's main, so its main is behind once fetched.
