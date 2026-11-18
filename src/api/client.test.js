@@ -51,6 +51,42 @@ describe('http', () => {
     });
   });
 
+  it('passes a signal through, so a read can be called off', async () => {
+    const fetchStub = stubFetch(json([]));
+    const controller = new AbortController();
+
+    await http.get('/status', undefined, { signal: controller.signal });
+
+    expect(fetchStub.mock.calls[0][1].signal).toBe(controller.signal);
+  });
+
+  it('lets a request that was called off reject as such, not as an unreachable server', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new DOMException('Aborted', 'AbortError')));
+
+    const error = await http
+      .get('/status', undefined, { signal: controller.signal })
+      .catch((caught) => caught);
+
+    expect(error).not.toBeInstanceOf(ApiError);
+    expect(error.name).toBe('AbortError');
+  });
+
+  it('never takes a reply cut short by calling it off for an empty answer', async () => {
+    const controller = new AbortController();
+    const response = json({ files: [] });
+    vi.spyOn(response, 'json').mockImplementation(() => {
+      controller.abort();
+      return Promise.reject(new DOMException('Aborted', 'AbortError'));
+    });
+    stubFetch(response);
+
+    await expect(
+      http.get('/status', undefined, { signal: controller.signal }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
   it('handles replies that are not JSON, such as a failing dev proxy', async () => {
     stubFetch(new Response('Bad gateway', { status: 500 }));
 

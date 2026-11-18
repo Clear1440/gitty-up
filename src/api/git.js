@@ -3,38 +3,47 @@ import { http } from './client.js';
 const route = (repositoryId, path) => `/repositories/${repositoryId}${path}`;
 
 export const gitApi = {
-  // Reads
-  getStatus: (id) => http.get(route(id, '/status')),
-  getBranches: (id) => http.get(route(id, '/branches')),
-  getCommits: (id, { ref, limit, skip }) => http.get(route(id, '/commits'), { ref, limit, skip }),
-  getCommitDetails: (id, hash) => http.get(route(id, `/commits/${hash}`)),
-  getCommitDiff: (id, hash, { path, originalPath, fullFile }) =>
-    http.get(route(id, `/commits/${hash}/diff`), { path, originalPath, fullFile }),
-  getRemotes: (id) => http.get(route(id, '/remotes')),
+  // Reads. Each takes `{ signal }` last, to call it off.
+  getStatus: (id, options) => http.get(route(id, '/status'), undefined, options),
+  getBranches: (id, options) => http.get(route(id, '/branches'), undefined, options),
+  getCommits: (id, { ref, limit, skip }, options) =>
+    http.get(route(id, '/commits'), { ref, limit, skip }, options),
+  getCommitDetails: (id, hash, options) =>
+    http.get(route(id, `/commits/${hash}`), undefined, options),
+  getCommitDiff: (id, hash, { path, originalPath, fullFile }, options) =>
+    http.get(route(id, `/commits/${hash}/diff`), { path, originalPath, fullFile }, options),
+  getRemotes: (id, options) => http.get(route(id, '/remotes'), undefined, options),
   getLastCommit: (id) => http.get(route(id, '/last-commit')),
-  getPullRequests: (id) => http.get(route(id, '/pull-requests')),
-  getStashes: (id) => http.get(route(id, '/stashes')),
-  getWorktrees: (id) => http.get(route(id, '/worktrees')),
-  getStashDetails: (id, hash) => http.get(route(id, `/stashes/${hash}`)),
-  getStashDiff: (id, hash, { path, originalPath, untracked, fullFile }) =>
-    http.get(route(id, `/stashes/${hash}/diff`), { path, originalPath, untracked, fullFile }),
+  getPullRequests: (id, options) => http.get(route(id, '/pull-requests'), undefined, options),
+  getStashes: (id, options) => http.get(route(id, '/stashes'), undefined, options),
+  getWorktrees: (id, options) => http.get(route(id, '/worktrees'), undefined, options),
+  getStashDetails: (id, hash, options) =>
+    http.get(route(id, `/stashes/${hash}`), undefined, options),
+  getStashDiff: (id, hash, { path, originalPath, untracked, fullFile }, options) =>
+    http.get(
+      route(id, `/stashes/${hash}/diff`),
+      { path, originalPath, untracked, fullFile },
+      options,
+    ),
   /** `source` is "commit" with `hash`, "stash" with `ref`, or "uncommitted". */
   createPatch: (id, { source, hash, ref }) => http.get(route(id, '/patch'), { source, hash, ref }),
-  getScripts: (id) => http.get(route(id, '/scripts')),
+  getScripts: (id, options) => http.get(route(id, '/scripts'), undefined, options),
   /** Starts a script and resolves with the run at once. Follow it with `scriptRunEvents`. */
   startScript: (id, { name, params }) => http.post(route(id, '/scripts/runs'), { name, params }),
   scriptRunEvents: (id, runId) => http.events(route(id, `/scripts/runs/${runId}/events`)),
   stopScript: (id, runId) => http.post(route(id, `/scripts/runs/${runId}/stop`)),
-  getDiff: (id, { path, staged, untracked, fullFile }) =>
-    http.get(route(id, '/diff'), { path, staged, untracked, fullFile }),
-  getConflict: (id, { path }) => http.get(route(id, '/conflict'), { path }),
+  getDiff: (id, { path, staged, untracked, fullFile }, options) =>
+    http.get(route(id, '/diff'), { path, staged, untracked, fullFile }, options),
+  getConflict: (id, { path }, options) => http.get(route(id, '/conflict'), { path }, options),
   /** Branches that some, but not all, of a mono repo's group have. */
-  getSpanningBranches: (id) => http.get(route(id, '/spanning-branches')),
+  getSpanningBranches: (id, options) =>
+    http.get(route(id, '/spanning-branches'), undefined, options),
   /** Where each of a mono repo's repositories would go to work on `branch` across them. */
-  getSpanPlan: (id, { branch }) => http.get(route(id, '/span-plan'), { branch }),
+  getSpanPlan: (id, { branch }, options) =>
+    http.get(route(id, '/span-plan'), { branch }, options),
   /** What merging `source` into `target` would bring in, per repository in a mono repo. */
-  previewMerge: (id, { source, target }) =>
-    http.get(route(id, '/merge-preview'), { source, target }),
+  previewMerge: (id, { source, target }, options) =>
+    http.get(route(id, '/merge-preview'), { source, target }, options),
 
   // Syncing
   fetch: (id) => http.post(route(id, '/fetch')),

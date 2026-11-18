@@ -16,7 +16,7 @@ export function useRepositories() {
 export const repositoryQuery = (repositoryId) =>
   queryOptions({
     queryKey: queryKeys.repository(repositoryId),
-    queryFn: () => repositoriesApi.get(repositoryId),
+    queryFn: ({ signal }) => repositoriesApi.get(repositoryId, { signal }),
   });
 
 export function useRepository(repositoryId) {

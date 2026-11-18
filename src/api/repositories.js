@@ -2,7 +2,7 @@ import { http } from './client.js';
 
 export const repositoriesApi = {
   list: () => http.get('/repositories'),
-  get: (repositoryId) => http.get(`/repositories/${repositoryId}`),
+  get: (repositoryId, options) => http.get(`/repositories/${repositoryId}`, undefined, options),
   link: (path) => http.post('/repositories', { path }),
   linkMany: ({ paths, groupName }) => http.post('/repositories/bulk', { paths, groupName }),
   fetchAll: () => http.post('/repositories/fetch'),
