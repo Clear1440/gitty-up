@@ -59,6 +59,19 @@ export function orderForStack(groups, selectedBranch) {
     .map(({ group }) => group);
 }
 
+/**
+ * Splits a commit's label groups into the branches, which stack with the front one
+ * readable (see orderForStack), and the tags, which always show in full beside them, as
+ * they mark versions: "[main] [0.3.0] +1" rather than a tag hidden behind a branch.
+ */
+export function arrangeLabels(groups, selectedBranch) {
+  const ordered = orderForStack(groups, selectedBranch);
+  return {
+    branches: ordered.filter((group) => group.type !== 'tag'),
+    tags: ordered.filter((group) => group.type === 'tag'),
+  };
+}
+
 /** The branch a label group selects: its local branch, or else its first remote copy. */
 export function branchOfGroup(group) {
   return group.local ? group.name : group.remotes[0];

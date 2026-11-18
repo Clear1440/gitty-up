@@ -6,7 +6,7 @@ import {
 } from '@ant-design/icons';
 import { Avatar, Button, Empty, Result, Spin, Tag } from 'antd';
 import clsx from 'clsx';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router';
 import { MenuRow } from '../../components/MenuRow.jsx';
 import { RelativeTime } from '../../components/RelativeTime.jsx';
@@ -24,11 +24,11 @@ import { CommitSearch } from './history/CommitSearch.jsx';
 import { findMatches } from './history/commitSearch.js';
 import { GraphTooltipArea } from './history/GraphTooltipArea.jsx';
 import {
+  arrangeLabels,
   branchOfGroup,
   findBranchTip,
   groupHasBranch,
   groupRefs,
-  orderForStack,
 } from './history/groupRefs.js';
 import { RefBranchActions } from './history/RefBranchActions.jsx';
 import { StashPane } from './history/StashPane.jsx';
@@ -142,40 +142,46 @@ function RefTag({ group, pullRequest, focusRequest, onSelect }) {
 }
 
 /**
- * A commit's labels, stacked like cards so the one in front can be read in full: the
- * selected branch, or else the checked out one. The rest peek out behind it, and drop
- * down one to a line on hover, where a click selects one and brings it to the front.
+ * A commit's labels. Its branches stack like cards so the one in front can be read in
+ * full: the selected branch, or else the checked out one. The rest peek out behind it,
+ * and drop down one to a line on hover, where a click selects one and brings it to the
+ * front. Tags mark versions, so they never hide in the stack: each shows in full after
+ * the front branch, as "[main] [0.3.0] +1".
  */
 function RefStack({ groups, selectedBranch, offset, renderTag }) {
-  const [front, ...rest] = orderForStack(groups, selectedBranch);
-  if (rest.length === 0) {
-    return (
-      <div className={styles.refs} style={{ marginLeft: offset }}>
-        {renderTag(front)}
-      </div>
-    );
-  }
+  const { branches, tags } = arrangeLabels(groups, selectedBranch);
+  const [front, ...rest] = branches;
+  const isStacked = rest.length > 0;
+
   return (
-    <div className={clsx(styles.refs, styles.stacked)} style={{ marginLeft: offset }}>
-      <div className={styles.refStack}>
-        <div className={styles.refFront}>{renderTag(front)}</div>
-        {rest.map((group, index) => (
-          <div
-            key={group.key}
-            className={clsx(styles.refLayer, index >= 2 && styles.refLayerDeep)}
-            style={{ '--layer': index + 1 }}
-          >
-            {renderTag(group)}
-          </div>
-        ))}
-      </div>
-      <span
-        className={styles.refMore}
-        title={rest.map((group) => group.name).join('\n')}
-        aria-label={`${rest.length} more ${TextHelper.pluralize(rest.length, 'label')}`}
-      >
-        +{rest.length}
-      </span>
+    <div className={clsx(styles.refs, isStacked && styles.stacked)} style={{ marginLeft: offset }}>
+      {front && !isStacked && renderTag(front)}
+      {isStacked && (
+        <div className={styles.refStack}>
+          <div className={styles.refFront}>{renderTag(front)}</div>
+          {rest.map((group, index) => (
+            <div
+              key={group.key}
+              className={clsx(styles.refLayer, index >= 2 && styles.refLayerDeep)}
+              style={{ '--layer': index + 1 }}
+            >
+              {renderTag(group)}
+            </div>
+          ))}
+        </div>
+      )}
+      {tags.map((group) => (
+        <Fragment key={group.key}>{renderTag(group)}</Fragment>
+      ))}
+      {isStacked && (
+        <span
+          className={styles.refMore}
+          title={rest.map((group) => group.name).join('\n')}
+          aria-label={`${TextHelper.countOf(rest.length, 'more branch', 'more branches')}`}
+        >
+          +{rest.length}
+        </span>
+      )}
     </div>
   );
 }
