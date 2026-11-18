@@ -7,6 +7,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { filesystemApi, repositoriesApi } from '../api';
+import { cancellable } from './cancellable.js';
 import { mutationKeys, queryKeys } from './queryKeys.js';
 
 /** Every linked repository, with a summary that takes git a moment per repository. */
@@ -20,7 +21,7 @@ export function useRepositories() {
 export const repositoryQuery = (repositoryId) =>
   queryOptions({
     queryKey: queryKeys.repository(repositoryId),
-    queryFn: ({ signal }) => repositoriesApi.get(repositoryId, { signal }),
+    queryFn: cancellable(({ signal }) => repositoriesApi.get(repositoryId, { signal })),
   });
 
 export function useRepository(repositoryId) {
