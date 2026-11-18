@@ -492,6 +492,32 @@ function createGroupsRouter(store) {
     response.status(201).json(await store.addGroup(name));
   });
 
+  /**
+   * Puts many repositories in exactly the groups listed for each, in one go:
+   * `{ changes: [{ repositoryId, groupIds }] }`. Nothing changes if any is invalid.
+   */
+  router.put('/membership', async (request, response) => {
+    const changes = request.body?.changes;
+    const isChange = (change) =>
+      typeof change?.repositoryId === 'string' &&
+      Array.isArray(change.groupIds) &&
+      change.groupIds.every((id) => typeof id === 'string');
+    if (!Array.isArray(changes) || !changes.every(isChange)) {
+      throw ApiError.badRequest(
+        '"changes" must be a list of { repositoryId, groupIds } with lists of group ids.',
+      );
+    }
+    const repositories = await store.list();
+    if (!changes.every(({ repositoryId }) => repositories.some(({ id }) => id === repositoryId))) {
+      throw ApiError.notFound('That repository is not linked.');
+    }
+    await assertGroupsExist(store, changes.flatMap(({ groupIds }) => groupIds));
+    await store.setGroupsOfMany(
+      Object.fromEntries(changes.map(({ repositoryId, groupIds }) => [repositoryId, groupIds])),
+    );
+    response.status(204).end();
+  });
+
   router.put('/order', async (request, response) => {
     const ids = request.body?.ids;
     if (!Array.isArray(ids) || !ids.every((id) => typeof id === 'string')) {

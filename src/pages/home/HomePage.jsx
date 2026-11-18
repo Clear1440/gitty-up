@@ -29,7 +29,6 @@ import styles from './HomePage.module.css';
 import { LinkRepositoryDialog } from './LinkRepositoryDialog.jsx';
 import { RepositoryRow } from './RepositoryRow.jsx';
 import { RepositorySection } from './RepositorySection.jsx';
-import { useBranchColumnWidth } from './useBranchColumnWidth.js';
 import { buildSections, UNGROUPED, ungroupedSection } from './sections.js';
 import { RepositoryListContext } from './useRepositoryList.js';
 import { RepositorySelectionContext, useRepositorySelection } from './useRepositorySelection.js';
@@ -147,8 +146,6 @@ export function HomePage() {
   const [drag, setDrag] = useState(null);
   const condensed = view === 'condensed';
   const listContext = useMemo(() => ({ condensed, drag, setDrag }), [condensed, drag]);
-  // Measured over every repository, not just the matches, so searching never moves the counts.
-  const branchWidth = useBranchColumnWidth(repositories, condensed);
 
   const closeDialog = () => setDialog(null);
   const isSearching = Boolean(search.trim());
@@ -270,9 +267,7 @@ export function HomePage() {
       <SelectionBar selection={selection} />
       <RepositoryListContext value={listContext}>
         <RepositorySelectionContext value={selection}>
-          <div style={branchWidth ? { '--branch-width': `${branchWidth}px` } : undefined}>
-            {renderContent()}
-          </div>
+          {renderContent()}
         </RepositorySelectionContext>
       </RepositoryListContext>
       {dialog === 'link' && <LinkRepositoryDialog onClose={closeDialog} />}

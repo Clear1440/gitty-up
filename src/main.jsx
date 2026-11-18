@@ -1,4 +1,5 @@
-import '@fontsource-variable/inter';
+// The complete Inter: fontsource's strips the alternates that tell l, I and 1 apart.
+import 'inter-ui/inter-variable.css';
 import '@fontsource-variable/jetbrains-mono';
 import './styles/index.css';
 

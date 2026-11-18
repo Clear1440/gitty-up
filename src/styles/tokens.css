@@ -22,7 +22,7 @@
   --color-focus-tint: color-mix(in srgb, var(--color-text) 4%, transparent);
 
   /* Type */
-  --font-sans: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: InterVariable, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, Consolas, monospace;
   --font-size-xs: 12px;
   --font-size-sm: 13px;

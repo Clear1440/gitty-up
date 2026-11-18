@@ -6,6 +6,29 @@ version's section.
 
 ## Unreleased
 
+### Added
+
+- **Drag several repositories at once.** Ctrl-click or shift-click repositories on the home
+  page, then drag any one of them to move them all into a group. Hold Ctrl (Option on a Mac)
+  to copy instead. The drag shows how many repositories it carries.
+
+### Fixed
+
+- A group's repository count now lines up with the group's name.
+- Outside the desktop app, the page no longer asks the server about updates twice a second.
+- Opening a repository's tab no longer loads everything in it twice. The quiet fetch from the
+  remotes on opening it only reloads the tab when it brings in something new.
+
+### Changed
+
+- **Easier to tell characters apart.** Text uses the complete Inter font with its
+  disambiguation set: a tail on l, serifs on I, a flagged 1 and a slashed zero, so branch
+  names, hashes and versions such as `illegal-Il1` or `1.10.0` read without guessing.
+- Lines divide the local branches, remote branches, stashes and worktrees in the sidebar.
+- **Counts beside the branch.** On the home page, a repository's changed files and commits to
+  push and pull now follow its branch name directly, centered on it, instead of sitting in
+  columns sized to the longest branch in the list.
+
 ## 0.3.0 - 2026-11-17
 
 ### Added

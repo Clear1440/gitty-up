@@ -172,6 +172,41 @@ describe('repository groups', () => {
     expect((await request('PUT', `${repo.api}/groups`, { groupIds: 'x' })).status).toBe(400);
   });
 
+  it('puts many repositories in their groups in one request', async () => {
+    const other = await createRepository(`repo-${repositoryCount}-other`);
+    const first = await createGroup(`Bulk A ${repositoryCount}`);
+    const second = await createGroup(`Bulk B ${repositoryCount}`);
+    await request('PUT', `${other.api}/groups`, { groupIds: [first.id] });
+
+    const { status } = await request('PUT', '/api/repositories/groups/membership', {
+      changes: [
+        { repositoryId: repo.id, groupIds: [first.id, second.id] },
+        { repositoryId: other.id, groupIds: [] },
+      ],
+    });
+    expect(status).toBe(204);
+    expect(await groupIdsOf(repo.id)).toEqual([first.id, second.id]);
+    expect(await groupIdsOf(other.id)).toBeUndefined();
+  });
+
+  it('changes none of many repositories when one change is invalid', async () => {
+    const group = await createGroup(`Bulk C ${repositoryCount}`);
+    const route = '/api/repositories/groups/membership';
+    const valid = { repositoryId: repo.id, groupIds: [group.id] };
+
+    const unknownGroup = { repositoryId: repo.id, groupIds: ['nope'] };
+    expect((await request('PUT', route, { changes: [valid, unknownGroup] })).status).toBe(404);
+    const unknownRepository = { repositoryId: 'nope', groupIds: [] };
+    expect((await request('PUT', route, { changes: [valid, unknownRepository] })).status).toBe(
+      404,
+    );
+    expect((await request('PUT', route, { changes: [{ repositoryId: repo.id }] })).status).toBe(
+      400,
+    );
+    expect((await request('PUT', route, { changes: 'x' })).status).toBe(400);
+    expect(await groupIdsOf(repo.id)).toBeUndefined();
+  });
+
   it('only takes a deleted group off its repositories', async () => {
     const kept = await createGroup(`Kept ${repositoryCount}`);
     const gone = await createGroup(`Gone ${repositoryCount}`);

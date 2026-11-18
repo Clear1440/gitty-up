@@ -134,6 +134,22 @@ export function useSetRepositoryGroups() {
   );
 }
 
+/**
+ * Puts many repositories in their groups with one request, as a list of
+ * `{ repositoryId, groupIds }`. The list updates all at once, and refreshes once.
+ */
+export function useSetGroupsOfMany() {
+  return useOptimisticMutation(
+    queryKeys.repositoryList(),
+    repositoriesApi.setGroupsOfMany,
+    (repositories, changes) =>
+      repositories.map((repository) => {
+        const change = changes.find(({ repositoryId }) => repositoryId === repository.id);
+        return change ? { ...repository, groupIds: change.groupIds } : repository;
+      }),
+  );
+}
+
 /** Labels a group with a color, or clears it with null. */
 export function useSetGroupColor() {
   return useOptimisticMutation(

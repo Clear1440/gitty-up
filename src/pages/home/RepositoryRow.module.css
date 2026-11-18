@@ -67,26 +67,20 @@
 }
 
 /*
- * The branch, then a column apiece for files changed and commits ahead and behind. The
- * branch column is as wide as the widest branch name in the list (--branch-width, set by
- * the home page), so the counts sit beside the branches. Columns keep their width when
- * empty, so each kind of count lines up down the list.
+ * The branch, then right after it the files changed and commits ahead and behind. They
+ * share its baseline, which centers their smaller digits on its letters. A long branch
+ * name gives way to the counts.
  */
 .meta {
-  --count-width: 3.25rem;
-
-  display: grid;
-  grid-template-columns:
-    minmax(0, min(var(--branch-width, 12rem), 20rem))
-    repeat(3, var(--count-width));
-  justify-content: start;
-  align-items: center;
+  display: flex;
+  align-items: baseline;
   gap: var(--space-2);
   min-width: 0;
   font-size: var(--font-size-sm);
 }
 
 .branch {
+  min-width: 0;
   overflow: hidden;
   color: var(--color-primary-strong);
   font-weight: var(--font-weight-medium);
@@ -95,6 +89,7 @@
 }
 
 .changes {
+  flex: none;
   color: var(--color-file-modified);
   white-space: nowrap;
   font-size: var(--font-size-xs);
@@ -150,6 +145,34 @@
   opacity: 0.4;
 }
 
+/* The copy of a row drawn under the pointer while several repositories are dragged. */
+.dragImage {
+  position: fixed;
+  top: -10000px;
+  left: 0;
+  pointer-events: none;
+}
+
+/* How many repositories the drag carries, over the options button of the drag image. */
+.dragCount {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  right: var(--space-2);
+  transform: translateY(-50%);
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: 22px;
+  text-align: center;
+}
+
 /* Condensed: one short line per repository. */
 .condensed {
   border-radius: var(--radius-md);
@@ -174,8 +197,6 @@
 }
 
 .condensed .meta {
-  --count-width: 2.75rem;
-
   font-size: var(--font-size-xs);
 }
 

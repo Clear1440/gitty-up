@@ -17,7 +17,7 @@ import {
   useReorderGroups,
   useRepositories,
   useSetGroupColor,
-  useSetRepositoryGroups,
+  useSetGroupsOfMany,
 } from '../../queries/repositories.js';
 import { useTabs } from '../../tabs/TabsContext.jsx';
 import { MonoIdHelper } from '../../utils/MonoIdHelper.js';
@@ -41,7 +41,7 @@ function useSectionDrop(section, groups) {
   const { notification } = App.useApp();
   const { drag, setDrag } = useRepositoryList();
   const { data: repositories = [] } = useRepositories();
-  const setGroups = useSetRepositoryGroups();
+  const setGroupsOfMany = useSetGroupsOfMany();
   const reorder = useReorderGroups();
   const [dropAt, setDropAt] = useState(null);
 
@@ -68,17 +68,21 @@ function useSectionDrop(section, groups) {
     if (!event.currentTarget.contains(event.relatedTarget)) setDropAt(null);
   };
 
-  const dropRepository = async (event) => {
-    const repository = repositories.find(({ id }) => id === drag.repositoryId);
-    if (!repository) return;
-    const groupIds = groupIdsAfterDrop(repository, drag.fromSectionId, section.id, {
-      copy: wantsCopy(event),
+  const dropRepositories = async (event) => {
+    const copy = wantsCopy(event);
+    const changes = drag.repositoryIds.flatMap((repositoryId) => {
+      const repository = repositories.find(({ id }) => id === repositoryId);
+      const groupIds =
+        repository && groupIdsAfterDrop(repository, drag.fromSectionId, section.id, { copy });
+      return groupIds ? [{ repositoryId, groupIds }] : [];
     });
-    if (!groupIds) return;
+    if (changes.length === 0) return;
     try {
-      await setGroups.mutateAsync({ repositoryId: repository.id, groupIds });
+      await setGroupsOfMany.mutateAsync(changes);
     } catch (error) {
-      notification.error({ title: 'Could not move the repository', description: error.message });
+      const title =
+        changes.length > 1 ? 'Could not move the repositories' : 'Could not move the repository';
+      notification.error({ title, description: error.message });
     }
   };
 
@@ -99,7 +103,7 @@ function useSectionDrop(section, groups) {
 
   const onDrop = (event) => {
     event.preventDefault();
-    if (acceptsRepository) dropRepository(event);
+    if (acceptsRepository) dropRepositories(event);
     else if (acceptsGroup) dropGroup();
     setDropAt(null);
     setDrag(null);
