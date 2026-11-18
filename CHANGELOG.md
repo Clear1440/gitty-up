@@ -15,6 +15,7 @@ version's section.
 ### Fixed
 
 - A group's repository count now lines up with the group's name.
+- Outside the desktop app, the page no longer asks the server about updates twice a second.
 
 ### Changed
 
