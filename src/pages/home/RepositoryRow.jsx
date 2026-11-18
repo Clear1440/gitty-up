@@ -89,19 +89,16 @@ function RowStatus({ summary, condensed }) {
   const meta = (
     <div className={styles.meta}>
       <BranchLabel summary={summary} />
-      {/* Each count keeps its own column, shown or not, so they line up from row to row.
-          Uncommitted changes come first, beside the branch they are on. */}
-      {summary.changeCount > 0 ? (
+      {/* Uncommitted changes come first, beside the branch they are on. */}
+      {summary.changeCount > 0 && (
         <span
           className={styles.changes}
           title={`${TextHelper.countOf(summary.changeCount, 'file')} with uncommitted changes`}
         >
           <EditOutlined /> {summary.changeCount}
         </span>
-      ) : (
-        <span />
       )}
-      <AheadBehind ahead={summary.ahead} behind={summary.behind} aligned />
+      <AheadBehind ahead={summary.ahead} behind={summary.behind} />
     </div>
   );
 

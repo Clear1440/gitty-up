@@ -16,6 +16,12 @@ version's section.
 
 - A group's repository count now lines up with the group's name.
 
+### Changed
+
+- **Counts beside the branch.** On the home page, a repository's changed files and commits to
+  push and pull now follow its branch name directly, centered on it, instead of sitting in
+  columns sized to the longest branch in the list.
+
 ## 0.3.0 - 2026-11-17
 
 ### Added
