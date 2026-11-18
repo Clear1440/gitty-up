@@ -6,6 +6,8 @@ version's section.
 
 ## Unreleased
 
+## 0.3.1 - 2026-11-18
+
 ### Added
 
 - **Drag several repositories at once.** Ctrl-click or shift-click repositories on the home
