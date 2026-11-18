@@ -215,7 +215,7 @@ export function useGitActions(repositoryId) {
       await queryClient.cancelQueries({ queryKey: queryKeys.status(repositoryId) });
       const cached = queryClient.getQueryData(queryKeys.status(repositoryId));
       // Undoing "stage all" or "unstage all" takes back exactly the files it touched, so
-      // it needs them as they are now rather than as of the last poll.
+      // it needs them as they are now rather than as of the last read.
       const touchesEverything = (name === 'stage' || name === 'unstage') && !input?.paths;
       if (isUndo || !touchesEverything) return { statusBefore: cached };
       const statusBefore = await queryClient

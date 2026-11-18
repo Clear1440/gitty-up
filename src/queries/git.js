@@ -2,17 +2,15 @@ import {
   infiniteQueryOptions,
   queryOptions,
   useInfiniteQuery,
-  useIsMutating,
   useQuery,
 } from '@tanstack/react-query';
 import { gitApi } from '../api';
 import { readPages } from './pages.js';
-import { mutationKeys, queryKeys } from './queryKeys.js';
+import { queryKeys } from './queryKeys.js';
 
 const COMMIT_PAGE_SIZE = 100;
 /** The most commits the server sends for one request. */
 const MAX_COMMITS_PER_REQUEST = 500;
-const STATUS_POLL_MS = 5_000;
 const PULL_REQUESTS_STALE_MS = 5 * 60_000;
 /**
  * Diffs are the biggest answers there are, one per file looked at, so they are let go
@@ -65,14 +63,12 @@ export const commitsQuery = (repositoryId, ref) =>
     },
   });
 
+/**
+ * Not polled. Changes made outside the app, in editors and terminals, show on switching
+ * to the tab or coming back to the window (see useAutoFetch), and after any git action.
+ */
 export function useStatus(repositoryId) {
-  // A poll during a git action could catch it halfway. The action refreshes it after.
-  const isActing = useIsMutating({ mutationKey: mutationKeys.gitAction(repositoryId) }) > 0;
-  return useQuery({
-    ...statusQuery(repositoryId),
-    // Files also change outside the app, in editors and terminals.
-    refetchInterval: isActing ? false : STATUS_POLL_MS,
-  });
+  return useQuery(statusQuery(repositoryId));
 }
 
 export function useBranches(repositoryId) {
