@@ -161,14 +161,18 @@ routes and most of the client work with a mono repo without knowing it is one.
 
 ## AI tools (MCP)
 
-Gitty Up can serve an [MCP](https://modelcontextprotocol.io) server, so AI tools can read the
-repositories you have linked. Turn it on under **Settings › AI tools**, which then shows the
+Gitty Up can serve an [MCP](https://modelcontextprotocol.io) server, so AI tools can work with
+the repositories you have linked. Turn it on under **Settings › AI tools**, which then shows the
 config to add to Claude Code, Claude Desktop, opencode, Cursor, VS Code, Windsurf, Codex or
 Gemini CLI. It speaks Streamable HTTP at `http://127.0.0.1:4317/mcp` (the settings show the real
 port), and is off until turned on.
 
-Every tool only reads, and takes a repository by the id, name or folder that
-`list_repositories` gives:
+**Access** is **Read-only** by default, which offers only the tools that read. **Full access**
+adds git commands. Both settings are read for every request, so a change applies at once, though
+an AI tool may need reconnecting to see the new list of tools.
+
+Every tool takes a repository by the id, name or folder that `list_repositories` gives. The
+read-only tools:
 
 | Tool                   | What it reads                                                       |
 | ---------------------- | ------------------------------------------------------------------- |
@@ -184,7 +188,16 @@ Every tool only reads, and takes a repository by the id, name or folder that
 | `read_file`            | A file as committed at a ref                                        |
 | `list_tags`, `list_stashes`, `list_worktrees` | Just that                                    |
 
-The server lives in `server/mcp/`, and `server/routes/mcp.js` serves it.
+Full access adds `fetch`, `pull`, `push`, `checkout`, `checkout_commit`, `create_branch`,
+`rename_branch`, `delete_branch`, `merge`, `rebase`, `abort_operation`, `continue_operation`,
+`stage`, `unstage`, `discard`, `commit`, `cherry_pick`, `revert`, `reset`, `create_tag`,
+`stash_save`, `stash_apply`, `stash_pop`, `stash_drop`, `add_worktree` and `remove_worktree`.
+They go through `gitService.js`, with the same checks as the app's own buttons, and each answers
+with where the repository stands afterwards. Those that can lose work are marked destructive, so
+AI tools that honor the hint ask first.
+
+The server lives in `server/mcp/` (`gitTools.js` reads, `gitWriteTools.js` changes), and
+`server/routes/mcp.js` serves it.
 
 ## Scripts (`.gitty`)
 
@@ -348,9 +361,11 @@ The server can run git on any folder and has no login, so it must stay private t
   visit could send requests to it.
 - Git runs without a shell, and refs starting with `-` are refused, so input cannot become a
   command or an option.
-- The MCP server for AI tools is off until turned on in the settings, has the same local-only
-  checks, and offers only tools that read. Any AI tool on this machine can then read every
-  linked repository, including files committed to it.
+- The MCP server for AI tools is off until turned on in the settings, and has the same
+  local-only checks. Any AI tool on this machine can then read every linked repository,
+  including files committed to it. Its git commands are offered only with **Full access**, which
+  lets any such tool change every linked repository, so it starts read-only and warns before
+  allowing that.
 - Scripts from a `.gitty` file are the exception: they run whatever the file says, with your
   permissions, so only run scripts from repositories and shared files you trust. Only scripts the
   file lists can run, and it is reread before each one.

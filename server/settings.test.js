@@ -55,19 +55,23 @@ describe('settings', () => {
       defaultDataDir: homeDir,
       isDefaultDataDir: true,
       appearance: { scheme: 'default', mode: 'dark' },
-      mcp: { enabled: false, url: `${baseUrl}/mcp` },
+      mcp: { enabled: false, access: 'read-only', url: `${baseUrl}/mcp` },
     });
   });
 
-  it('saves whether the MCP server is on across restarts, and checks the value', async () => {
+  it('saves the MCP server’s state and access across restarts, and checks the values', async () => {
     const saved = await request('PUT', '/api/settings/mcp', { enabled: true });
-    expect(saved.body.mcp.enabled).toBe(true);
+    expect(saved.body.mcp).toMatchObject({ enabled: true, access: 'read-only' });
+    // Either can change without the other.
+    const full = await request('PUT', '/api/settings/mcp', { access: 'full' });
+    expect(full.body.mcp).toMatchObject({ enabled: true, access: 'full' });
     expect((await request('PUT', '/api/settings/mcp', { enabled: 'yes' })).status).toBe(400);
+    expect((await request('PUT', '/api/settings/mcp', { access: 'admin' })).status).toBe(400);
 
     await stopServer();
     await startServer();
     const { body } = await request('GET', '/api/settings');
-    expect(body.mcp.enabled).toBe(true);
+    expect(body.mcp).toMatchObject({ enabled: true, access: 'full' });
   });
 
   it('saves the appearance across restarts', async () => {

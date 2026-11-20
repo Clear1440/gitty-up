@@ -33,11 +33,11 @@ async function post(route, body, headers = {}) {
   return { status: response.status, body: text ? JSON.parse(text) : null };
 }
 
-const setMcp = async (enabled) => {
+const setMcp = async (changes) => {
   const response = await fetch(`${baseUrl}/api/settings/mcp`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enabled }),
+    body: JSON.stringify(changes),
   });
   return response.json();
 };
@@ -103,9 +103,10 @@ describe('MCP server', () => {
   });
 
   it('reports its address and state in the settings', async () => {
-    const settings = await setMcp(true);
+    const settings = await setMcp({ enabled: true });
     expect(settings.mcp).toEqual({
       enabled: true,
+      access: 'read-only',
       url: `http://127.0.0.1:${server.address().port}/mcp`,
     });
   });
@@ -149,15 +150,26 @@ describe('MCP server', () => {
     expect((await rpc('tools/call', { name: 'push' })).body.error.code).toBe(-32602);
   });
 
-  it('lists only read-only tools', async () => {
+  it('lists only read-only tools while read-only', async () => {
     const { body } = await rpc('tools/list');
     const names = body.result.tools.map((tool) => tool.name);
     expect(names).toContain('list_repositories');
     expect(names).toContain('read_file');
+    expect(names).not.toContain('commit');
     for (const tool of body.result.tools) {
       expect(tool.annotations.readOnlyHint).toBe(true);
       expect(tool.inputSchema.type).toBe('object');
     }
+  });
+
+  it('refuses git commands while read-only, saying why', async () => {
+    const { body } = await rpc('tools/call', {
+      name: 'create_branch',
+      arguments: { repository: repositoryId, name: 'sneaky' },
+    });
+    expect(body.error.code).toBe(-32602);
+    expect(body.error.message).toMatch(/needs full access/);
+    expect(git(work, 'branch', '--list', 'sneaky')).toBe('');
   });
 
   it('lists the linked repositories with their state', async () => {
@@ -265,6 +277,62 @@ describe('MCP server', () => {
     await fs.rm(path.join(work, 'big.txt'));
   });
 
+  describe('with full access', () => {
+    beforeAll(() => setMcp({ access: 'full' }));
+    afterAll(() => setMcp({ access: 'read-only' }));
+
+    it('adds the git commands to the tools, marking those that can lose work', async () => {
+      const { body } = await rpc('tools/list');
+      const tools = new Map(body.result.tools.map((tool) => [tool.name, tool]));
+      expect(tools.has('list_repositories')).toBe(true);
+      expect(tools.get('commit').annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false });
+      expect(tools.get('reset').annotations.destructiveHint).toBe(true);
+      expect(tools.get('discard').annotations.destructiveHint).toBe(true);
+      for (const tool of body.result.tools) expect(tool.inputSchema.required ?? []).toBeInstanceOf(Array);
+    });
+
+    it('creates and switches branches, commits and tags, reporting where things stand', async () => {
+      const created = await callTool('create_branch', { repository: repositoryId, name: 'from-ai' });
+      expect(created.isError).toBe(false);
+      expect(created.value.state.branch).toBe('from-ai');
+
+      const committed = await callTool('commit', {
+        repository: repositoryId,
+        message: 'Add a second line',
+        stage_all: true,
+      });
+      expect(committed.value.state).toMatchObject({ branch: 'from-ai', changeCount: 0 });
+      expect(committed.value.state.lastCommit.subject).toBe('Add a second line');
+
+      await callTool('create_tag', { repository: repositoryId, name: 'v1.1.0', message: 'Second' });
+      expect(git(work, 'tag', '--list', 'v1.1.0')).toBe('v1.1.0');
+
+      const back = await callTool('checkout', { repository: repositoryId, branch: 'main' });
+      expect(back.value.state.branch).toBe('main');
+      expect(git(work, 'log', '-1', '--format=%s', 'from-ai')).toBe('Add a second line');
+    });
+
+    it('reports git refusing as an error the AI tool can read', async () => {
+      const { value, isError } = await callTool('delete_branch', { repository: repositoryId, name: 'from-ai' });
+      expect(isError).toBe(true);
+      expect(value).toMatch(/not fully merged/);
+
+      const badMode = await callTool('reset', { repository: repositoryId, commit: 'HEAD', mode: 'mixed' });
+      expect(badMode.isError).toBe(true);
+      expect(badMode.value).toMatch(/"mode" must be one of/);
+    });
+
+    it('stashes and restores changes', async () => {
+      await fs.writeFile(path.join(work, 'readme.txt'), 'one\nstashed\n');
+      const saved = await callTool('stash_save', { repository: repositoryId, message: 'wip' });
+      expect(saved.value.state.changeCount).toBe(0);
+      const popped = await callTool('stash_pop', { repository: repositoryId });
+      expect(popped.value.state.changeCount).toBe(1);
+      await callTool('discard', { repository: repositoryId, paths: ['readme.txt'] });
+      expect(await fs.readFile(path.join(work, 'readme.txt'), 'utf8')).toBe('one\n');
+    });
+  });
+
   it('answers batches, and stops once turned off again', async () => {
     const { body } = await post('/mcp', [
       { jsonrpc: '2.0', id: 'a', method: 'ping' },
@@ -272,7 +340,7 @@ describe('MCP server', () => {
     ]);
     expect(body).toEqual([{ jsonrpc: '2.0', id: 'a', result: {} }]);
 
-    await setMcp(false);
+    await setMcp({ enabled: false });
     expect((await rpc('ping')).status).toBe(403);
   });
 });

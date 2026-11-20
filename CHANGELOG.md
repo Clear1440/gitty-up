@@ -8,12 +8,14 @@ version's section.
 
 ### Added
 
-- **Let AI tools read your repositories.** Turn on **Settings › AI tools › Enable read-only
-  tools** and Gitty Up serves an MCP server that Claude Code, Claude Desktop, opencode, Cursor,
-  VS Code, Windsurf, Codex and Gemini CLI can connect to. They can list your linked
-  repositories and read their status, branches, history, commits, diffs, tags, stashes,
-  worktrees and committed files, but change nothing. The settings show the config to paste into
-  each app: pick it from the list to see its snippet.
+- **Let AI tools work with your repositories.** Turn on **Settings › AI tools › MCP server** and
+  Gitty Up serves an MCP server that Claude Code, Claude Desktop, opencode, Cursor, VS Code,
+  Windsurf, Codex and Gemini CLI can connect to. It is off until turned on, and read-only until
+  you choose **Full access**: read-only lets them list your linked repositories and read their
+  status, branches, history, commits, diffs, tags, stashes, worktrees and committed files. Full
+  access adds git commands such as commit, branch, merge, rebase, stash, reset and push, after a
+  warning. The settings show the config to paste into each app: pick it from the list to see its
+  snippet.
 
 ## 0.3.1 - 2026-11-18
 

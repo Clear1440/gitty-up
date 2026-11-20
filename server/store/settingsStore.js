@@ -7,8 +7,11 @@ const DEFAULTS = {
   /** Where repositories.json lives. Null keeps it in the home folder, next to this file. */
   dataDir: null,
   appearance: { scheme: 'default', mode: 'dark' },
-  /** The MCP server that lets AI tools read the repositories. Off until turned on. */
-  mcp: { enabled: false },
+  /**
+   * The MCP server for AI tools. Off until turned on, and then read-only unless given
+   * 'full' access, which lets AI tools run git commands that change repositories.
+   */
+  mcp: { enabled: false, access: 'read-only' },
 };
 
 /**

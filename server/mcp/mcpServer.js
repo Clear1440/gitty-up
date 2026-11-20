@@ -1,6 +1,7 @@
 import { ApiError } from '../errors.js';
 import packageJson from '../../package.json' with { type: 'json' };
 import { GIT_TOOLS, ToolError } from './gitTools.js';
+import { GIT_WRITE_TOOLS } from './gitWriteTools.js';
 
 /** The MCP versions this server speaks, newest first. */
 export const PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
@@ -14,10 +15,22 @@ export const RPC_ERRORS = {
   INTERNAL: -32603,
 };
 
-const INSTRUCTIONS =
-  'Read-only access to the git repositories linked in Gitty Up, a desktop git client. Start with list_repositories: every other tool takes one of its repositories by id, name or folder. Nothing here can change a repository.';
+/** How much AI tools may do: read only, or run git commands that change repositories too. */
+export const ACCESS_LEVELS = ['read-only', 'full'];
 
-const TOOLS_BY_NAME = new Map(GIT_TOOLS.map((tool) => [tool.name, tool]));
+const INSTRUCTIONS = {
+  'read-only':
+    'Read-only access to the git repositories linked in Gitty Up, a desktop git client. Start with list_repositories: every other tool takes one of its repositories by id, name or folder. Nothing here can change a repository.',
+  full: 'Access to the git repositories linked in Gitty Up, a desktop git client, including git commands that change them. Start with list_repositories: every other tool takes one of its repositories by id, name or folder. Check get_status before changing a repository, and ask the user before anything that can lose work, such as discard, reset, force push or deleting a branch.',
+};
+
+/** The tools each level of access offers. Full access adds the ones that change things. */
+const TOOLS = {
+  'read-only': GIT_TOOLS,
+  full: [...GIT_TOOLS, ...GIT_WRITE_TOOLS],
+};
+
+const WRITE_TOOL_NAMES = new Set(GIT_WRITE_TOOLS.map((tool) => tool.name));
 
 class RpcError extends Error {
   constructor(code, message) {
@@ -47,8 +60,14 @@ const toText = (result) => (typeof result === 'string' ? result : JSON.stringify
  * Runs a tool. A mistake in the call, or git refusing, goes back to the AI tool as an
  * error result it can read and correct, rather than as a failed request.
  */
-async function callTool(store, params) {
-  const tool = TOOLS_BY_NAME.get(params?.name);
+async function callTool({ store, access }, params) {
+  const tool = TOOLS[access].find((candidate) => candidate.name === params?.name);
+  if (!tool && WRITE_TOOL_NAMES.has(params?.name)) {
+    throw new RpcError(
+      RPC_ERRORS.INVALID_PARAMS,
+      `"${params.name}" changes the repository, so it needs full access. Gitty Up’s MCP server is read-only: the user can change that under Settings › AI tools.`,
+    );
+  }
   if (!tool) throw new RpcError(RPC_ERRORS.INVALID_PARAMS, `There is no tool called "${params?.name}".`);
   const args = params.arguments ?? {};
   if (typeof args !== 'object' || Array.isArray(args)) {
@@ -65,14 +84,14 @@ async function callTool(store, params) {
 }
 
 const METHODS = {
-  initialize: (_store, params) => ({
+  initialize: ({ access }, params) => ({
     protocolVersion: negotiateVersion(params?.protocolVersion),
     capabilities: { tools: { listChanged: false } },
     serverInfo: { name: 'gitty-up', title: 'Gitty Up', version: packageJson.version },
-    instructions: INSTRUCTIONS,
+    instructions: INSTRUCTIONS[access],
   }),
   ping: () => ({}),
-  'tools/list': () => ({ tools: GIT_TOOLS.map(describeTool) }),
+  'tools/list': ({ access }) => ({ tools: TOOLS[access].map(describeTool) }),
   'tools/call': callTool,
   // Not offered, but some clients ask regardless. An empty list reads better than an error.
   'resources/list': () => ({ resources: [] }),
@@ -84,9 +103,10 @@ const isObject = (value) => typeof value === 'object' && value !== null && !Arra
 
 /**
  * Answers one JSON-RPC message, or resolves with null for a notification, which gets
- * no answer. Each request stands alone, so the server keeps no sessions.
+ * no answer. Each request stands alone, so the server keeps no sessions. `access` is
+ * 'read-only' or 'full', as set in the settings when the request came.
  */
-export async function handleMessage(store, message) {
+export async function handleMessage({ store, access }, message) {
   if (!isObject(message) || message.jsonrpc !== '2.0' || typeof message.method !== 'string') {
     return rpcError(isObject(message) ? (message.id ?? null) : null, RPC_ERRORS.INVALID_REQUEST, 'Not a JSON-RPC 2.0 request.');
   }
@@ -97,7 +117,7 @@ export async function handleMessage(store, message) {
   const handler = Object.hasOwn(METHODS, method) ? METHODS[method] : null;
   if (!handler) return rpcError(id, RPC_ERRORS.METHOD_NOT_FOUND, `Method not found: ${method}`);
   try {
-    return { jsonrpc: '2.0', id, result: await handler(store, params) };
+    return { jsonrpc: '2.0', id, result: await handler({ store, access }, params) };
   } catch (error) {
     if (error instanceof RpcError) return rpcError(id, error.code, error.message);
     console.error(error);

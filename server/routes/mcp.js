@@ -16,8 +16,10 @@ const sendRpcError = (response, status, code, message) =>
   response.status(status).json(rpcError(null, code, message));
 
 /**
- * The MCP server: read-only git tools for AI tools such as Claude Code. It answers only
- * while turned on in the settings, and, like every route, only to this machine.
+ * The MCP server: git tools for AI tools such as Claude Code. It answers only while
+ * turned on in the settings, and, like every route, only to this machine. The settings
+ * also say whether it may only read, or run git commands that change repositories too.
+ * Both are read afresh for every request, so a change applies at once.
  *
  * Every request is answered on its own with plain JSON, which Streamable HTTP allows, so
  * there are no sessions to keep and nothing for the server to push.
@@ -26,7 +28,9 @@ export function createMcpRouter({ settings, store }) {
   const router = Router();
 
   router.use(async (_request, response, next) => {
-    if ((await settings.get()).mcp.enabled) {
+    const { mcp } = await settings.get();
+    if (mcp.enabled) {
+      response.locals.access = mcp.access;
       next();
       return;
     }
@@ -45,9 +49,10 @@ export function createMcpRouter({ settings, store }) {
       return;
     }
     const messages = Array.isArray(body) ? body : [body];
-    const replies = (await Promise.all(messages.map((message) => handleMessage(store, message)))).filter(
-      Boolean,
-    );
+    const context = { store, access: response.locals.access };
+    const replies = (
+      await Promise.all(messages.map((message) => handleMessage(context, message)))
+    ).filter(Boolean);
     // Only notifications came, and they get no answer.
     if (replies.length === 0) {
       response.status(202).end();

@@ -15,7 +15,7 @@ export function useSaveAppearance() {
   });
 }
 
-/** Turns the MCP server for AI tools on or off. */
+/** Turns the MCP server for AI tools on or off, or changes what it may do. */
 export function useSetMcp() {
   const queryClient = useQueryClient();
   return useMutation({

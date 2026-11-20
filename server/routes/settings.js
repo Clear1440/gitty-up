@@ -3,6 +3,7 @@ import path from 'node:path';
 import { Router } from 'express';
 import { ApiError } from '../errors.js';
 import { RepositoryStore } from '../store/repositoryStore.js';
+import { ACCESS_LEVELS } from '../mcp/mcpServer.js';
 import { mcpUrl } from './mcp.js';
 import { FileSystemHelper } from '../utils/FileSystemHelper.js';
 import { ValidationHelper } from '../utils/ValidationHelper.js';
@@ -106,11 +107,22 @@ export function createSettingsRouter({ settings, store }) {
     response.json(await describe(settings, request));
   });
 
-  /** Turns the MCP server for AI tools on or off. */
+  /**
+   * Turns the MCP server for AI tools on or off, with `enabled`, and sets what it may do,
+   * with `access`. Either can be left out to keep it as it is.
+   */
   router.put('/mcp', async (request, response) => {
-    const { enabled } = request.body;
-    if (typeof enabled !== 'boolean') throw ApiError.badRequest('"enabled" must be true or false.');
-    await settings.update({ mcp: { ...(await settings.get()).mcp, enabled } });
+    const { enabled, access } = request.body;
+    if (enabled !== undefined && typeof enabled !== 'boolean') {
+      throw ApiError.badRequest('"enabled" must be true or false.');
+    }
+    if (access !== undefined && !ACCESS_LEVELS.includes(access)) {
+      throw ApiError.badRequest('"access" must be "read-only" or "full".');
+    }
+    const current = (await settings.get()).mcp;
+    await settings.update({
+      mcp: { ...current, ...(enabled !== undefined && { enabled }), ...(access !== undefined && { access }) },
+    });
     response.json(await describe(settings, request));
   });
 

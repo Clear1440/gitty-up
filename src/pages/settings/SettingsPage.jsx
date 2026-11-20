@@ -1,6 +1,8 @@
 import {
   CloudDownloadOutlined,
   DesktopOutlined,
+  EditOutlined,
+  EyeOutlined,
   FolderOpenOutlined,
   HistoryOutlined,
   MoonOutlined,
@@ -8,7 +10,18 @@ import {
   SyncOutlined,
   UndoOutlined,
 } from '@ant-design/icons';
-import { App, Button, Checkbox, ColorPicker, Result, Segmented, Select, Spin, Typography } from 'antd';
+import {
+  Alert,
+  App,
+  Button,
+  ColorPicker,
+  Result,
+  Segmented,
+  Select,
+  Spin,
+  Switch,
+  Typography,
+} from 'antd';
 import { useState } from 'react';
 import { useAppearance } from '../../appearance/AppearanceContext.jsx';
 import { ChangelogDialog } from '../../changelog/ChangelogDialog.jsx';
@@ -130,7 +143,8 @@ function CustomColors({ appearance, mode, onChange }) {
   );
 }
 
-function Setting({ label, description, children }) {
+/** `footer` goes the full width of the setting, below its text and control. */
+function Setting({ label, description, children, footer }) {
   return (
     <div className={styles.setting}>
       <div className={styles.settingText}>
@@ -138,6 +152,7 @@ function Setting({ label, description, children }) {
         {description && <div className={styles.settingDescription}>{description}</div>}
       </div>
       <div className={styles.settingControl}>{children}</div>
+      {footer && <div className={styles.settingFooter}>{footer}</div>}
     </div>
   );
 }
@@ -253,18 +268,41 @@ function DataSection({ settings }) {
   );
 }
 
-/** The MCP server, which lets AI tools such as Claude Code read the linked repositories. */
-function AiToolsSection({ settings }) {
-  const { notification } = App.useApp();
-  const setMcp = useSetMcp();
-  const { enabled, url } = settings.mcp;
+const ACCESS_OPTIONS = [
+  { value: 'read-only', label: 'Read-only', icon: <EyeOutlined /> },
+  { value: 'full', label: 'Full access', icon: <EditOutlined /> },
+];
 
-  const toggle = async (event) => {
+/**
+ * The MCP server, which lets AI tools such as Claude Code work with the linked
+ * repositories: off until turned on, then read-only unless given full access.
+ */
+function AiToolsSection({ settings }) {
+  const { notification, modal } = App.useApp();
+  const setMcp = useSetMcp();
+  const { enabled, access, url } = settings.mcp;
+
+  const save = async (changes) => {
     try {
-      await setMcp.mutateAsync({ enabled: event.target.checked });
+      await setMcp.mutateAsync(changes);
     } catch (error) {
       notification.error({ title: 'Could not change the MCP server', description: error.message });
     }
+  };
+
+  const changeAccess = (nextAccess) => {
+    if (nextAccess !== 'full') {
+      save({ access: nextAccess });
+      return;
+    }
+    modal.confirm({
+      title: 'Give AI tools full access?',
+      content:
+        'Any AI tool connected to Gitty Up will be able to commit, reset, discard changes, push, force push and delete branches in every linked repository, without asking you first.',
+      okText: 'Give full access',
+      okButtonProps: { danger: true },
+      onOk: () => save({ access: 'full' }),
+    });
   };
 
   return (
@@ -276,28 +314,64 @@ function AiToolsSection({ settings }) {
         label="MCP server"
         description={
           <>
-            Lets AI tools such as Claude Code, Cursor and opencode read your linked repositories over
-            MCP: their status, branches, history, diffs and committed files. The tools are read-only,
-            so nothing can be changed through them. Only apps on this computer can connect, at{' '}
-            <code>{url}</code>.
+            Lets AI tools such as Claude Code, Cursor and opencode work with your linked repositories
+            over MCP. Only apps on this computer can connect, at <code>{url}</code>.
           </>
         }
       >
-        <Checkbox checked={enabled} disabled={setMcp.isPending} onChange={toggle}>
-          Enable read-only tools
-        </Checkbox>
+        <Switch
+          aria-label="MCP server"
+          checked={enabled}
+          loading={setMcp.isPending}
+          onChange={(checked) => save({ enabled: checked })}
+        />
       </Setting>
       {enabled && (
-        <div className={styles.settingBlock}>
-          <div className={styles.settingText}>
-            <div className={styles.settingLabel}>Connect an app</div>
-            <div className={styles.settingDescription}>
-              Pick your app, add what it shows to the app’s MCP config, then restart the app or
-              reload its servers.
+        <>
+          <Setting
+            label="Access"
+            description={
+              access === 'full'
+                ? 'AI tools can read your repositories and run git commands that change them: commit, branch, merge, rebase, stash, reset, push and more.'
+                : 'AI tools can read status, branches, history, diffs and committed files, but cannot change anything.'
+            }
+            footer={
+              <Alert
+                type="warning"
+                showIcon
+                title="Be careful with full access"
+                description={
+                  <>
+                    With full access, any AI tool connected here can change every linked repository
+                    without asking you: commit, reset, discard uncommitted changes, force push and delete
+                    branches. Some of that cannot be undone, and an AI tool can misread a request or be
+                    misled by text in a file or web page it reads. Only allow it for AI tools you
+                    trust, and keep work you care about committed and pushed. After changing access,
+                    reconnect your AI tool so it picks up the new set of tools.
+                  </>
+                }
+              />
+            }
+          >
+            <Segmented
+              aria-label="Access"
+              options={ACCESS_OPTIONS}
+              value={access}
+              disabled={setMcp.isPending}
+              onChange={changeAccess}
+            />
+          </Setting>
+          <div className={styles.settingBlock}>
+            <div className={styles.settingText}>
+              <div className={styles.settingLabel}>Connect an app</div>
+              <div className={styles.settingDescription}>
+                Pick your app, add what it shows to the app’s MCP config, then restart the app or
+                reload its servers.
+              </div>
             </div>
+            <McpSnippets url={url} />
           </div>
-          <McpSnippets url={url} />
-        </div>
+        </>
       )}
     </section>
   );

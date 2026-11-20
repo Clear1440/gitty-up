@@ -19,14 +19,14 @@ export class ToolError extends Error {}
 
 // Arguments
 
-const REPOSITORY = {
+export const REPOSITORY = {
   type: 'string',
   description: 'The repository: its id, name or folder, as list_repositories gives them.',
 };
-const REF = (description) => ({ type: 'string', description });
-const PATH = (description) => ({ type: 'string', description });
+export const REF = (description) => ({ type: 'string', description });
+export const PATH = (description) => ({ type: 'string', description });
 
-function readString(args, name, { required = false } = {}) {
+export function readString(args, name, { required = false } = {}) {
   const value = args[name];
   if (value === undefined || value === null || value === '') {
     if (required) throw new ToolError(`"${name}" is required.`);
@@ -37,7 +37,7 @@ function readString(args, name, { required = false } = {}) {
 }
 
 /** A ref, hash or revision expression. One starting with "-" would reach git as an option. */
-function readRef(args, name, options) {
+export function readRef(args, name, options) {
   const ref = readString(args, name, options)?.trim();
   if (ref?.startsWith('-')) throw new ToolError(`"${name}" cannot start with "-".`);
   return ref;
@@ -53,7 +53,7 @@ function readCount(args, name, fallback, max = Number.MAX_SAFE_INTEGER) {
   return Math.min(count, max);
 }
 
-function readBoolean(args, name) {
+export function readBoolean(args, name) {
   const value = args[name];
   if (value === undefined || value === null) return undefined;
   if (typeof value !== 'boolean') throw new ToolError(`"${name}" must be true or false.`);
@@ -61,7 +61,7 @@ function readBoolean(args, name) {
 }
 
 /** A path inside the repository, as git spells it: relative to its root, with forward slashes. */
-function readRepoPath(args, name, options) {
+export function readRepoPath(args, name, options) {
   const value = readString(args, name, options);
   if (value === undefined) return undefined;
   const normalized = value.replaceAll('\\', '/').replace(/^\.\//, '').replace(/\/+$/, '');
@@ -82,7 +82,7 @@ const isSameFolder = (a, b) => {
 };
 
 /** The linked repository the AI tool named, by id, folder or name. */
-async function findRepository(store, args) {
+export async function findRepository(store, args) {
   const wanted = readString(args, 'repository', { required: true }).trim();
   const repositories = await store.list();
   const match =
@@ -107,7 +107,7 @@ async function findRepository(store, args) {
 }
 
 /** The full hash of a commit, from anything git can name one by. */
-async function resolveCommit(repoPath, ref) {
+export async function resolveCommit(repoPath, ref) {
   try {
     const output = await runGit(repoPath, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`, '--']);
     return output.trim().split('\n')[0];
@@ -144,8 +144,8 @@ export function limitText(text, hint) {
 // Tools
 
 /**
- * Every tool the MCP server offers. All of them only read: none changes a repository,
- * its working tree, its index or its refs.
+ * The tools offered at either level of access. All of them only read: none changes a
+ * repository, its working tree, its index or its refs.
  */
 export const GIT_TOOLS = [
   {
