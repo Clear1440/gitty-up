@@ -15,6 +15,15 @@ export function useSaveAppearance() {
   });
 }
 
+/** Turns the MCP server for AI tools on or off. */
+export function useSetMcp() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: settingsApi.setMcp,
+    onSuccess: (settings) => queryClient.setQueryData(queryKeys.settings(), settings),
+  });
+}
+
 /**
  * Moves the data to another folder. Everything cached came from the old folder, so
  * it is all thrown away and read again.

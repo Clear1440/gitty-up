@@ -48,6 +48,20 @@
   border-top: 1px solid var(--color-border);
 }
 
+/* A setting whose control is too wide to sit beside its text, so goes below it. */
+.settingBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+/* In a column, the basis below would become a height. */
+.settingBlock .settingText {
+  flex: none;
+}
+
 .settingText {
   flex: 1 1 260px;
   min-width: 0;

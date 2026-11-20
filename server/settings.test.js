@@ -55,7 +55,19 @@ describe('settings', () => {
       defaultDataDir: homeDir,
       isDefaultDataDir: true,
       appearance: { scheme: 'default', mode: 'dark' },
+      mcp: { enabled: false, url: `${baseUrl}/mcp` },
     });
+  });
+
+  it('saves whether the MCP server is on across restarts, and checks the value', async () => {
+    const saved = await request('PUT', '/api/settings/mcp', { enabled: true });
+    expect(saved.body.mcp.enabled).toBe(true);
+    expect((await request('PUT', '/api/settings/mcp', { enabled: 'yes' })).status).toBe(400);
+
+    await stopServer();
+    await startServer();
+    const { body } = await request('GET', '/api/settings');
+    expect(body.mcp.enabled).toBe(true);
   });
 
   it('saves the appearance across restarts', async () => {

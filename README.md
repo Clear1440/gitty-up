@@ -159,6 +159,33 @@ as a single repository. Use **Open as mono repo** on the group's heading.
 `server/git/monoService.js` does this. It matches `gitService.js` function for function, so the
 routes and most of the client work with a mono repo without knowing it is one.
 
+## AI tools (MCP)
+
+Gitty Up can serve an [MCP](https://modelcontextprotocol.io) server, so AI tools can read the
+repositories you have linked. Turn it on under **Settings › AI tools**, which then shows the
+config to add to Claude Code, Claude Desktop, opencode, Cursor, VS Code, Windsurf, Codex or
+Gemini CLI. It speaks Streamable HTTP at `http://127.0.0.1:4317/mcp` (the settings show the real
+port), and is off until turned on.
+
+Every tool only reads, and takes a repository by the id, name or folder that
+`list_repositories` gives:
+
+| Tool                   | What it reads                                                       |
+| ---------------------- | ------------------------------------------------------------------- |
+| `list_repositories`    | Linked repositories, with branch, ahead/behind, changes, last commit |
+| `get_status`           | Staged, unstaged, untracked and conflicted files, and any operation |
+| `list_branches`        | Local and remote branches, with upstreams and tracking              |
+| `get_log`              | History with parents, by ref or every branch, filtered by path, message or author |
+| `get_commit`           | One commit's message and the files it changed                       |
+| `get_commit_diff`      | A commit's patch, whole or for one path                             |
+| `get_uncommitted_diff` | The staged and unstaged changes                                     |
+| `compare_refs`         | What a branch has that its base does not, as a pull request shows it |
+| `list_files`           | The files tracked at a ref                                          |
+| `read_file`            | A file as committed at a ref                                        |
+| `list_tags`, `list_stashes`, `list_worktrees` | Just that                                    |
+
+The server lives in `server/mcp/`, and `server/routes/mcp.js` serves it.
+
 ## Scripts (`.gitty`)
 
 A repository with a `.gitty` file at its top level gets an **Available scripts** dropdown in its
@@ -321,6 +348,9 @@ The server can run git on any folder and has no login, so it must stay private t
   visit could send requests to it.
 - Git runs without a shell, and refs starting with `-` are refused, so input cannot become a
   command or an option.
+- The MCP server for AI tools is off until turned on in the settings, has the same local-only
+  checks, and offers only tools that read. Any AI tool on this machine can then read every
+  linked repository, including files committed to it.
 - Scripts from a `.gitty` file are the exception: they run whatever the file says, with your
   permissions, so only run scripts from repositories and shared files you trust. Only scripts the
   file lists can run, and it is reread before each one.

@@ -8,7 +8,7 @@ import {
   SyncOutlined,
   UndoOutlined,
 } from '@ant-design/icons';
-import { App, Button, ColorPicker, Result, Segmented, Select, Spin, Typography } from 'antd';
+import { App, Button, Checkbox, ColorPicker, Result, Segmented, Select, Spin, Typography } from 'antd';
 import { useState } from 'react';
 import { useAppearance } from '../../appearance/AppearanceContext.jsx';
 import { ChangelogDialog } from '../../changelog/ChangelogDialog.jsx';
@@ -16,7 +16,7 @@ import { ChangelogDialog } from '../../changelog/ChangelogDialog.jsx';
 import { APP_VERSION as appVersion, RELEASES } from '../../changelog/releases.js';
 import { RelativeTime } from '../../components/RelativeTime.jsx';
 import { updateLabel, useStartUpdate } from '../../layouts/UpdateButton.jsx';
-import { useSetDataDir, useSettings } from '../../queries/settings.js';
+import { useSetDataDir, useSetMcp, useSettings } from '../../queries/settings.js';
 import { isUpdating, useCheckForUpdates, useUpdateStatus } from '../../queries/updates.js';
 import {
   CUSTOM_COLORS,
@@ -27,6 +27,7 @@ import {
   paletteOf,
 } from '../../styles/themes.js';
 import { DataFolderDialog, MOVE_OUTCOMES } from './DataFolderDialog.jsx';
+import { McpSnippets } from './McpSnippets.jsx';
 import styles from './SettingsPage.module.css';
 
 const MODE_OPTIONS = [
@@ -252,6 +253,56 @@ function DataSection({ settings }) {
   );
 }
 
+/** The MCP server, which lets AI tools such as Claude Code read the linked repositories. */
+function AiToolsSection({ settings }) {
+  const { notification } = App.useApp();
+  const setMcp = useSetMcp();
+  const { enabled, url } = settings.mcp;
+
+  const toggle = async (event) => {
+    try {
+      await setMcp.mutateAsync({ enabled: event.target.checked });
+    } catch (error) {
+      notification.error({ title: 'Could not change the MCP server', description: error.message });
+    }
+  };
+
+  return (
+    <section className={styles.section} aria-labelledby="ai-tools-heading">
+      <h2 id="ai-tools-heading" className={styles.sectionTitle}>
+        AI tools
+      </h2>
+      <Setting
+        label="MCP server"
+        description={
+          <>
+            Lets AI tools such as Claude Code, Cursor and opencode read your linked repositories over
+            MCP: their status, branches, history, diffs and committed files. The tools are read-only,
+            so nothing can be changed through them. Only apps on this computer can connect, at{' '}
+            <code>{url}</code>.
+          </>
+        }
+      >
+        <Checkbox checked={enabled} disabled={setMcp.isPending} onChange={toggle}>
+          Enable read-only tools
+        </Checkbox>
+      </Setting>
+      {enabled && (
+        <div className={styles.settingBlock}>
+          <div className={styles.settingText}>
+            <div className={styles.settingLabel}>Connect an app</div>
+            <div className={styles.settingDescription}>
+              Add this to the app’s MCP config, then restart it or reload its servers. Use the arrows
+              or the arrow keys to pick another app.
+            </div>
+          </div>
+          <McpSnippets url={url} />
+        </div>
+      )}
+    </section>
+  );
+}
+
 function updateDescription(status) {
   if (isUpdating(status) || status.available) {
     return `v${status.latestVersion} is available. Installing it restarts Gitty Up.`;
@@ -334,6 +385,7 @@ export function SettingsPage() {
       {isPending && <Spin className="centered" />}
       {error && <Result status="error" title="Could not load the settings" subTitle={error.message} />}
       {settings && <DataSection settings={settings} />}
+      {settings && <AiToolsSection settings={settings} />}
       <section className={styles.section} aria-labelledby="about-heading">
         <h2 id="about-heading" className={styles.sectionTitle}>
           About

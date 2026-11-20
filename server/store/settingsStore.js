@@ -7,6 +7,8 @@ const DEFAULTS = {
   /** Where repositories.json lives. Null keeps it in the home folder, next to this file. */
   dataDir: null,
   appearance: { scheme: 'default', mode: 'dark' },
+  /** The MCP server that lets AI tools read the repositories. Off until turned on. */
+  mcp: { enabled: false },
 };
 
 /**
@@ -58,6 +60,7 @@ export class SettingsStore {
         ...DEFAULTS,
         ...saved,
         appearance: { ...DEFAULTS.appearance, ...saved.appearance },
+        mcp: { ...DEFAULTS.mcp, ...saved.mcp },
       };
     } catch (error) {
       if (error.code === 'ENOENT') return structuredClone(DEFAULTS);
