@@ -48,7 +48,7 @@ async function createRepository(root, name, groupId) {
 
   const { body } = await request('POST', '/api/repositories', { path: work });
   await request('PUT', `/api/repositories/${body.id}/group`, { groupId });
-  return { name, work, id: body.id, api: `/api/repositories/${body.id}` };
+  return { name, work, remote, id: body.id, api: `/api/repositories/${body.id}` };
 }
 
 /** A group of api, web and docs, all on main, opened as a mono repo. */
@@ -435,6 +435,25 @@ describe('branch actions', () => {
       expect(git(work, 'branch', '--list', 'old')).toBe('');
       expect(git(work, 'branch', '--list', 'new')).not.toBe('');
     }
+  });
+
+  it('renames a branch on the remotes that have it, when asked', async () => {
+    for (const { work } of [mono.api, mono.web, mono.docs]) git(work, 'branch', 'old');
+    for (const { work } of [mono.api, mono.web]) git(work, 'push', '--set-upstream', 'origin', 'old');
+
+    const { status } = await request('POST', `${mono.route}/branches/rename`, {
+      name: 'old',
+      newName: 'new',
+      renameRemote: true,
+    });
+
+    expect(status).toBe(204);
+    for (const { work, remote } of [mono.api, mono.web]) {
+      expect(git(remote, 'branch', '--list', 'old')).toBe('');
+      expect(git(remote, 'branch', '--list', 'new')).not.toBe('');
+      expect(git(work, 'rev-parse', '--abbrev-ref', 'new@{upstream}')).toBe('origin/new');
+    }
+    expect(git(mono.docs.work, 'branch', '--list', 'new')).not.toBe('');
   });
 
   it('renames no branch anywhere if one repository already has the new name', async () => {

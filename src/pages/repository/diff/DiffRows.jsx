@@ -1,3 +1,4 @@
+import { DeleteOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
 import clsx from 'clsx';
 import { memo } from 'react';
@@ -39,8 +40,11 @@ function lineClickProps(line, { onToggle, onStage, stageLabel }) {
     tabIndex: 0,
     title: `Click to ${stageLabel.toLowerCase()} this line. Shift- or Ctrl-click to pick several.`,
     'aria-label': `${stageLabel} ${line.kind} line ${line.newNumber ?? line.oldNumber}`,
+    // Read by DiffContent, to show this line's buttons while it is pointed at or focused.
+    'data-line-id': line.id,
     onClick: handleClick,
     onKeyDown: (event) => {
+      if (event.target !== event.currentTarget) return;
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
         handleClick(event);
@@ -49,20 +53,76 @@ function lineClickProps(line, { onToggle, onStage, stageLabel }) {
   };
 }
 
-export const HunkRow = memo(function HunkRow({ text, ids, label, disabled, onApply }) {
+/** A small icon button on a line, which acts on that line alone and not as a click on it. */
+function LineAction({ label, icon, danger, onClick }) {
+  return (
+    <button
+      type="button"
+      className={clsx(styles.lineAction, danger && styles.lineActionDanger)}
+      title={label}
+      aria-label={label}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      {icon}
+    </button>
+  );
+}
+
+/** Stage or unstage, and discard, for the line being pointed at or focused. */
+function LineActions({ line, actions }) {
+  if (!actions.onStage || line.kind === 'context') return null;
+  const isUnstage = actions.stageLabel === 'Unstage';
+  return (
+    <span className={styles.lineActions}>
+      {actions.onDiscard && (
+        <LineAction
+          label="Discard this line"
+          icon={<DeleteOutlined />}
+          danger
+          onClick={() => actions.onDiscard([line.id])}
+        />
+      )}
+      <LineAction
+        label={`${actions.stageLabel} this line`}
+        icon={isUnstage ? <MinusOutlined /> : <PlusOutlined />}
+        onClick={() => actions.onStage(line.id)}
+      />
+    </span>
+  );
+}
+
+export const HunkRow = memo(function HunkRow({
+  text,
+  ids,
+  label,
+  disabled,
+  onApply,
+  onDiscard,
+}) {
   return (
     <div className={clsx(styles.row, styles.hunk)}>
       <span className={styles.hunkText}>{text}</span>
       {onApply && (
-        <Button size="small" disabled={disabled} onClick={() => onApply(ids)}>
-          {label}
-        </Button>
+        <span className={styles.hunkActions}>
+          {onDiscard && (
+            <Button size="small" danger disabled={disabled} onClick={() => onDiscard(ids)}>
+              Discard hunk
+            </Button>
+          )}
+          <Button size="small" disabled={disabled} onClick={() => onApply(ids)}>
+            {label}
+          </Button>
+        </span>
       )}
     </div>
   );
 });
 
-export const LineRow = memo(function LineRow({ line, selected, actions }) {
+export const LineRow = memo(function LineRow({ line, selected, active, actions }) {
   const clickProps = lineClickProps(line, actions);
   return (
     <div
@@ -78,11 +138,12 @@ export const LineRow = memo(function LineRow({ line, selected, actions }) {
       <span className={styles.number}>{line.newNumber}</span>
       <span className={styles.sign}>{SIGNS[line.kind]}</span>
       <LineText line={line} />
+      {active && <LineActions line={line} actions={actions} />}
     </div>
   );
 });
 
-function SplitSide({ line, number, selected, actions }) {
+function SplitSide({ line, number, selected, active, actions }) {
   if (!line) return <div className={clsx(styles.side, styles.emptySide)} />;
   const clickProps = lineClickProps(line, actions);
   return (
@@ -97,18 +158,33 @@ function SplitSide({ line, number, selected, actions }) {
     >
       <span className={styles.number}>{number}</span>
       <LineText line={line} />
+      {active && <LineActions line={line} actions={actions} />}
     </div>
   );
 }
 
-export const PairRow = memo(function PairRow({ left, right, leftSelected, rightSelected, actions }) {
+export const PairRow = memo(function PairRow({
+  left,
+  right,
+  leftSelected,
+  rightSelected,
+  activeId,
+  actions,
+}) {
   return (
     <div className={styles.pair}>
-      <SplitSide line={left} number={left?.oldNumber} selected={leftSelected} actions={actions} />
+      <SplitSide
+        line={left}
+        number={left?.oldNumber}
+        selected={leftSelected}
+        active={Boolean(left) && left.id === activeId}
+        actions={actions}
+      />
       <SplitSide
         line={right}
         number={right?.newNumber}
         selected={rightSelected}
+        active={Boolean(right) && right.id === activeId}
         actions={actions}
       />
     </div>

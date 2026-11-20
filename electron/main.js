@@ -81,6 +81,26 @@ function repaintAfterDisplayChanges(window) {
   });
 }
 
+/**
+ * Ctrl+W (Cmd+W on a Mac) closes the open repository tab, as in a browser, not the whole
+ * window as Electron's default menu would. The page is told to, as it knows the tabs.
+ */
+function closeTabsOnCtrlW(window) {
+  window.webContents.on('before-input-event', (event, input) => {
+    const isCloseTab =
+      input.type === 'keyDown' &&
+      input.key.toLowerCase() === 'w' &&
+      (process.platform === 'darwin' ? input.meta : input.control) &&
+      !input.shift &&
+      !input.alt;
+    if (!isCloseTab) return;
+    event.preventDefault();
+    window.webContents
+      .executeJavaScript("window.dispatchEvent(new Event('gitty-up:close-tab'))")
+      .catch(() => {});
+  });
+}
+
 function createWindow(appUrl) {
   const { bounds, maximized } = initialWindowState();
   const window = new BrowserWindow({
@@ -94,6 +114,7 @@ function createWindow(appUrl) {
   });
   rememberWindowState(window);
   repaintAfterDisplayChanges(window);
+  closeTabsOnCtrlW(window);
   const appOrigin = new URL(appUrl).origin;
 
   // Links such as pull requests open in the default browser, never inside the app.

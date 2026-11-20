@@ -70,9 +70,8 @@
   font-size: var(--font-size-xs);
 }
 
-.worktree {
-  flex: none;
-  color: var(--color-text-muted);
+.button > .iconWorktree {
+  color: var(--color-success);
 }
 
 .menu {

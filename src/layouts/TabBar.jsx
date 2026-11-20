@@ -1,7 +1,7 @@
 import { ClusterOutlined, HomeFilled, SettingFilled, SettingOutlined } from '@ant-design/icons';
 import { Button, Tabs } from 'antd';
 import clsx from 'clsx';
-import { cloneElement, useState } from 'react';
+import { cloneElement, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Logo } from '../components/Logo.jsx';
 import { Tooltip } from '../components/Tooltip.jsx';
@@ -9,6 +9,7 @@ import { paths } from '../paths.js';
 import { useRepositories, useRepositoryGroups } from '../queries/repositories.js';
 import { useTabs } from '../tabs/TabsContext.jsx';
 import { findNeighbourTab } from '../tabs/tabsModel.js';
+import { KeyboardHelper } from '../utils/KeyboardHelper.js';
 import { MonoIdHelper } from '../utils/MonoIdHelper.js';
 import styles from './TabBar.module.css';
 import { UpdateButton } from './UpdateButton.jsx';
@@ -17,6 +18,9 @@ const HOME_TAB = 'home';
 /** Shown only while the settings page is open, and never saved with the other tabs. */
 const SETTINGS_TAB = 'settings';
 const FIXED_TABS = new Set([HOME_TAB, SETTINGS_TAB]);
+
+/** What the desktop app sends for Ctrl+W (Cmd+W), which it keeps from closing the window. */
+const CLOSE_TAB_EVENT = 'gitty-up:close-tab';
 
 /** A private type, so a dragged tab cannot drop as text into a field. */
 const DRAG_TYPE = 'application/x-gitty-up-tab';
@@ -147,21 +151,56 @@ export function TabBar({ activeRepositoryId, isSettings = false }) {
   };
 
   /**
-   * Middle-clicking anywhere on a tab closes it, as in a browser. Ant Design only does
-   * this for a click on the tab's label, so the rest of the tab, its padding and its close
-   * button, is handled here, leaving the label to Ant's own handler.
+   * Middle-clicking anywhere on a tab closes it, as in a browser: on letting go, and only if
+   * the press started on the same tab. Ant Design closes on the press instead, and then
+   * moves keyboard focus to the next tab, which lights up as if picked. Its handler, on the
+   * tab's label, never sees a middle press, as this one stops it on the way down.
    */
+  const middlePressed = useRef(null);
   const withMiddleClickClose = (node) => {
     if (node.key === HOME_TAB) return node;
     return cloneElement(node, {
-      onMouseDown: (event) => {
+      onMouseDownCapture: (event) => {
         if (event.button !== 1) return;
         // Stops Windows and Linux starting to autoscroll the page.
         event.preventDefault();
-        if (!event.target.closest('.ant-tabs-tab-btn')) handleClose(node.key);
+        event.stopPropagation();
+        middlePressed.current = node.key;
+      },
+      onMouseUp: (event) => {
+        if (event.button !== 1) return;
+        const pressedHere = middlePressed.current === node.key;
+        middlePressed.current = null;
+        if (pressedHere) handleClose(node.key);
       },
     });
   };
+
+  // Ctrl+W (Cmd+W) closes the open tab, not the app. The home tab stays.
+  const closeActiveTab = useEffectEvent(() => {
+    if (activeKey !== HOME_TAB) handleClose(activeKey);
+  });
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      const isCloseTab =
+        event.key.toLowerCase() === 'w' &&
+        KeyboardHelper.hasCommandKey(event) &&
+        !event.shiftKey &&
+        !event.altKey;
+      if (!isCloseTab || document.querySelector('.ant-modal')) return;
+      event.preventDefault();
+      closeActiveTab();
+    };
+    const handleCloseRequest = () => {
+      if (!document.querySelector('.ant-modal')) closeActiveTab();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener(CLOSE_TAB_EVENT, handleCloseRequest);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener(CLOSE_TAB_EVENT, handleCloseRequest);
+    };
+  }, []);
 
   return (
     <header className={styles.tabBar}>
