@@ -14,6 +14,7 @@ let server;
 let baseUrl;
 let work;
 let repositoryId;
+let store;
 let nextId = 1;
 
 const git = (cwd, ...args) =>
@@ -81,7 +82,7 @@ beforeAll(async () => {
   await fs.writeFile(path.join(work, 'readme.txt'), 'one\ntwo\n');
 
   const settings = new SettingsStore(path.join(sandbox, 'home'));
-  const store = new RepositoryStore(path.join(sandbox, 'home'));
+  store = new RepositoryStore(path.join(sandbox, 'home'));
   repositoryId = (await store.add(work)).id;
   const app = createApp({ store, settings });
   await new Promise((resolve) => {
@@ -107,6 +108,7 @@ describe('MCP server', () => {
     expect(settings.mcp).toEqual({
       enabled: true,
       access: 'read-only',
+      repositories: ['*'],
       url: `http://127.0.0.1:${server.address().port}/mcp`,
     });
   });
@@ -341,6 +343,54 @@ describe('MCP server', () => {
       expect(popped.value.state.changeCount).toBe(1);
       await callTool('discard', { repository: repositoryId, paths: ['readme.txt'] });
       expect(await fs.readFile(path.join(work, 'readme.txt'), 'utf8')).toBe('one\n');
+    });
+  });
+
+  describe('limited to some repositories', () => {
+    let otherId;
+    let groupedId;
+    let group;
+
+    beforeAll(async () => {
+      const other = path.join(sandbox, 'other');
+      const grouped = path.join(sandbox, 'grouped');
+      for (const folder of [other, grouped]) {
+        await fs.mkdir(folder);
+        git(folder, 'init', '--initial-branch=main');
+      }
+      otherId = (await store.add(other)).id;
+      groupedId = (await store.add(grouped)).id;
+      group = await store.addGroup('Shared');
+      await store.setGroups(groupedId, [group.id]);
+    });
+    afterAll(() => setMcp({ repositories: ['*'] }));
+
+    const listedIds = async () => (await callTool('list_repositories')).value.map(({ id }) => id);
+
+    it('offers every repository by default', async () => {
+      expect((await listedIds()).sort()).toEqual([repositoryId, otherId, groupedId].sort());
+    });
+
+    it('offers only the repositories and groups chosen', async () => {
+      await setMcp({ repositories: [`repo:${repositoryId}`, `group:${group.id}`] });
+      expect((await listedIds()).sort()).toEqual([repositoryId, groupedId].sort());
+
+      const hidden = await callTool('get_status', { repository: otherId });
+      expect(hidden.isError).toBe(true);
+      expect((await callTool('get_status', { repository: 'grouped' })).isError).toBe(false);
+    });
+
+    it('follows a group as repositories join and leave it', async () => {
+      await setMcp({ repositories: [`group:${group.id}`] });
+      await store.setGroups(otherId, [group.id]);
+      expect((await listedIds()).sort()).toEqual([otherId, groupedId].sort());
+      await store.setGroups(otherId, []);
+      expect(await listedIds()).toEqual([groupedId]);
+    });
+
+    it('offers none when none are chosen', async () => {
+      await setMcp({ repositories: [] });
+      expect(await listedIds()).toEqual([]);
     });
   });
 

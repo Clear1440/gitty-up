@@ -4,6 +4,7 @@ import { Router } from 'express';
 import { ApiError } from '../errors.js';
 import { RepositoryStore } from '../store/repositoryStore.js';
 import { ACCESS_LEVELS } from '../mcp/mcpServer.js';
+import { isRepositoryScope } from '../mcp/repositoryScope.js';
 import { mcpUrl } from './mcp.js';
 import { FileSystemHelper } from '../utils/FileSystemHelper.js';
 import { ValidationHelper } from '../utils/ValidationHelper.js';
@@ -108,20 +109,34 @@ export function createSettingsRouter({ settings, store }) {
   });
 
   /**
-   * Turns the MCP server for AI tools on or off, with `enabled`, and sets what it may do,
-   * with `access`. Either can be left out to keep it as it is.
+   * Turns the MCP server for AI tools on or off, with `enabled`, sets what it may do, with
+   * `access`, and which repositories it may use, with `repositories`. Any can be left out
+   * to keep it as it is.
    */
   router.put('/mcp', async (request, response) => {
-    const { enabled, access } = request.body;
+    const { enabled, access, repositories } = request.body;
     if (enabled !== undefined && typeof enabled !== 'boolean') {
       throw ApiError.badRequest('"enabled" must be true or false.');
     }
     if (access !== undefined && !ACCESS_LEVELS.includes(access)) {
       throw ApiError.badRequest('"access" must be "read-only" or "full".');
     }
+    if (repositories !== undefined && !isRepositoryScope(repositories)) {
+      throw ApiError.badRequest(
+        '"repositories" must be a list of "*", "group:<id>" and "repo:<id>" entries.',
+      );
+    }
     const current = (await settings.get()).mcp;
     await settings.update({
-      mcp: { ...current, ...(enabled !== undefined && { enabled }), ...(access !== undefined && { access }) },
+      mcp: {
+        ...current,
+        ...(enabled !== undefined && { enabled }),
+        ...(access !== undefined && { access }),
+        // Everything, or a choice: "*" alongside others would only hide that they do nothing.
+        ...(repositories !== undefined && {
+          repositories: repositories.includes('*') ? ['*'] : [...new Set(repositories)],
+        }),
+      },
     });
     response.json(await describe(settings, request));
   });

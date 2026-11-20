@@ -1,5 +1,6 @@
 import express, { Router } from 'express';
 import { RPC_ERRORS, handleMessage, rpcError } from '../mcp/mcpServer.js';
+import { scopeStore } from '../mcp/repositoryScope.js';
 
 /** Where AI tools connect, as an MCP server over Streamable HTTP. */
 export const MCP_PATH = '/mcp';
@@ -18,8 +19,9 @@ const sendRpcError = (response, status, code, message) =>
 /**
  * The MCP server: git tools for AI tools such as Claude Code. It answers only while
  * turned on in the settings, and, like every route, only to this machine. The settings
- * also say whether it may only read, or run git commands that change repositories too.
- * Both are read afresh for every request, so a change applies at once.
+ * also say whether it may only read, or run git commands that change repositories too,
+ * and which repositories it may use. All are read afresh for every request, so a change
+ * applies at once.
  *
  * Every request is answered on its own with plain JSON, which Streamable HTTP allows, so
  * there are no sessions to keep and nothing for the server to push.
@@ -31,6 +33,7 @@ export function createMcpRouter({ settings, store }) {
     const { mcp } = await settings.get();
     if (mcp.enabled) {
       response.locals.access = mcp.access;
+      response.locals.store = scopeStore(store, mcp.repositories);
       next();
       return;
     }
@@ -49,7 +52,7 @@ export function createMcpRouter({ settings, store }) {
       return;
     }
     const messages = Array.isArray(body) ? body : [body];
-    const context = { store, access: response.locals.access };
+    const context = { store: response.locals.store, access: response.locals.access };
     const replies = (
       await Promise.all(messages.map((message) => handleMessage(context, message)))
     ).filter(Boolean);

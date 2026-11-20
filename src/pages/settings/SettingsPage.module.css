@@ -93,6 +93,11 @@
   min-width: 0;
 }
 
+.scopeSelect {
+  width: 320px;
+  max-width: 100%;
+}
+
 .schemeSelect {
   width: 260px;
 }

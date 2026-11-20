@@ -29,6 +29,7 @@ import { ChangelogDialog } from '../../changelog/ChangelogDialog.jsx';
 import { APP_VERSION as appVersion, RELEASES } from '../../changelog/releases.js';
 import { RelativeTime } from '../../components/RelativeTime.jsx';
 import { updateLabel, useStartUpdate } from '../../layouts/UpdateButton.jsx';
+import { useRepositories, useRepositoryGroups } from '../../queries/repositories.js';
 import { useSetDataDir, useSetMcp, useSettings } from '../../queries/settings.js';
 import { isUpdating, useCheckForUpdates, useUpdateStatus } from '../../queries/updates.js';
 import {
@@ -41,6 +42,13 @@ import {
 } from '../../styles/themes.js';
 import { DataFolderDialog, MOVE_OUTCOMES } from './DataFolderDialog.jsx';
 import { McpSnippets } from './McpSnippets.jsx';
+import {
+  ALL_REPOSITORIES,
+  allowedRepositories,
+  groupEntry,
+  nextScope,
+  repositoryEntry,
+} from './mcpScope.js';
 import styles from './SettingsPage.module.css';
 
 const MODE_OPTIONS = [
@@ -273,14 +281,83 @@ const ACCESS_OPTIONS = [
   { value: 'full', label: 'Full access', icon: <EditOutlined /> },
 ];
 
+/** The choices for which repositories AI tools may use: all, groups, or single ones. */
+function scopeOptions(groups, repositories) {
+  const linked = repositories.filter((repository) => repository.path);
+  const countIn = (group) =>
+    linked.filter((repository) => (repository.groupIds ?? []).includes(group.id)).length;
+  return [
+    { value: ALL_REPOSITORIES, label: 'All repositories (*)' },
+    {
+      label: 'Groups',
+      options: groups.map((group) => ({
+        value: groupEntry(group),
+        label: `${group.name} (${countIn(group)})`,
+      })),
+    },
+    {
+      label: 'Repositories',
+      options: linked.map((repository) => ({
+        value: repositoryEntry(repository),
+        label: repository.name,
+        title: repository.path,
+      })),
+    },
+  ];
+}
+
+function scopeDescription(scope, allowed, linkedCount) {
+  if (scope.includes(ALL_REPOSITORIES)) {
+    return 'AI tools can use every linked repository, including ones you link later.';
+  }
+  if (allowed.length === 0) return 'AI tools cannot use any repository. Pick some, or All.';
+  return `AI tools can use ${allowed.length} of your ${linkedCount} repositories. A group covers whatever is in it, including repositories added to it later.`;
+}
+
+/**
+ * Which repositories AI tools may use. Entries for a group or repository that no longer
+ * exists are left out, so they drop from the setting the next time it is saved.
+ */
+function RepositoryScopeSetting({ scope, onChange }) {
+  const { data: repositories = [] } = useRepositories();
+  const { data: groups = [] } = useRepositoryGroups();
+  const options = scopeOptions(groups, repositories);
+  const known = new Set(
+    options.flatMap((option) => (option.options ?? [option]).map(({ value }) => value)),
+  );
+  const value = scope.filter((entry) => known.has(entry));
+  const linkedCount = repositories.filter((repository) => repository.path).length;
+
+  return (
+    <Setting
+      label="Repositories"
+      description={scopeDescription(scope, allowedRepositories(scope, repositories), linkedCount)}
+    >
+      <Select
+        aria-label="Repositories AI tools can use"
+        className={styles.scopeSelect}
+        mode="multiple"
+        allowClear
+        placeholder="No repositories"
+        value={value}
+        options={options}
+        optionFilterProp="label"
+        maxTagCount="responsive"
+        onChange={(next) => onChange(nextScope(value, next))}
+      />
+    </Setting>
+  );
+}
+
 /**
  * The MCP server, which lets AI tools such as Claude Code work with the linked
- * repositories: off until turned on, then read-only unless given full access.
+ * repositories: off until turned on, then read-only unless given full access, and
+ * limited to the repositories chosen.
  */
 function AiToolsSection({ settings }) {
   const { notification, modal } = App.useApp();
   const setMcp = useSetMcp();
-  const { enabled, access, url } = settings.mcp;
+  const { enabled, access, repositories, url } = settings.mcp;
 
   const save = async (changes) => {
     try {
@@ -326,53 +403,56 @@ function AiToolsSection({ settings }) {
           onChange={(checked) => save({ enabled: checked })}
         />
       </Setting>
-      <Setting
-        label="Access"
-        description={
-          <>
-            {access === 'full'
-              ? 'Full access: AI tools can read your repositories and run git commands that change them, such as commit, branch, merge, rebase, stash, reset and push. Force pushing is never offered.'
-              : 'Read-only tools: AI tools can read status, branches, history, diffs and committed files, but cannot change anything.'}
-            {!enabled && ' Applies once the MCP server is on.'}
-          </>
-        }
-        footer={
-          <Alert
-            type="warning"
-            showIcon
-            title="Be careful with full access"
-            description={
-              <>
-                With full access, any AI tool connected here can change every linked repository
-                without asking you: commit, reset, discard uncommitted changes, push and delete
-                branches. Some of that cannot be undone, and an AI tool can misread a request or be
-                misled by text in a file or web page it reads. Only allow it for AI tools you
-                trust, and keep work you care about committed and pushed. After changing access,
-                reconnect your AI tool so it picks up the new set of tools.
-              </>
-            }
-          />
-        }
-      >
-        <Segmented
-          aria-label="Access"
-          options={ACCESS_OPTIONS}
-          value={access}
-          disabled={setMcp.isPending}
-          onChange={changeAccess}
-        />
-      </Setting>
       {enabled && (
-        <div className={styles.settingBlock}>
-          <div className={styles.settingText}>
-            <div className={styles.settingLabel}>Connect an app</div>
-            <div className={styles.settingDescription}>
-              Pick your app, add what it shows to the app’s MCP config, then restart the app or
-              reload its servers.
+        <>
+          <Setting
+            label="Access"
+            description={
+              access === 'full'
+                ? 'Full access: AI tools can read your repositories and run git commands that change them, such as commit, branch, merge, rebase, stash, reset and push. Force pushing is never offered.'
+                : 'Read-only tools: AI tools can read status, branches, history, diffs and committed files, but cannot change anything.'
+            }
+            footer={
+              <Alert
+                type="warning"
+                showIcon
+                title="Be careful with full access"
+                description={
+                  <>
+                    With full access, any AI tool connected here can change every linked repository
+                    without asking you: commit, reset, discard uncommitted changes, push and delete
+                    branches. Some of that cannot be undone, and an AI tool can misread a request or be
+                    misled by text in a file or web page it reads. Only allow it for AI tools you
+                    trust, and keep work you care about committed and pushed. After changing access,
+                    reconnect your AI tool so it picks up the new set of tools.
+                  </>
+                }
+              />
+            }
+          >
+            <Segmented
+              aria-label="Access"
+              options={ACCESS_OPTIONS}
+              value={access}
+              disabled={setMcp.isPending}
+              onChange={changeAccess}
+            />
+          </Setting>
+          <RepositoryScopeSetting
+            scope={repositories}
+            onChange={(scope) => save({ repositories: scope })}
+          />
+          <div className={styles.settingBlock}>
+            <div className={styles.settingText}>
+              <div className={styles.settingLabel}>Connect an app</div>
+              <div className={styles.settingDescription}>
+                Pick your app, add what it shows to the app’s MCP config, then restart the app or
+                reload its servers.
+              </div>
             </div>
+            <McpSnippets url={url} />
           </div>
-          <McpSnippets url={url} />
-        </div>
+        </>
       )}
     </section>
   );

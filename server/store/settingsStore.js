@@ -10,8 +10,9 @@ const DEFAULTS = {
   /**
    * The MCP server for AI tools. Off until turned on, and then read-only unless given
    * 'full' access, which lets AI tools run git commands that change repositories.
+   * `repositories` is which ones they may use: `*` for all, or `group:<id>` and `repo:<id>`.
    */
-  mcp: { enabled: false, access: 'read-only' },
+  mcp: { enabled: false, access: 'read-only', repositories: ['*'] },
 };
 
 /**

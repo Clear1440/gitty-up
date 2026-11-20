@@ -167,8 +167,11 @@ config to add to Claude Code, Claude Desktop, opencode, Cursor, VS Code, Windsur
 Gemini CLI. It speaks Streamable HTTP at `http://127.0.0.1:4317/mcp` (the settings show the real
 port), and is off until turned on.
 
-**Access** is **Read-only tools** by default, which offers only the tools that read. **Full
-access** adds git commands. It can be set before the server is turned on. Both settings are read for every request, so a change applies at once, though
+Once it is on, **Access** is **Read-only tools** by default, which offers only the tools that
+read. **Full access** adds git commands. **Repositories** limits which linked repositories AI tools
+can see and use: all of them (`*`, the default), or chosen groups and repositories. A group covers
+whatever is in it at the time, so repositories added to it later are included. Any other
+repository is left out of `list_repositories` and refused by every tool. Both settings are read for every request, so a change applies at once, though
 an AI tool may need reconnecting to see the new list of tools.
 
 Every tool takes a repository by the id, name or folder that `list_repositories` gives. The
@@ -363,8 +366,8 @@ The server can run git on any folder and has no login, so it must stay private t
 - Git runs without a shell, and refs starting with `-` are refused, so input cannot become a
   command or an option.
 - The MCP server for AI tools is off until turned on in the settings, and has the same
-  local-only checks. Any AI tool on this machine can then read every linked repository,
-  including files committed to it. Its git commands are offered only with **Full access**, which
+  local-only checks. Any AI tool on this machine can then read every repository it is allowed,
+  which is all of them unless limited under **Repositories**, including files committed to them. Its git commands are offered only with **Full access**, which
   lets any such tool change every linked repository, so it starts read-only and warns before
   allowing that.
 - Scripts from a `.gitty` file are the exception: they run whatever the file says, with your
