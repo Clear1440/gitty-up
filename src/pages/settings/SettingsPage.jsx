@@ -292,8 +292,8 @@ function AiToolsSection({ settings }) {
           <div className={styles.settingText}>
             <div className={styles.settingLabel}>Connect an app</div>
             <div className={styles.settingDescription}>
-              Add this to the app’s MCP config, then restart it or reload its servers. Use the arrows
-              or the arrow keys to pick another app.
+              Pick your app, add what it shows to the app’s MCP config, then restart the app or
+              reload its servers.
             </div>
           </div>
           <McpSnippets url={url} />

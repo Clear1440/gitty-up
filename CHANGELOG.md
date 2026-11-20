@@ -13,7 +13,7 @@ version's section.
   VS Code, Windsurf, Codex and Gemini CLI can connect to. They can list your linked
   repositories and read their status, branches, history, commits, diffs, tags, stashes,
   worktrees and committed files, but change nothing. The settings show the config to paste into
-  each app: use the arrows or the arrow keys to go from one app to the next.
+  each app: pick it from the list to see its snippet.
 
 ## 0.3.1 - 2026-11-18
 
