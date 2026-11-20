@@ -1,5 +1,6 @@
 import { Alert, Button, Empty, Spin } from 'antd';
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { useConfirmDanger } from '../../components/useConfirmDanger.js';
 import { useDiff } from '../../queries/git.js';
 import { ListHelper } from '../../utils/ListHelper.js';
 import { SetHelper } from '../../utils/SetHelper.js';
@@ -49,6 +50,24 @@ export function DiffView({ file }) {
 
   const verb = file?.staged ? 'Unstage' : 'Stage';
 
+  // Only unstaged changes can be thrown away here: staged ones are unstaged first.
+  const confirmDanger = useConfirmDanger();
+  const canDiscard = Boolean(file) && !file.staged;
+  const discardLines = useCallback(
+    (lines) =>
+      confirmDanger({
+        title: `Discard ${TextHelper.countOf(lines.length, 'changed line')}?`,
+        content: file.untracked
+          ? `${lines.length === 1 ? 'It comes' : 'They come'} out of ${file.path}. This cannot be undone.`
+          : `In ${file.path}, ${lines.length === 1 ? 'it goes' : 'they go'} back to how ${
+              lines.length === 1 ? 'it is' : 'they are'
+            } staged or last committed. This cannot be undone.`,
+        okText: 'Discard',
+        onOk: () => run('discardLines', { ...file, fullFile, hash, lines }),
+      }),
+    [confirmDanger, run, file, fullFile, hash],
+  );
+
   const renderContent = () => {
     if (!file) return <Empty className="centered" description="Select a file to see its changes" />;
     if (isPending) return <Spin className="centered" />;
@@ -65,6 +84,7 @@ export function DiffView({ file }) {
         lineLabel={verb}
         disabled={isBusy}
         onApply={applyLines}
+        onDiscard={canDiscard ? discardLines : undefined}
       />
     );
   };
@@ -83,6 +103,16 @@ export function DiffView({ file }) {
               >
                 Clear
               </Button>
+              {canDiscard && (
+                <Button
+                  size="small"
+                  danger
+                  disabled={isBusy}
+                  onClick={() => discardLines([...selected])}
+                >
+                  Discard {TextHelper.countOf(selected.size, 'line')}
+                </Button>
+              )}
               <Button
                 size="small"
                 type="primary"

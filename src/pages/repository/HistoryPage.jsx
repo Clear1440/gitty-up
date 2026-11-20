@@ -6,14 +6,15 @@ import {
 } from '@ant-design/icons';
 import { Avatar, Button, Empty, Result, Spin, Tag } from 'antd';
 import clsx from 'clsx';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router';
 import { MenuRow } from '../../components/MenuRow.jsx';
 import { RelativeTime } from '../../components/RelativeTime.jsx';
 import { ResizeHandle } from '../../components/ResizeHandle.jsx';
+import { TreeIcon } from '../../components/TreeIcon.jsx';
 import { useResizableSizes } from '../../components/useResizableSizes.js';
 import { StashSelection, UNCOMMITTED, paths } from '../../paths.js';
-import { useCommits, usePullRequests, useStashes } from '../../queries/git.js';
+import { useBranches, useCommits, usePullRequests, useStashes } from '../../queries/git.js';
 import { KeyboardHelper } from '../../utils/KeyboardHelper.js';
 import { TextHelper } from '../../utils/TextHelper.js';
 import { CommitHelper } from './CommitHelper.js';
@@ -112,14 +113,30 @@ function PullRequestLink({ pullRequest }) {
  * `focusRequest` plays the pulse around it, and a new value plays it again. `onSelect`,
  * for a branch, picks it on a click: see RefStack.
  */
+/** Where a label's local branch is checked out, if that is another working tree. */
+function useOtherWorktree(group) {
+  const { repository } = useRepositoryContext();
+  const { data: branches } = useBranches(repository.id);
+  if (!group.local) return null;
+  const branch = branches?.local.find(({ name }) => name === group.name);
+  return branch && !branch.isCurrent ? branch.worktreePath : null;
+}
+
 function RefTag({ group, pullRequest, focusRequest, onSelect }) {
   const isBranch = group.type !== 'tag';
+  const worktreePath = useOtherWorktree(group);
   return (
     <RefBranchActions group={group}>
       <Tag
         key={focusRequest}
         className={clsx(REF_TAG_STYLES[group.type], focusRequest && styles.focusPulse)}
-        title={isBranch ? describeRefGroup(group) : group.name}
+        title={
+          isBranch
+            ? [describeRefGroup(group), worktreePath && `Checked out in ${worktreePath}`]
+                .filter(Boolean)
+                .join('\n')
+            : group.name
+        }
         onClick={
           isBranch
             ? (event) => {
@@ -131,7 +148,12 @@ function RefTag({ group, pullRequest, focusRequest, onSelect }) {
         }
       >
         <span className={styles.refName}>{group.name}</span>
-        {group.local && <LaptopOutlined className={styles.refIcon} aria-label="Local" />}
+        {group.local &&
+          (worktreePath ? (
+            <TreeIcon className={styles.refIcon} aria-label="Checked out in another worktree" />
+          ) : (
+            <LaptopOutlined className={styles.refIcon} aria-label="Local" />
+          ))}
         {group.remotes.length > 0 && (
           <CloudOutlined className={styles.refIcon} aria-label="On a remote" />
         )}
@@ -206,6 +228,7 @@ function UncommittedRow({ graphRow, columnCount, fileCount, selected, onSelect, 
   return (
     <li
       className={clsx(styles.commit, selected && styles.selectedCommit, SEARCH_STYLES[searchState])}
+      data-hash={UNCOMMITTED}
       onClick={() => onSelect(UNCOMMITTED)}
     >
       <div className={styles.tree}>
@@ -236,6 +259,7 @@ function StashRow({ entry, graphRow, columnCount, selected, onSelect, searchStat
     <MenuRow
       items={items}
       className={clsx(styles.commit, selected && styles.selectedCommit, SEARCH_STYLES[searchState])}
+      data-hash={entry.hash}
       onActivate={() => onSelect(entry.hash)}
     >
       <div className={styles.tree}>
@@ -452,6 +476,46 @@ export function HistoryPage() {
     );
   };
 
+  /** Opens a commit, a stash or the uncommitted changes, leaving it open if it already is. */
+  const openCommit = (hash) => {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.set('commit', hash);
+        return next;
+      },
+      { replace: true },
+    );
+  };
+
+  // Arrow Up and Down open the row above or below, from the list or with nothing focused.
+  const scrollAreaRef = useRef(null);
+  const stepThroughCommits = useEffectEvent((event) => {
+    const step = KeyboardHelper.listStep(event);
+    if (step === 0 || event.defaultPrevented || KeyboardHelper.isTyping(event)) return;
+    const inList = scrollAreaRef.current?.contains(event.target);
+    if (!inList && event.target !== document.body) return;
+    if (document.querySelector('.ant-modal') || event.target.closest?.('[role="menu"]')) return;
+
+    const hashes = [...(showUncommitted ? [UNCOMMITTED] : []), ...entries.map(({ hash }) => hash)];
+    if (hashes.length === 0) return;
+    event.preventDefault();
+    const index = hashes.indexOf(selectedHash);
+    const nextIndex = index === -1 ? 0 : index + step;
+    if (nextIndex >= hashes.length && hasNextPage && !isFetchingNextPage) fetchNextPage();
+    const nextHash = hashes[Math.min(Math.max(nextIndex, 0), hashes.length - 1)];
+    if (nextHash === selectedHash) return;
+
+    openCommit(nextHash);
+    const row = tableRef.current?.querySelector(`[data-hash="${nextHash}"]`);
+    row?.scrollIntoView({ block: 'nearest' });
+    row?.querySelector('button[aria-pressed]')?.focus({ preventScroll: true });
+  });
+  useEffect(() => {
+    window.addEventListener('keydown', stepThroughCommits);
+    return () => window.removeEventListener('keydown', stepThroughCommits);
+  }, []);
+
   /** Picks a branch from a commit's labels, as the sidebar would, and opens that commit. */
   const selectBranch = (branch, hash) => {
     setSearchParams(
@@ -510,7 +574,8 @@ export function HistoryPage() {
             onSearchOlder={() => fetchNextPage()}
           />
         )}
-        <div className={styles.scrollArea}>
+        {/* Takes focus from clicks on rows, so arrow keys go on from the row clicked. */}
+        <div ref={scrollAreaRef} className={styles.scrollArea} tabIndex={-1}>
           <header className={styles.header}>
             <h2 className={styles.heading}>{ref ?? allBranchesLabel}</h2>
             {ref && showAllBranches}

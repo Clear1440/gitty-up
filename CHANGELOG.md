@@ -8,12 +8,36 @@ version's section.
 
 ### Added
 
+- **Discard lines and hunks.** Point at a changed line in the diff for buttons that stage
+  (or unstage) and discard just that line. Unstaged hunks have **Discard hunk** beside
+  **Stage hunk**, and lines picked with shift or ctrl can be discarded together. Discarding
+  asks first, as it can't be undone.
+- **Rename a branch on its remote too.** The rename dialog can also rename the branch it
+  tracks, such as origin/topic, and keep tracking it under the new name.
+- **Arrow keys.** Up and Down step through the files of a commit, a stash or the
+  uncommitted changes, and through the commit history.
 - **Let AI tools read your repositories.** Turn on **Settings › AI tools › Enable read-only
   tools** and Gitty Up serves an MCP server that Claude Code, Claude Desktop, opencode, Cursor,
   VS Code, Windsurf, Codex and Gemini CLI can connect to. They can list your linked
   repositories and read their status, branches, history, commits, diffs, tags, stashes,
   worktrees and committed files, but change nothing. The settings show the config to paste into
   each app: pick it from the list to see its snippet.
+
+### Changed
+
+- A branch checked out in another worktree shows a tree in the branch list and on its
+  label in the history, and the worktree list uses the same tree.
+- Ctrl+W (Cmd+W on a Mac) closes the open tab instead of the app.
+- Middle-clicking a tab closes it when the button is let go, as in a browser, and only if
+  it was pressed on that tab.
+- The desktop app runs on Electron 44 instead of 45, whose windows resized and snapped
+  badly on macOS.
+
+### Fixed
+
+- Closing a tab with the middle button no longer leaves another tab outlined.
+- Staging or unstaging a line keeps the same file on screen, rather than jumping to its
+  other copy when the file ends up both staged and unstaged.
 
 ## 0.3.1 - 2026-11-18
 

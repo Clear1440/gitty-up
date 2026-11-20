@@ -348,10 +348,11 @@ function createGitRouter() {
       switchTo: switchTo !== false,
     }),
   );
-  action(router, '/branches/rename', (service, target, { name, newName }) =>
+  action(router, '/branches/rename', (service, target, { name, newName, renameRemote }) =>
     service.renameBranch(target, {
       name: ValidationHelper.requireString(name, 'name'),
       newName: ValidationHelper.requireString(newName, 'newName'),
+      renameRemote: renameRemote === true,
     }),
   );
   action(router, '/checkout', (service, target, { branch, remote }) =>
@@ -404,6 +405,15 @@ function createGitRouter() {
     service.stageLines(target, {
       filePath: ValidationHelper.requireString(body.path, 'path'),
       staged: body.staged === true,
+      untracked: body.untracked === true,
+      fullFile: body.fullFile === true,
+      hash: ValidationHelper.requireString(body.hash, 'hash'),
+      lines: ValidationHelper.requireLines(body.lines),
+    }),
+  );
+  action(router, '/discard-lines', (service, target, body) =>
+    service.discardLines(target, {
+      filePath: ValidationHelper.requireString(body.path, 'path'),
       untracked: body.untracked === true,
       fullFile: body.fullFile === true,
       hash: ValidationHelper.requireString(body.hash, 'hash'),

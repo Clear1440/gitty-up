@@ -36,6 +36,7 @@ function FileRow({ file, selected, onSelect, actions, menuItems }) {
       <button
         type="button"
         className={styles.button}
+        data-file-row
         title={file.originalPath ? `${file.originalPath} → ${file.path}` : file.path}
         aria-pressed={selected}
         // Shift-clicking would otherwise select the text of every row in between.

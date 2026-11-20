@@ -119,10 +119,54 @@
   white-space: nowrap;
 }
 
-.hunk button {
+.hunkActions {
   position: sticky;
   right: var(--space-3);
+  display: flex;
   flex: none;
+  gap: var(--space-1);
+}
+
+/*
+ * The buttons on the line pointed at. Like the hunk's, they stick to the right edge of
+ * what is in view, however long the line.
+ */
+.lineActions {
+  position: sticky;
+  right: var(--space-2);
+  display: flex;
+  flex: none;
+  gap: 2px;
+  margin-left: auto;
+  padding-left: var(--space-2);
+}
+
+.lineAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.lineAction:hover,
+.lineAction:focus-visible {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  outline: none;
+}
+
+.lineActionDanger:hover,
+.lineActionDanger:focus-visible {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
 }
 
 .added {

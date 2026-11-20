@@ -57,8 +57,8 @@ export const gitApi = {
   switchSpan: (id, { branch }) => http.post(route(id, '/switch-span'), { branch }),
   createBranch: (id, { name, startPoint, switchTo }) =>
     http.post(route(id, '/branches'), { name, startPoint, switchTo }),
-  renameBranch: (id, { name, newName }) =>
-    http.post(route(id, '/branches/rename'), { name, newName }),
+  renameBranch: (id, { name, newName, renameRemote }) =>
+    http.post(route(id, '/branches/rename'), { name, newName, renameRemote }),
   deleteBranch: (id, { name, force, deleteRemote }) =>
     http.delete(route(id, `/branches/${encodeURIComponent(name)}`), { force, deleteRemote }),
   deleteRemoteBranch: (id, { name }) =>
@@ -80,6 +80,7 @@ export const gitApi = {
   stage: (id, { paths } = {}) => http.post(route(id, '/stage'), { paths }),
   unstage: (id, { paths } = {}) => http.post(route(id, '/unstage'), { paths }),
   stageLines: (id, selection) => http.post(route(id, '/stage-lines'), selection),
+  discardLines: (id, selection) => http.post(route(id, '/discard-lines'), selection),
   resolveConflict: (id, { path, content, side, remove }) =>
     http.post(route(id, '/resolve-conflict'), { path, content, side, remove }),
   /** Puts a resolved file back in conflict, while its merge is still under way. */
