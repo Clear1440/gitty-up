@@ -375,9 +375,14 @@ function AiToolsSection({ settings }) {
     modal.confirm({
       title: 'Give AI tools full access?',
       content:
-        'Any AI tool connected to Gitty Up will be able to commit, reset, discard changes, push and delete branches in every linked repository, without asking you first. Force pushing stays off.',
-      okText: 'Give full access',
+        'Any AI tool connected to Gitty Up will be able to commit, reset, discard uncommitted changes, push and delete branches in the repositories it can use, without asking you first. Some of that cannot be undone. Force pushing stays off.',
+      okText: 'Continue, I understand',
+      cancelText: 'On second thought, nevermind',
       okButtonProps: { danger: true },
+      // Closing the dialog any other way leaves the access as it was.
+      autoFocusButton: 'cancel',
+      // Wide enough for both buttons, whose labels are long, to sit on one row.
+      width: 520,
       onOk: () => save({ access: 'full' }),
     });
   };
@@ -419,8 +424,8 @@ function AiToolsSection({ settings }) {
                 title="Be careful with full access"
                 description={
                   <>
-                    With full access, any AI tool connected here can change every linked repository
-                    without asking you: commit, reset, discard uncommitted changes, push and delete
+                    With full access, any AI tool connected here can change the repositories it can
+                    use without asking you: commit, reset, discard uncommitted changes, push and delete
                     branches. Some of that cannot be undone, and an AI tool can misread a request or be
                     misled by text in a file or web page it reads. Only allow it for AI tools you
                     trust, and keep work you care about committed and pushed. After changing access,
