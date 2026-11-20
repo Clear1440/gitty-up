@@ -6,6 +6,11 @@ version's section.
 
 ## Unreleased
 
+### Changed
+
+- The desktop app runs on Electron 44 instead of 45, whose windows resized and snapped
+  badly on macOS.
+
 ## 0.3.1 - 2026-11-18
 
 ### Added
