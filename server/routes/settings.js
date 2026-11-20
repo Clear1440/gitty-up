@@ -3,6 +3,9 @@ import path from 'node:path';
 import { Router } from 'express';
 import { ApiError } from '../errors.js';
 import { RepositoryStore } from '../store/repositoryStore.js';
+import { ACCESS_LEVELS } from '../mcp/mcpServer.js';
+import { isRepositoryScope } from '../mcp/repositoryScope.js';
+import { mcpUrl } from './mcp.js';
 import { FileSystemHelper } from '../utils/FileSystemHelper.js';
 import { ValidationHelper } from '../utils/ValidationHelper.js';
 
@@ -44,14 +47,16 @@ function isSameFolder(a, b) {
   return normalize(a) === normalize(b);
 }
 
-async function describe(settings) {
-  const { appearance } = await settings.get();
+/** `request` is the one being answered, which says where the MCP server can be reached. */
+async function describe(settings, request) {
+  const { appearance, mcp } = await settings.get();
   const dataDir = await settings.dataDir();
   return {
     dataDir,
     defaultDataDir: settings.defaultDataDir,
     isDefaultDataDir: isSameFolder(dataDir, settings.defaultDataDir),
     appearance,
+    mcp: { ...mcp, url: mcpUrl(request) },
   };
 }
 
@@ -85,8 +90,8 @@ async function moveData(from, to) {
 export function createSettingsRouter({ settings, store }) {
   const router = Router();
 
-  router.get('/', async (_request, response) => {
-    response.json(await describe(settings));
+  router.get('/', async (request, response) => {
+    response.json(await describe(settings, request));
   });
 
   router.put('/appearance', async (request, response) => {
@@ -100,7 +105,40 @@ export function createSettingsRouter({ settings, store }) {
       optionalCustomColors(request.body.custom) ?? (await settings.get()).appearance.custom;
 
     await settings.update({ appearance: custom ? { scheme, mode, custom } : { scheme, mode } });
-    response.json(await describe(settings));
+    response.json(await describe(settings, request));
+  });
+
+  /**
+   * Turns the MCP server for AI tools on or off, with `enabled`, sets what it may do, with
+   * `access`, and which repositories it may use, with `repositories`. Any can be left out
+   * to keep it as it is.
+   */
+  router.put('/mcp', async (request, response) => {
+    const { enabled, access, repositories } = request.body;
+    if (enabled !== undefined && typeof enabled !== 'boolean') {
+      throw ApiError.badRequest('"enabled" must be true or false.');
+    }
+    if (access !== undefined && !ACCESS_LEVELS.includes(access)) {
+      throw ApiError.badRequest('"access" must be "read-only" or "full".');
+    }
+    if (repositories !== undefined && !isRepositoryScope(repositories)) {
+      throw ApiError.badRequest(
+        '"repositories" must be a list of "*", "group:<id>" and "repo:<id>" entries.',
+      );
+    }
+    const current = (await settings.get()).mcp;
+    await settings.update({
+      mcp: {
+        ...current,
+        ...(enabled !== undefined && { enabled }),
+        ...(access !== undefined && { access }),
+        // Everything, or a choice: "*" alongside others would only hide that they do nothing.
+        ...(repositories !== undefined && {
+          repositories: repositories.includes('*') ? ['*'] : [...new Set(repositories)],
+        }),
+      },
+    });
+    response.json(await describe(settings, request));
   });
 
   /** A `path` of null moves the data back to the default folder. */
@@ -109,14 +147,14 @@ export function createSettingsRouter({ settings, store }) {
     const target = isReset ? settings.defaultDataDir : requireDataDir(request.body.path);
     const current = await settings.dataDir();
     if (isSameFolder(target, current)) {
-      response.json({ ...(await describe(settings)), outcome: 'unchanged' });
+      response.json({ ...(await describe(settings, request)), outcome: 'unchanged' });
       return;
     }
 
     const outcome = await moveData(current, target);
     store.useDataDir(target);
     await settings.update({ dataDir: isSameFolder(target, settings.defaultDataDir) ? null : target });
-    response.json({ ...(await describe(settings)), outcome });
+    response.json({ ...(await describe(settings, request)), outcome });
   });
 
   return router;

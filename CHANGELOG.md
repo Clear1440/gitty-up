@@ -16,6 +16,15 @@ version's section.
   tracks, such as origin/topic, and keep tracking it under the new name.
 - **Arrow keys.** Up and Down step through the files of a commit, a stash or the
   uncommitted changes, and through the commit history.
+- **Let AI tools work with your repositories.** Turn on **Settings › AI tools › MCP server** and
+  Gitty Up serves an MCP server that Claude Code, Claude Desktop, opencode, Cursor, VS Code,
+  Windsurf, Codex and Gemini CLI can connect to. It is off until turned on, and read-only until
+  you choose **Full access**: read-only lets them list your linked repositories and read their
+  status, branches, history, commits, diffs, tags, stashes, worktrees and committed files. Full
+  access adds git commands such as commit, branch, merge, rebase, stash, reset and push, after a
+  warning. Force pushing is never offered. **Repositories** limits them to chosen groups or
+  repositories, or allows all (`*`, the default). The settings show the config to paste into
+  each app: pick it from the list to see its snippet.
 
 ### Changed
 

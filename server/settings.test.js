@@ -55,7 +55,30 @@ describe('settings', () => {
       defaultDataDir: homeDir,
       isDefaultDataDir: true,
       appearance: { scheme: 'default', mode: 'dark' },
+      mcp: { enabled: false, access: 'read-only', repositories: ['*'], url: `${baseUrl}/mcp` },
     });
+  });
+
+  it('saves the MCP server’s state and access across restarts, and checks the values', async () => {
+    const saved = await request('PUT', '/api/settings/mcp', { enabled: true });
+    expect(saved.body.mcp).toMatchObject({ enabled: true, access: 'read-only' });
+    // Either can change without the other.
+    const full = await request('PUT', '/api/settings/mcp', { access: 'full' });
+    expect(full.body.mcp).toMatchObject({ enabled: true, access: 'full' });
+    expect((await request('PUT', '/api/settings/mcp', { enabled: 'yes' })).status).toBe(400);
+    expect((await request('PUT', '/api/settings/mcp', { access: 'admin' })).status).toBe(400);
+    expect((await request('PUT', '/api/settings/mcp', { repositories: ['repo:'] })).status).toBe(400);
+    expect((await request('PUT', '/api/settings/mcp', { repositories: 'all' })).status).toBe(400);
+
+    // Everything with something else is just everything.
+    const scoped = await request('PUT', '/api/settings/mcp', { repositories: ['repo:a', '*'] });
+    expect(scoped.body.mcp.repositories).toEqual(['*']);
+    await request('PUT', '/api/settings/mcp', { repositories: ['group:g', 'repo:a', 'repo:a'] });
+
+    await stopServer();
+    await startServer();
+    const { body } = await request('GET', '/api/settings');
+    expect(body.mcp).toMatchObject({ enabled: true, access: 'full', repositories: ['group:g', 'repo:a'] });
   });
 
   it('saves the appearance across restarts', async () => {

@@ -15,6 +15,34 @@ export function useSaveAppearance() {
   });
 }
 
+const MCP_MUTATION_KEY = ['settings', 'mcp'];
+
+/**
+ * Turns the MCP server for AI tools on or off, or changes what it may do. The page shows
+ * the change at once, so several quick picks in a list each build on the one before.
+ */
+export function useSetMcp() {
+  const queryClient = useQueryClient();
+  const key = queryKeys.settings();
+  return useMutation({
+    mutationKey: MCP_MUTATION_KEY,
+    mutationFn: settingsApi.setMcp,
+    onMutate: async (changes) => {
+      await queryClient.cancelQueries({ queryKey: key });
+      queryClient.setQueryData(key, (settings) =>
+        settings && { ...settings, mcp: { ...settings.mcp, ...changes } },
+      );
+    },
+    onSuccess: (settings) => {
+      // An earlier answer must not undo a later change still on its way.
+      if (queryClient.isMutating({ mutationKey: MCP_MUTATION_KEY }) === 1) {
+        queryClient.setQueryData(key, settings);
+      }
+    },
+    onError: () => queryClient.invalidateQueries({ queryKey: key }),
+  });
+}
+
 /**
  * Moves the data to another folder. Everything cached came from the old folder, so
  * it is all thrown away and read again.

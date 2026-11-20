@@ -7,6 +7,12 @@ const DEFAULTS = {
   /** Where repositories.json lives. Null keeps it in the home folder, next to this file. */
   dataDir: null,
   appearance: { scheme: 'default', mode: 'dark' },
+  /**
+   * The MCP server for AI tools. Off until turned on, and then read-only unless given
+   * 'full' access, which lets AI tools run git commands that change repositories.
+   * `repositories` is which ones they may use: `*` for all, or `group:<id>` and `repo:<id>`.
+   */
+  mcp: { enabled: false, access: 'read-only', repositories: ['*'] },
 };
 
 /**
@@ -58,6 +64,7 @@ export class SettingsStore {
         ...DEFAULTS,
         ...saved,
         appearance: { ...DEFAULTS.appearance, ...saved.appearance },
+        mcp: { ...DEFAULTS.mcp, ...saved.mcp },
       };
     } catch (error) {
       if (error.code === 'ENOENT') return structuredClone(DEFAULTS);

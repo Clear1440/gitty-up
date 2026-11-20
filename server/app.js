@@ -4,6 +4,7 @@ import express from 'express';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { localOnly } from './middleware/localOnly.js';
 import { createFilesystemRouter } from './routes/filesystem.js';
+import { MCP_PATH, createMcpRouter } from './routes/mcp.js';
 import { createRepositoriesRouter } from './routes/repositories.js';
 import { createSettingsRouter } from './routes/settings.js';
 import { createUpdatesRouter } from './routes/updates.js';
@@ -15,6 +16,8 @@ export function createApp({ store, settings, updater = null }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(localOnly);
+  // Before the JSON parser below, as it parses its own and answers errors in JSON-RPC.
+  app.use(MCP_PATH, createMcpRouter({ settings, store }));
   // A resolved conflict sends the whole file back, which can be far over the 100kb default.
   app.use(express.json({ limit: '50mb' }));
 

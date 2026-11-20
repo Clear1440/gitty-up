@@ -1,0 +1,102 @@
+.layout {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2);
+  border-right: 1px solid var(--color-border);
+  background: var(--color-focus-tint);
+}
+
+.item {
+  padding: var(--space-1) var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.item:hover {
+  background: var(--color-focus-tint);
+  color: var(--color-text);
+}
+
+.item:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.selected,
+.selected:hover {
+  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  color: var(--color-text);
+  font-weight: var(--font-weight-medium);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3);
+}
+
+.where,
+.note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.note {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.codeBox {
+  position: relative;
+}
+
+.code {
+  margin: 0;
+  padding: var(--space-3);
+  padding-right: 84px;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-body);
+  white-space: pre;
+}
+
+.copy {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+}
+
+/* Too narrow for the list beside the snippet: the apps wrap along the top instead. */
+@media (max-width: 640px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .list {
+    flex-flow: row wrap;
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+  }
+}
