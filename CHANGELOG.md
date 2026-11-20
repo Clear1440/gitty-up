@@ -6,6 +6,8 @@ version's section.
 
 ## Unreleased
 
+## 0.4.0 - 2026-11-20
+
 ### Added
 
 - **Discard lines and hunks.** Point at a changed line in the diff for buttons that stage
