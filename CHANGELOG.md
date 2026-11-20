@@ -24,6 +24,8 @@ version's section.
 - Ctrl+W (Cmd+W on a Mac) closes the open tab instead of the app.
 - Middle-clicking a tab closes it when the button is let go, as in a browser, and only if
   it was pressed on that tab.
+- The desktop app runs on Electron 44 instead of 45, whose windows resized and snapped
+  badly on macOS.
 
 ### Fixed
 
