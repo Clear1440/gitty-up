@@ -269,7 +269,7 @@ function DataSection({ settings }) {
 }
 
 const ACCESS_OPTIONS = [
-  { value: 'read-only', label: 'Read-only', icon: <EyeOutlined /> },
+  { value: 'read-only', label: 'Read-only tools', icon: <EyeOutlined /> },
   { value: 'full', label: 'Full access', icon: <EditOutlined /> },
 ];
 
@@ -298,7 +298,7 @@ function AiToolsSection({ settings }) {
     modal.confirm({
       title: 'Give AI tools full access?',
       content:
-        'Any AI tool connected to Gitty Up will be able to commit, reset, discard changes, push, force push and delete branches in every linked repository, without asking you first.',
+        'Any AI tool connected to Gitty Up will be able to commit, reset, discard changes, push and delete branches in every linked repository, without asking you first. Force pushing stays off.',
       okText: 'Give full access',
       okButtonProps: { danger: true },
       onOk: () => save({ access: 'full' }),
@@ -326,52 +326,53 @@ function AiToolsSection({ settings }) {
           onChange={(checked) => save({ enabled: checked })}
         />
       </Setting>
-      {enabled && (
-        <>
-          <Setting
-            label="Access"
+      <Setting
+        label="Access"
+        description={
+          <>
+            {access === 'full'
+              ? 'Full access: AI tools can read your repositories and run git commands that change them, such as commit, branch, merge, rebase, stash, reset and push. Force pushing is never offered.'
+              : 'Read-only tools: AI tools can read status, branches, history, diffs and committed files, but cannot change anything.'}
+            {!enabled && ' Applies once the MCP server is on.'}
+          </>
+        }
+        footer={
+          <Alert
+            type="warning"
+            showIcon
+            title="Be careful with full access"
             description={
-              access === 'full'
-                ? 'AI tools can read your repositories and run git commands that change them: commit, branch, merge, rebase, stash, reset, push and more.'
-                : 'AI tools can read status, branches, history, diffs and committed files, but cannot change anything.'
+              <>
+                With full access, any AI tool connected here can change every linked repository
+                without asking you: commit, reset, discard uncommitted changes, push and delete
+                branches. Some of that cannot be undone, and an AI tool can misread a request or be
+                misled by text in a file or web page it reads. Only allow it for AI tools you
+                trust, and keep work you care about committed and pushed. After changing access,
+                reconnect your AI tool so it picks up the new set of tools.
+              </>
             }
-            footer={
-              <Alert
-                type="warning"
-                showIcon
-                title="Be careful with full access"
-                description={
-                  <>
-                    With full access, any AI tool connected here can change every linked repository
-                    without asking you: commit, reset, discard uncommitted changes, force push and delete
-                    branches. Some of that cannot be undone, and an AI tool can misread a request or be
-                    misled by text in a file or web page it reads. Only allow it for AI tools you
-                    trust, and keep work you care about committed and pushed. After changing access,
-                    reconnect your AI tool so it picks up the new set of tools.
-                  </>
-                }
-              />
-            }
-          >
-            <Segmented
-              aria-label="Access"
-              options={ACCESS_OPTIONS}
-              value={access}
-              disabled={setMcp.isPending}
-              onChange={changeAccess}
-            />
-          </Setting>
-          <div className={styles.settingBlock}>
-            <div className={styles.settingText}>
-              <div className={styles.settingLabel}>Connect an app</div>
-              <div className={styles.settingDescription}>
-                Pick your app, add what it shows to the app’s MCP config, then restart the app or
-                reload its servers.
-              </div>
+          />
+        }
+      >
+        <Segmented
+          aria-label="Access"
+          options={ACCESS_OPTIONS}
+          value={access}
+          disabled={setMcp.isPending}
+          onChange={changeAccess}
+        />
+      </Setting>
+      {enabled && (
+        <div className={styles.settingBlock}>
+          <div className={styles.settingText}>
+            <div className={styles.settingLabel}>Connect an app</div>
+            <div className={styles.settingDescription}>
+              Pick your app, add what it shows to the app’s MCP config, then restart the app or
+              reload its servers.
             </div>
-            <McpSnippets url={url} />
           </div>
-        </>
+          <McpSnippets url={url} />
+        </div>
       )}
     </section>
   );

@@ -14,7 +14,7 @@ version's section.
   you choose **Full access**: read-only lets them list your linked repositories and read their
   status, branches, history, commits, diffs, tags, stashes, worktrees and committed files. Full
   access adds git commands such as commit, branch, merge, rebase, stash, reset and push, after a
-  warning. The settings show the config to paste into each app: pick it from the list to see its
+  warning. Force pushing is never offered. The settings show the config to paste into each app: pick it from the list to see its
   snippet.
 
 ## 0.3.1 - 2026-11-18

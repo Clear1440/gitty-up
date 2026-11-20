@@ -21,7 +21,7 @@ export const ACCESS_LEVELS = ['read-only', 'full'];
 const INSTRUCTIONS = {
   'read-only':
     'Read-only access to the git repositories linked in Gitty Up, a desktop git client. Start with list_repositories: every other tool takes one of its repositories by id, name or folder. Nothing here can change a repository.',
-  full: 'Access to the git repositories linked in Gitty Up, a desktop git client, including git commands that change them. Start with list_repositories: every other tool takes one of its repositories by id, name or folder. Check get_status before changing a repository, and ask the user before anything that can lose work, such as discard, reset, force push or deleting a branch.',
+  full: 'Access to the git repositories linked in Gitty Up, a desktop git client, including git commands that change them. Start with list_repositories: every other tool takes one of its repositories by id, name or folder. Check get_status before changing a repository, and ask the user before anything that can lose work, such as discard, a hard reset or deleting a branch. Force pushing is not offered.',
 };
 
 /** The tools each level of access offers. Full access adds the ones that change things. */

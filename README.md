@@ -167,8 +167,8 @@ config to add to Claude Code, Claude Desktop, opencode, Cursor, VS Code, Windsur
 Gemini CLI. It speaks Streamable HTTP at `http://127.0.0.1:4317/mcp` (the settings show the real
 port), and is off until turned on.
 
-**Access** is **Read-only** by default, which offers only the tools that read. **Full access**
-adds git commands. Both settings are read for every request, so a change applies at once, though
+**Access** is **Read-only tools** by default, which offers only the tools that read. **Full
+access** adds git commands. It can be set before the server is turned on. Both settings are read for every request, so a change applies at once, though
 an AI tool may need reconnecting to see the new list of tools.
 
 Every tool takes a repository by the id, name or folder that `list_repositories` gives. The
@@ -193,7 +193,8 @@ Full access adds `fetch`, `pull`, `push`, `checkout`, `checkout_commit`, `create
 `stage`, `unstage`, `discard`, `commit`, `cherry_pick`, `revert`, `reset`, `create_tag`,
 `stash_save`, `stash_apply`, `stash_pop`, `stash_drop`, `add_worktree` and `remove_worktree`.
 They go through `gitService.js`, with the same checks as the app's own buttons, and each answers
-with where the repository stands afterwards. Those that can lose work are marked destructive, so
+with where the repository stands afterwards. `push` never forces: force pushing is left to the
+user, in the app. Those that can lose work are marked destructive, so
 AI tools that honor the hint ask first.
 
 The server lives in `server/mcp/` (`gitTools.js` reads, `gitWriteTools.js` changes), and

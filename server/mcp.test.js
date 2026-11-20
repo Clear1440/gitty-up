@@ -312,6 +312,17 @@ describe('MCP server', () => {
       expect(git(work, 'log', '-1', '--format=%s', 'from-ai')).toBe('Add a second line');
     });
 
+    it('never force pushes', async () => {
+      const { body } = await rpc('tools/list');
+      const push = body.result.tools.find((tool) => tool.name === 'push');
+      expect(push.inputSchema.properties).not.toHaveProperty('force');
+      expect(push.annotations.destructiveHint).toBe(false);
+
+      const { value, isError } = await callTool('push', { repository: repositoryId, force: true });
+      expect(isError).toBe(true);
+      expect(value).toMatch(/Force pushing is not available/);
+    });
+
     it('reports git refusing as an error the AI tool can read', async () => {
       const { value, isError } = await callTool('delete_branch', { repository: repositoryId, name: 'from-ai' });
       expect(isError).toBe(true);

@@ -107,23 +107,23 @@ export const GIT_WRITE_TOOLS = [
     name: 'push',
     title: 'Push',
     description:
-      'Pushes the checked out branch. A branch with no upstream is published under its own name, or upstream_name, and starts tracking it.',
+      'Pushes the checked out branch. A branch with no upstream is published under its own name, or upstream_name, and starts tracking it. Never forces: if the remote branch has commits this one lacks, git refuses, and the user has to sort that out.',
     properties: {
       remote: { type: 'string', description: 'The remote to publish to, when the branch has no upstream yet.' },
       upstream_name: { type: 'string', description: 'Publish under this branch name instead.' },
-      force: {
-        type: 'boolean',
-        description: 'Force with lease: overwrite the remote branch, unless it has commits not fetched here.',
-      },
     },
-    destructive: true,
     network: true,
-    run: (repoPath, args) =>
-      git.push(repoPath, {
+    run(repoPath, args) {
+      // Overwriting a remote branch can throw away other people's work, so it is left to the user.
+      if (args.force !== undefined && args.force !== false) {
+        throw new ToolError('Force pushing is not available through MCP. Ask the user to do it in Gitty Up.');
+      }
+      return git.push(repoPath, {
         remote: readString(args, 'remote'),
         upstreamName: readString(args, 'upstream_name'),
-        force: readBoolean(args, 'force') ?? false,
-      }),
+        force: false,
+      });
+    },
   }),
   writeTool({
     name: 'checkout',
