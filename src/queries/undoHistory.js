@@ -18,6 +18,7 @@ const KEEPS_HISTORY = new Set([
   'stage',
   'unstage',
   'stageLines',
+  'discardLines',
   'resolveConflict',
   'unresolveConflict',
   'discard',
@@ -92,7 +93,12 @@ export function undoStepFor(name, input = {}, statusBefore = null) {
     case 'renameBranch':
       return {
         kind: 'actions',
-        actions: [{ name: 'renameBranch', input: { name: input.newName, newName: input.name } }],
+        actions: [
+          {
+            name: 'renameBranch',
+            input: { name: input.newName, newName: input.name, renameRemote: input.renameRemote },
+          },
+        ],
         label: `Renamed ${input.newName} back to ${input.name}`,
       };
     case 'commit':

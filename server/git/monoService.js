@@ -402,6 +402,11 @@ export function stageLines(mono, { filePath, ...options }) {
   return git.stageLines(member.path, { ...options, filePath: path });
 }
 
+export function discardLines(mono, { filePath, ...options }) {
+  const { member, path } = findMember(mono, filePath);
+  return git.discardLines(member.path, { ...options, filePath: path });
+}
+
 export async function getConflict(mono, { filePath, ...options }) {
   const { member, path } = findMember(mono, filePath);
   const conflict = await git.getConflict(member.path, { ...options, filePath: path });
@@ -471,20 +476,34 @@ export async function createBranch(mono, options) {
  * named together. Repositories of the group that are left out, being on another branch,
  * are renamed too where they have it. If any one can't be renamed, those already done
  * are put back, so the name is never split between repositories.
+ *
+ * With `renameRemote`, each repository whose branch tracks a remote branch then renames
+ * that too. Those go one by one, as a remote can't be put back as surely as a branch.
  */
-export async function renameBranch(mono, { name, newName }) {
+export async function renameBranch(mono, { name, newName, renameRemote = false }) {
   const others = await readEach(
     mono.leftOut.filter(({ missing }) => !missing),
     async (repository) => ((await git.hasLocalBranch(repository.path, name)) ? repository : null),
   );
+  const renamed = [...mono.members, ...others.filter(Boolean)];
   await allOrNone(
-    [...mono.members, ...others.filter(Boolean)],
+    renamed,
     ({ path }) => git.renameBranch(path, { name, newName }),
     ({ path }) => git.renameBranch(path, { name: newName, newName: name }),
     (member) => `No branch was renamed, because ${member.name} could not rename ${name}.`,
   );
   // The members are found by the branch they are on, which now has its new name.
   if (name === mono.branch) await mono.setBranch(newName);
+  if (!renameRemote) return;
+
+  const tracking = await readEach(renamed, async (repository) =>
+    (await git.hasLiveUpstream(repository.path, newName)) ? repository : null,
+  );
+  await forEachMember(
+    tracking.filter(Boolean),
+    ({ path }) => git.renameUpstream(path, { name: newName }),
+    { doneIn: `Renamed ${name} to ${newName} everywhere, and on the remote in` },
+  );
 }
 
 export async function deleteBranch(mono, options) {

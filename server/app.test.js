@@ -1262,6 +1262,97 @@ describe('staging parts of a file', () => {
     expect(stagedDiff()).toBe('');
   });
 
+  /** Discards the unstaged diff lines that `matches` picks, by their text. */
+  const discardMatching = async (file, matches, options = {}) => {
+    const { diff, hash } = await readDiff(file, options);
+    const lines = diff.split('\n').flatMap((text, index) => (matches(text) ? [index] : []));
+    return request('POST', `${repo.api}/discard-lines`, { path: file, hash, lines, ...options });
+  };
+  const workContent = (file) => fs.readFile(path.join(repo.work, file), 'utf8');
+
+  it('discards one changed line and keeps the others', async () => {
+    await write('numbers.txt', NUMBERS.with(1, 'second').with(24, 'twenty-fifth'));
+
+    const { status } = await discardMatching('numbers.txt', (text) =>
+      ['-line 2', '+second'].includes(text),
+    );
+
+    expect(status).toBe(204);
+    expect(await workContent('numbers.txt')).toBe(asFile(NUMBERS.with(24, 'twenty-fifth')));
+    expect(stagedDiff()).toBe('');
+  });
+
+  it('discards one added line out of several in the same hunk', async () => {
+    await write('numbers.txt', [...NUMBERS.slice(0, 5), 'keep', 'drop', ...NUMBERS.slice(5)]);
+
+    await discardMatching('numbers.txt', (text) => text === '+drop');
+
+    expect(await workContent('numbers.txt')).toBe(
+      asFile([...NUMBERS.slice(0, 5), 'keep', ...NUMBERS.slice(5)]),
+    );
+  });
+
+  it('brings back a deleted line', async () => {
+    await write('numbers.txt', NUMBERS.toSpliced(4, 2));
+
+    await discardMatching('numbers.txt', (text) => text === '-line 5');
+
+    expect(await workContent('numbers.txt')).toBe(asFile(NUMBERS.toSpliced(5, 1)));
+  });
+
+  it('discards against what is staged, leaving the index alone', async () => {
+    await write('numbers.txt', NUMBERS.with(1, 'second'));
+    git(repo.work, 'add', '--all');
+    await write('numbers.txt', NUMBERS.with(1, 'second').with(24, 'twenty-fifth'));
+
+    await discardMatching('numbers.txt', (text) => text === '+twenty-fifth' || text === '-line 25');
+
+    expect(await workContent('numbers.txt')).toBe(asFile(NUMBERS.with(1, 'second')));
+    expect(indexContent('numbers.txt')).toBe(asFile(NUMBERS.with(1, 'second')).trim());
+  });
+
+  it('discards part of a new file', async () => {
+    await write('new.txt', ['one', 'two', 'three']);
+
+    const { status } = await discardMatching('new.txt', (text) => text === '+two', {
+      untracked: true,
+    });
+
+    expect(status).toBe(204);
+    expect(await workContent('new.txt')).toBe('one\nthree\n');
+  });
+
+  it('discards lines when git converts line endings', async () => {
+    git(repo.work, 'config', 'core.autocrlf', 'true');
+    await fs.writeFile(path.join(repo.work, 'numbers.txt'), asFile(NUMBERS).replaceAll('\n', '\r\n'));
+    await fs.appendFile(path.join(repo.work, 'numbers.txt'), 'keep\r\ndrop\r\n');
+
+    const { status } = await discardMatching('numbers.txt', (text) => text.startsWith('+drop'));
+
+    expect(status).toBe(204);
+    expect(await workContent('numbers.txt')).toBe(
+      asFile([...NUMBERS, 'keep']).replaceAll('\n', '\r\n'),
+    );
+  });
+
+  it('refuses to discard from a diff that has since changed', async () => {
+    await write('numbers.txt', NUMBERS.with(1, 'second'));
+    const { diff, hash } = await readDiff('numbers.txt');
+    const lines = diff.split('\n').flatMap((text, index) => (text === '+second' ? [index] : []));
+    await write('numbers.txt', ['edited meanwhile', ...NUMBERS.with(1, 'second')]);
+
+    const { status } = await request('POST', `${repo.api}/discard-lines`, {
+      path: 'numbers.txt',
+      hash,
+      lines,
+    });
+
+    expect(status).toBe(409);
+    expect(await workContent('numbers.txt')).toBe(
+      asFile(['edited meanwhile', ...NUMBERS.with(1, 'second')]),
+    );
+  });
+
   it('rejects malformed line lists', async () => {
     await write('numbers.txt', NUMBERS.with(1, 'second'));
     const { hash } = await readDiff('numbers.txt');
@@ -2229,6 +2320,52 @@ describe('acting on a commit', () => {
     expect((await post('/branches/rename', { name: 'topic', newName: 'feature/topic' })).status).toBe(204);
     expect(git(repo.work, 'branch', '--list', 'topic')).toBe('');
     expect(git(repo.work, 'rev-parse', 'feature/topic')).toBe(tip);
+  });
+
+  it('renames a branch on its remote too, when asked', async () => {
+    git(repo.work, 'switch', '--create', 'topic');
+    await writeAndCommit(repo.work, 'topic.txt', 'topic\n', 'Topic');
+    git(repo.work, 'push', '--set-upstream', 'origin', 'topic');
+    const tip = git(repo.work, 'rev-parse', 'topic');
+
+    const { status } = await post('/branches/rename', {
+      name: 'topic',
+      newName: 'feature/topic',
+      renameRemote: true,
+    });
+
+    expect(status).toBe(204);
+    expect(git(repo.remote, 'branch', '--list')).not.toContain(' topic');
+    expect(git(repo.remote, 'rev-parse', 'feature/topic')).toBe(tip);
+    expect(git(repo.work, 'rev-parse', '--abbrev-ref', 'feature/topic@{upstream}')).toBe(
+      'origin/feature/topic',
+    );
+  });
+
+  it('leaves the remote branch alone unless asked', async () => {
+    git(repo.work, 'branch', 'topic');
+    git(repo.work, 'push', '--set-upstream', 'origin', 'topic');
+
+    await post('/branches/rename', { name: 'topic', newName: 'renamed' });
+
+    expect(git(repo.remote, 'branch', '--list', 'topic')).not.toBe('');
+    expect(git(repo.work, 'rev-parse', '--abbrev-ref', 'renamed@{upstream}')).toBe('origin/topic');
+  });
+
+  it('refuses to rename a branch on its remote over one that is there', async () => {
+    git(repo.work, 'branch', 'topic');
+    git(repo.work, 'push', '--set-upstream', 'origin', 'topic');
+    git(repo.work, 'push', 'origin', 'topic:taken');
+    git(repo.work, 'fetch', 'origin');
+
+    const { status } = await post('/branches/rename', {
+      name: 'topic',
+      newName: 'taken',
+      renameRemote: true,
+    });
+
+    expect(status).toBe(400);
+    expect(git(repo.work, 'branch', '--list', 'topic')).not.toBe('');
   });
 
   it('refuses to rename a branch onto one that exists', async () => {

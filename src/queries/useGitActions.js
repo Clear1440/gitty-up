@@ -55,7 +55,8 @@ const GIT_ACTIONS = {
   renameBranch: {
     run: gitApi.renameBranch,
     title: 'Rename branch',
-    success: ({ name, newName }) => `Renamed ${name} to ${newName}`,
+    success: ({ name, newName, renameRemote }) =>
+      `Renamed ${name} to ${newName}${renameRemote ? ', here and on the remote' : ''}`,
   },
   deleteBranch: {
     run: gitApi.deleteBranch,
@@ -120,6 +121,11 @@ const GIT_ACTIONS = {
   stage: { run: gitApi.stage, title: 'Stage' },
   unstage: { run: gitApi.unstage, title: 'Unstage' },
   stageLines: { run: gitApi.stageLines, title: 'Stage lines' },
+  discardLines: {
+    run: gitApi.discardLines,
+    title: 'Discard lines',
+    success: ({ lines }) => `Discarded ${TextHelper.countOf(lines.length, 'line')}`,
+  },
   resolveConflict: {
     run: gitApi.resolveConflict,
     title: 'Resolve conflict',
