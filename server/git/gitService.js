@@ -367,6 +367,25 @@ export async function stageLines(repoPath, { lines, hash, ...diffOptions }) {
   );
 }
 
+/**
+ * Throws away some lines of a file's unstaged changes, putting them back as they are in
+ * the index. `lines` are line indexes into the unstaged diff that `hash` identifies. Only
+ * the working tree changes: what is staged stays.
+ */
+export async function discardLines(repoPath, { lines, hash, ...diffOptions }) {
+  const options = { ...diffOptions, staged: false };
+  const diff = await getDiff(repoPath, options);
+  if (hashDiff(diff) !== hash) {
+    throw ApiError.gitFailure('This file has changed. Check the updated diff, then try again.');
+  }
+
+  // Built against the working tree, the side that keeps the lines, then applied backwards.
+  const patch = buildPatch(diff, lines, { reverse: true });
+  if (!patch) throw ApiError.badRequest('Select at least one changed line.');
+
+  await runGit(repoPath, ['apply', '--whitespace=nowarn', '--reverse', '-'], { input: patch });
+}
+
 /** Turns a failed command into a clearer error when it stopped on conflicts. */
 async function reportingConflicts(
   repoPath,
@@ -511,8 +530,12 @@ export async function createBranch(repoPath, { name, startPoint = 'HEAD', switch
  * Renames a local branch. Git moves its history, reflog and upstream setting along with
  * it, so it still pushes to and pulls from the branch it did before. It refuses a name
  * that another branch already has.
+ *
+ * With `renameRemote`, the branch on the remote takes the new name as well: see
+ * renameUpstream. That is checked before anything changes, but the remote can still turn
+ * it down, in which case the local branch keeps its new name.
  */
-export async function renameBranch(repoPath, { name, newName }) {
+export async function renameBranch(repoPath, { name, newName, renameRemote = false }) {
   assertRef(name);
   await assertValidBranchName(repoPath, newName);
   if (name === newName) return;
@@ -522,7 +545,64 @@ export async function renameBranch(repoPath, { name, newName }) {
   if (await hasLocalBranch(repoPath, newName)) {
     throw ApiError.badRequest(`A branch named ${newName} already exists.`);
   }
+  if (renameRemote) await findRenamableUpstream(repoPath, name, newName);
   await runGit(repoPath, ['branch', '--move', name, newName]);
+  if (!renameRemote) return;
+
+  try {
+    await renameUpstream(repoPath, { name: newName });
+  } catch (error) {
+    throw ApiError.gitFailure(
+      `Renamed ${name} to ${newName}, but not on its remote. ${error.message}`,
+      error.details,
+    );
+  }
+}
+
+/**
+ * The remote branch that `name` tracks, as long as it can take the name `newName`: it
+ * must still be there, not be protected, and no branch of that name may be on the remote.
+ */
+async function findRenamableUpstream(repoPath, name, newName) {
+  const upstream = await findLiveUpstream(repoPath, name);
+  const { remote: remoteBranches } = await listBranchRefs(repoPath);
+  const target = remoteBranches.find((candidate) => candidate.name === upstream);
+  if (!target?.remote) throw ApiError.badRequest(`Unknown remote branch: ${upstream}`);
+  if (GitRefHelper.isProtectedOnRemote(target.localName)) {
+    throw ApiError.badRequest(
+      `${target.localName} is protected and can't be renamed on ${target.remote}.`,
+    );
+  }
+  const renamed = `${target.remote}/${newName}`;
+  if (renamed !== upstream && remoteBranches.some((candidate) => candidate.name === renamed)) {
+    throw ApiError.badRequest(`${renamed} already exists.`);
+  }
+  return target;
+}
+
+/**
+ * Gives the remote branch that local branch `name` tracks the same name: what the remote
+ * branch holds is pushed under the new name, `name` tracks that instead, and the old name
+ * is deleted from the remote. Commits not pushed yet stay local, as before.
+ */
+export async function renameUpstream(repoPath, { name }) {
+  const target = await findRenamableUpstream(repoPath, name, name);
+  if (target.localName === name) return;
+
+  const newRef = GitRefHelper.toLocalRef(name);
+  const source = GitRefHelper.toRemoteRef(target.name);
+  // An empty lease refuses to overwrite a branch of that name that is on the remote.
+  await runGit(
+    repoPath,
+    ['push', `--force-with-lease=${newRef}:`, target.remote, `${source}:${newRef}`],
+    { timeout: NETWORK_TIMEOUT_MS },
+  );
+  await runGit(repoPath, ['branch', `--set-upstream-to=${target.remote}/${name}`, name]);
+  await runGit(
+    repoPath,
+    ['push', target.remote, '--delete', GitRefHelper.toLocalRef(target.localName)],
+    { timeout: NETWORK_TIMEOUT_MS },
+  );
 }
 
 /** With `deleteRemote`, also deletes the branch's upstream, once the local branch is gone. */
@@ -543,6 +623,13 @@ export async function deleteBranch(repoPath, { name, force = false, deleteRemote
       error.details,
     );
   }
+}
+
+/** Whether local branch `name` tracks a remote branch that is still there. */
+export async function hasLiveUpstream(repoPath, name) {
+  const { local } = await listBranchRefs(repoPath);
+  const branch = local.find((candidate) => candidate.name === name);
+  return Boolean(branch?.upstream && !branch.upstreamGone);
 }
 
 async function findLiveUpstream(repoPath, name) {

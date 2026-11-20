@@ -2,7 +2,6 @@ import {
   CheckCircleFilled,
   CloudOutlined,
   DisconnectOutlined,
-  FolderOutlined,
   LaptopOutlined,
   MoreOutlined,
 } from '@ant-design/icons';
@@ -10,14 +9,22 @@ import { Button, Dropdown } from 'antd';
 import clsx from 'clsx';
 import { useNavigate } from 'react-router';
 import { AheadBehind } from '../../components/AheadBehind.jsx';
+import { TreeIcon } from '../../components/TreeIcon.jsx';
 import { paths } from '../../paths.js';
 import { TextHelper } from '../../utils/TextHelper.js';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { useBranchMenu } from './useBranchMenu.js';
 import styles from './BranchRow.module.css';
 
+/** The folder of another working tree a local branch is checked out in, if it is. */
+const otherWorktreeOf = (branch, kind) =>
+  kind === 'local' && !branch.isCurrent ? branch.worktreePath : null;
+
 function BranchIcon({ branch, kind }) {
   if (branch.isCurrent) return <CheckCircleFilled className={styles.iconCurrent} />;
+  if (otherWorktreeOf(branch, kind)) {
+    return <TreeIcon className={styles.iconWorktree} aria-label="Checked out in another worktree" />;
+  }
   return kind === 'remote' ? <CloudOutlined /> : <LaptopOutlined />;
 }
 
@@ -37,6 +44,7 @@ export function BranchRow({ branch, label, kind, depth, selected }) {
   const navigate = useNavigate();
   const { repository } = useRepositoryContext();
   const { items, checkout } = useBranchMenu(branch, kind);
+  const worktreePath = otherWorktreeOf(branch, kind);
 
   // The time makes every click a new request, so a branch scrolled away from can be found again.
   const focus = () => {
@@ -65,7 +73,8 @@ export function BranchRow({ branch, label, kind, depth, selected }) {
           title={[
             branch.isCurrent ? `${branch.name} (checked out)` : branch.name,
             describeUpstream(branch, kind),
-            !branch.isCurrent && 'Double-click to check out',
+            worktreePath && `Checked out in ${worktreePath}. Double-click to open it.`,
+            !branch.isCurrent && !worktreePath && 'Double-click to check out',
           ]
             .filter(Boolean)
             .join('\n')}
@@ -79,13 +88,6 @@ export function BranchRow({ branch, label, kind, depth, selected }) {
             <span className={styles.goneMark}>
               <DisconnectOutlined /> gone
             </span>
-          )}
-          {kind === 'local' && !branch.isCurrent && branch.worktreePath && (
-            <FolderOutlined
-              className={styles.worktree}
-              title={`Checked out in ${branch.worktreePath}. Double-click to open it.`}
-              aria-label="Checked out in another worktree"
-            />
           )}
         </button>
         <Dropdown menu={menu} trigger={['click']}>

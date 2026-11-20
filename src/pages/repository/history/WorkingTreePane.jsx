@@ -246,6 +246,11 @@ export function WorkingTreePane({ onClose, resizeHandle }) {
     });
   const [choice, setChoice] = useState(null);
   const selected = findSelectedFile(status, choice);
+  // The file shown first is held on to as if picked, so staging or unstaging some of its
+  // lines, which can put it in both lists, leaves it on screen rather than the other copy.
+  if (selected && (choice?.path !== selected.path || choice?.staged !== selected.staged)) {
+    setChoice({ path: selected.path, staged: selected.staged });
+  }
   const place = status.branch
     ? `On ${status.branch}`
     : `Detached at ${CommitHelper.shortHash(status.headHash)}`;

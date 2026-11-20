@@ -1,12 +1,12 @@
 import {
   CheckCircleFilled,
-  FolderOutlined,
   LockOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
 import { Button, Tag } from 'antd';
 import clsx from 'clsx';
 import { MenuRow } from '../../components/MenuRow.jsx';
+import { TreeIcon } from '../../components/TreeIcon.jsx';
 import { CommitHelper } from './CommitHelper.js';
 import { useWorktreeActions } from './useWorktreeActions.jsx';
 import styles from './WorktreeList.module.css';
@@ -14,7 +14,7 @@ import styles from './WorktreeList.module.css';
 function WorktreeIcon({ worktree }) {
   if (worktree.isCurrent) return <CheckCircleFilled className={styles.iconCurrent} />;
   if (worktree.prunable) return <WarningOutlined className={styles.iconWarning} />;
-  return <FolderOutlined className={styles.icon} />;
+  return <TreeIcon className={styles.icon} />;
 }
 
 function describe(worktree) {

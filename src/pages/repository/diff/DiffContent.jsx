@@ -1,6 +1,6 @@
 import { Segmented } from 'antd';
 import clsx from 'clsx';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useStoredState } from '../../../utils/useStoredState.js';
 import styles from '../DiffView.module.css';
 import { HunkRow, LineRow, PairRow } from './DiffRows.jsx';
@@ -83,10 +83,25 @@ function PlainDiff({ diff }) {
   );
 }
 
+/** The changed line under the pointer or focused, by its id, or null. */
+function useActiveLine() {
+  const [activeId, setActiveId] = useState(null);
+  const follow = (event) => {
+    const id = event.target.closest?.('[data-line-id]')?.dataset.lineId;
+    const next = id === undefined ? null : Number(id);
+    if (next !== activeId) setActiveId(next);
+  };
+  return {
+    activeId,
+    handlers: { onMouseOver: follow, onFocus: follow, onMouseLeave: () => setActiveId(null) },
+  };
+}
+
 /**
  * Renders a parsed diff in one of the views. Without `onApply` it is read-only, with
  * nothing to click or select and no hunk actions. With it, a click on a changed line
- * calls `onApply` with just that line, and a shift or ctrl click calls `onToggle`.
+ * calls `onApply` with just that line, and a shift or ctrl click calls `onToggle`. With
+ * `onDiscard` too, hunks and lines offer to throw their changes away.
  */
 export function DiffContent({
   diff,
@@ -98,6 +113,7 @@ export function DiffContent({
   lineLabel,
   disabled,
   onApply,
+  onDiscard,
 }) {
   const { layout } = toDiffView(view);
   const annotated = useMemo(() => annotateWordChanges(hunks, { maxRows: MAX_ROWS }), [hunks]);
@@ -106,20 +122,29 @@ export function DiffContent({
     // Outside the hunk view, a hunk row only exists to hold its action.
     return onApply ? allRows : allRows.filter((row) => row.type !== 'hunk' || row.text);
   }, [annotated, view, onApply]);
+  const { activeId, handlers } = useActiveLine();
 
   const actions = useMemo(
     () =>
       onApply && !disabled
-        ? { onToggle, onStage: (id) => onApply([id]), stageLabel: lineLabel ?? 'Stage' }
+        ? {
+            onToggle,
+            onStage: (id) => onApply([id]),
+            onDiscard,
+            stageLabel: lineLabel ?? 'Stage',
+          }
         : {},
-    [onApply, onToggle, disabled, lineLabel],
+    [onApply, onDiscard, onToggle, disabled, lineLabel],
   );
 
   if (hunks.length === 0) return <PlainDiff diff={diff} />;
 
   return (
     <>
-      <div className={clsx(styles.diff, layout === 'split' && styles.splitDiff)}>
+      <div
+        className={clsx(styles.diff, layout === 'split' && styles.splitDiff)}
+        {...(onApply ? handlers : {})}
+      >
         {rows.slice(0, MAX_ROWS).map((row) => {
           if (row.type === 'hunk') {
             return (
@@ -130,10 +155,12 @@ export function DiffContent({
                 label={hunkLabel}
                 disabled={disabled}
                 onApply={onApply}
+                onDiscard={onDiscard}
               />
             );
           }
           if (row.type === 'pair') {
+            const isActive = row.left?.id === activeId || row.right?.id === activeId;
             return (
               <PairRow
                 key={row.key}
@@ -141,6 +168,7 @@ export function DiffContent({
                 right={row.right}
                 leftSelected={row.left ? selected.has(row.left.id) : false}
                 rightSelected={row.right ? selected.has(row.right.id) : false}
+                activeId={isActive ? activeId : null}
                 actions={actions}
               />
             );
@@ -150,6 +178,7 @@ export function DiffContent({
               key={row.key}
               line={row.line}
               selected={selected.has(row.line.id)}
+              active={row.line.id === activeId}
               actions={actions}
             />
           );
