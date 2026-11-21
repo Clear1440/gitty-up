@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { RelativeTime } from '../../../components/RelativeTime.jsx';
 import { useCommitDetails, useCommitDiff } from '../../../queries/git.js';
 import { CommitHelper } from '../CommitHelper.js';
-import { DiffContent, DiffViewToggle, useDiffViewMode } from '../diff/DiffContent.jsx';
+import { DiffContent, DiffViewToggle, EmptyDiff, useDiffViewMode } from '../diff/DiffContent.jsx';
 import { parseDiff } from '../diff/diffRows.js';
 import { FileSection } from '../FileSection.jsx';
 import { useRepositoryContext } from '../RepositoryContext.js';
@@ -14,20 +14,20 @@ import { FilesAndDiff } from './FilesAndDiff.jsx';
 
 function CommitFileDiff({ hash, file }) {
   const { repository } = useRepositoryContext();
-  const { view, changeView, fullFile } = useDiffViewMode();
+  const { view, changeView, fullFile, ignoreWhitespace } = useDiffViewMode();
   const { path, originalPath } = file;
   const { data, error, isPending } = useCommitDiff(
     repository.id,
     hash,
     { path, originalPath },
-    { fullFile },
+    { fullFile, ignoreWhitespace },
   );
   const hunks = useMemo(() => parseDiff(data?.diff ?? ''), [data]);
 
   const renderContent = () => {
     if (isPending) return <Spin className="centered" />;
     if (error) return <Alert type="error" showIcon title={error.message} />;
-    if (!data.diff.trim()) return <Empty className="centered" description="No text changes" />;
+    if (!data.diff.trim()) return <EmptyDiff ignoreWhitespace={ignoreWhitespace} />;
     return <DiffContent diff={data.diff} hunks={hunks} view={view} />;
   };
 

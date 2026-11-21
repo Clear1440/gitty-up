@@ -1,0 +1,57 @@
+import { TagOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router';
+import { MenuRow } from '../../components/MenuRow.jsx';
+import { RelativeTime } from '../../components/RelativeTime.jsx';
+import { paths } from '../../paths.js';
+import { useRepositoryContext } from './RepositoryContext.js';
+import { TagHelper } from './TagHelper.js';
+import { useTagMenu } from './useTagMenu.js';
+import styles from './TagList.module.css';
+
+function TagRow({ tag }) {
+  const navigate = useNavigate();
+  const { repository } = useRepositoryContext();
+  const items = useTagMenu(tag.name, { show: true });
+
+  // The time makes every click a new request, so a tag scrolled away from can be found again.
+  const show = () =>
+    navigate(paths.focusTag(repository.id, tag), { state: { focusBranch: Date.now() } });
+
+  return (
+    <MenuRow
+      items={items}
+      className={styles.row}
+      onActivate={show}
+      menuLabel={`Actions for tag ${tag.name}`}
+      menuClassName={styles.menu}
+    >
+      <TagOutlined className={styles.icon} />
+      {/* The whole row is clickable. This is what keyboards and screen readers use. */}
+      <button
+        type="button"
+        className={styles.text}
+        title={TagHelper.describe(tag)}
+        aria-label={`Show tag ${tag.name} in the history`}
+      >
+        <span className={styles.message}>{tag.name}</span>
+        <span className={styles.meta}>
+          {tag.commit} · <RelativeTime date={tag.date} />
+        </span>
+      </button>
+    </MenuRow>
+  );
+}
+
+/** `tags` are the ones to show, newest first. `filtered` says why the list may be empty. */
+export function TagList({ tags, filtered = false }) {
+  if (tags.length === 0) {
+    return <p className={styles.empty}>{filtered ? 'No matching tags' : 'No tags'}</p>;
+  }
+  return (
+    <ul className={styles.list}>
+      {tags.map((tag) => (
+        <TagRow key={tag.name} tag={tag} />
+      ))}
+    </ul>
+  );
+}

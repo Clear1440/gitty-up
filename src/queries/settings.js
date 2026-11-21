@@ -43,6 +43,15 @@ export function useSetMcp() {
   });
 }
 
+/** Replaces the MCP server's token, so every AI tool needs its config again. */
+export function useRegenerateMcpToken() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: settingsApi.regenerateMcpToken,
+    onSuccess: (settings) => queryClient.setQueryData(queryKeys.settings(), settings),
+  });
+}
+
 /**
  * Moves the data to another folder. Everything cached came from the old folder, so
  * it is all thrown away and read again.

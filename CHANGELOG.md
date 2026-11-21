@@ -6,6 +6,66 @@ version's section.
 
 ## Unreleased
 
+### Added
+
+- **Create, push and delete tags.** **Create tag…** is in a commit's menu in the history. A
+  message makes the tag annotated, and a checkbox pushes it to the remote straight away. Tags
+  have their own section in the sidebar, and a right-click menu there and on a tag's label in
+  the history: check it out, push it, copy its name or delete it. Deleting asks first, and
+  offers to delete it from the remote too when the remote has it. Clicking a tag in the sidebar
+  scrolls to its commit. Creating a tag can be undone with Ctrl+Z (Cmd+Z). Mono repo tabs leave
+  tags to each repository.
+- **Tags for AI tools.** With full access, `delete_tag` deletes a local tag and `push_tag`
+  pushes one, never forcing. `create_tag` now makes the same checks as the app's own dialog.
+- **Ignore whitespace.** The new button beside **Inline** and **Split** hides changes to
+  spaces and tabs in every diff, as `git diff -w` does, and is remembered next time. A file
+  whose only changes are whitespace says so. While it is on, single lines and hunks can't be
+  staged, unstaged or discarded, as the lines shown no longer match the file. Whole files
+  still can.
+- **See what AI tools did, and undo it.** **Settings › AI tools › Activity** lists every call
+  AI tools make through the MCP server: when, which tool, which repository, and whether it
+  worked, with the details a click away. It shows the changes they made unless you pick
+  **Everything**. Commits, merges, rebases, resets, pulls, checkouts, new branches, tags and
+  stashes can be undone from there, once Gitty Up has checked nothing has moved since. It says
+  exactly what undoing will do and asks first, and never touches a remote. The last 500 changes
+  are kept between launches; **Clear the log** empties it.
+- **Recover lost work from the reflog.** The new **Reflog** button lists where HEAD has been,
+  newest first. Commits left behind by a reset, a rebase, an amend or a deleted branch are
+  marked **Not on any branch**, and a switch shows only those. Open one to see its files, then
+  make a **New branch from here**, check it out, cherry-pick it or reset to it. Ctrl+Z only
+  takes back the latest change made in the app, but the reflog goes back much further.
+
+- **Create a pull request.** A branch's menu, in the sidebar or on its label in the history,
+  has **Create pull request…**. Pick the branch it goes into, and change the title and
+  description filled in from its commits, or make it a draft. A branch that isn't pushed, or
+  is ahead of its remote, says so and offers to push first. On GitHub with a token it is
+  created from the app, with a link to it. Otherwise the host's page opens in the browser,
+  filled in.
+- **Open pull request** in a branch's menu, for a branch that has one.
+- **GitLab and Bitbucket.** Open merge requests on gitlab.com and pull requests on
+  bitbucket.org show on branch labels too, and **Create merge request…** opens the host's
+  page for one. Tokens come from `GITLAB_TOKEN` or `BITBUCKET_TOKEN`, or what git pushes with.
+
+### Changed
+
+- **AI tools need a token.** The MCP server now turns away any request without the token
+  shown under **Settings › AI tools**, so other programs on this computer can no longer
+  connect. **AI tools you have already set up stop connecting until you copy their config
+  again** from **Settings › AI tools**: every snippet now holds the token. It is a secret, so
+  the settings point each app at its config for every project, not a project's own file that
+  may be shared. **Regenerate token** makes a new one, after asking, and every AI tool then
+  needs its config again. To keep old configs working, untick **Require a token**: after a
+  warning, any program on this computer can connect without one, as before.
+- **Reviews and checks on pull request labels.** On GitHub, a branch's pull request label
+  marks failing checks, changes requested, checks still running, or all clear, and its
+  tooltip says which. This needs a token (`GH_TOKEN`, `GITHUB_TOKEN` or what git pushes
+  with). Lists are kept for a minute, so switching tabs doesn't ask GitHub again.
+
+### Fixed
+
+- Locking, unlocking and removing a worktree finds it when its folder is given through a
+  symlink, such as /var on macOS, which git names by the folder it points to.
+
 ## 0.4.0 - 2026-11-20
 
 ### Added

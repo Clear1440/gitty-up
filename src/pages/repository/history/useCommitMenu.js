@@ -99,6 +99,11 @@ export function useCommitMenu(commit) {
       onClick: () => openDialog('createBranch', { commit: { hash, shortHash, subject } }),
     },
     {
+      key: 'new-tag',
+      label: 'Create tag…',
+      onClick: () => openDialog('createTag', { hash, shortHash }),
+    },
+    {
       key: 'patch',
       label: 'Save as patch…',
       onClick: () => savePatch({ source: 'commit', hash }),

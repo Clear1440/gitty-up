@@ -498,20 +498,7 @@ export const GIT_TOOLS = [
     },
     async run(store, args) {
       const repository = await findRepository(store, args);
-      const output = await runGit(repository.path, [
-        'for-each-ref',
-        '--sort=-creatordate',
-        '--format=%(refname:strip=2)%00%(*objectname:short)%00%(objectname:short)%00%(creatordate:iso-strict)%00%(subject)',
-        'refs/tags',
-      ]);
-      return output
-        .split('\n')
-        .filter(Boolean)
-        .map((line) => {
-          const [name, taggedCommit, object, date, subject] = line.split('\0');
-          // Only an annotated tag points at a commit through a tag object of its own.
-          return { name, commit: taggedCommit || object, annotated: Boolean(taggedCommit), date, subject };
-        });
+      return git.getTags(repository.path);
     },
   },
   {

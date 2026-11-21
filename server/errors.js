@@ -55,6 +55,11 @@ export class ApiError extends Error {
     return new ApiError(409, 'UPSTREAM_MISMATCH', message, details);
   }
 
+  /** A hosting service such as GitHub turned a request down, and said why. */
+  static hostRefused(message) {
+    return new ApiError(409, 'HOST_REFUSED', message);
+  }
+
   /** Anything unexpected. The real error is logged, never sent. */
   static internal() {
     return new ApiError(500, 'INTERNAL', 'Unexpected server error.');

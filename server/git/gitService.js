@@ -1,7 +1,9 @@
+import { realpathSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { ApiError } from '../errors.js';
+import { AsyncHelper } from '../utils/AsyncHelper.js';
 import { FileSystemHelper } from '../utils/FileSystemHelper.js';
 import { HashHelper } from '../utils/HashHelper.js';
 import { TextHelper } from '../utils/TextHelper.js';
@@ -10,18 +12,27 @@ import {
   BRANCH_FORMAT,
   CHECKOUT_FORMAT,
   COMMIT_LOG_FLAGS,
+  REFLOG_FORMAT,
   STASH_FORMAT,
+  TAG_FORMAT,
   parseBranches,
   parseCheckouts,
   parseCommits,
   parseNameStatus,
+  parseReflog,
   parseStashes,
   parseStatus,
+  parseTags,
   parseWorktrees,
 } from './parsers.js';
 import { buildPatch } from './patch.js';
-import { listPullRequests } from './pullRequests.js';
-import { NETWORK_TIMEOUT_MS, runGit, runGitOnPaths } from './runGit.js';
+import {
+  canCreatePullRequests,
+  createPullRequest,
+  describeRemoteHost,
+  listPullRequests,
+} from './pullRequests.js';
+import { GIT_CONCURRENCY, NETWORK_TIMEOUT_MS, runGit, runGitOnPaths } from './runGit.js';
 
 const OPERATION_MARKERS = [
   { operation: 'rebase', marker: 'rebase-merge' },
@@ -40,9 +51,14 @@ const HUNK_CONTEXT_LINES = 3;
 // More lines than any file has, which makes a diff show the whole file.
 const FULL_FILE_CONTEXT_LINES = 100_000_000;
 
-/** Pins down everything a user's config could change, so the output can be parsed and applied. */
-const diffFlags = (fullFile) => [
+/**
+ * Pins down everything a user's config could change, so the output can be parsed and applied.
+ * `ignoreWhitespace` leaves out changes to spaces and tabs, as `git diff -w` does. Such a
+ * diff is only for reading: its lines can't be staged, as it doesn't match the file.
+ */
+const diffFlags = ({ fullFile = false, ignoreWhitespace = false } = {}) => [
   `--unified=${fullFile ? FULL_FILE_CONTEXT_LINES : HUNK_CONTEXT_LINES}`,
+  ...(ignoreWhitespace ? ['--ignore-all-space'] : []),
   '--inter-hunk-context=0',
   '--no-color',
   '--no-ext-diff',
@@ -63,6 +79,15 @@ async function assertValidBranchName(repoPath, name) {
     await runGit(repoPath, ['check-ref-format', '--branch', name]);
   } catch {
     throw ApiError.badRequest(`"${name}" is not a valid branch name.`);
+  }
+}
+
+async function assertValidTagName(repoPath, name) {
+  assertRef(name);
+  try {
+    await runGit(repoPath, ['check-ref-format', GitRefHelper.toTagRef(name)]);
+  } catch {
+    throw ApiError.badRequest(`"${name}" is not a valid tag name.`);
   }
 }
 
@@ -158,6 +183,172 @@ async function getRemoteUrl(repoPath) {
 
 export async function getPullRequests(repoPath) {
   return listPullRequests(repoPath, await getRemoteUrl(repoPath));
+}
+
+/**
+ * The remotes on a hosting service Gitty Up can open pull requests on, as
+ * `{ defaultRemote, hosts: { origin: { id, name, prefills } } }`. Reads no network.
+ */
+export async function getRemoteHosts(repoPath) {
+  const remotes = await getRemotes(repoPath);
+  const urls = await Promise.all(
+    remotes.map((remote) => runGit(repoPath, ['remote', 'get-url', remote]).catch(() => '')),
+  );
+  const hosts = {};
+  remotes.forEach((remote, index) => {
+    const host = describeRemoteHost(urls[index].trim());
+    if (host) hosts[remote] = host;
+  });
+  return { defaultRemote: GitRefHelper.pickDefaultRemote(remotes), hosts };
+}
+
+/**
+ * Where a pull request for `branch` would come from: the remote it is on and its name
+ * there, whether it is pushed, and how many commits it has that its upstream does not.
+ * A remote branch, such as origin/topic, is on its remote already. A local one with no
+ * upstream would be pushed to the default remote under its own name.
+ */
+async function findPullRequestHead(repoPath, { branch, remote: isRemote = false }) {
+  assertRef(branch);
+  const [{ local, remote }, remotes] = await Promise.all([
+    listBranchRefs(repoPath),
+    getRemotes(repoPath),
+  ]);
+
+  if (isRemote) {
+    const found = remote.find(({ name }) => name === branch);
+    if (!found?.remote) throw ApiError.notFound(`There is no remote branch ${branch}.`);
+    return {
+      remote: found.remote,
+      headName: found.localName,
+      ref: GitRefHelper.toRemoteRef(found.name),
+      pushed: true,
+      ahead: 0,
+    };
+  }
+
+  const found = local.find(({ name }) => name === branch);
+  if (!found) throw ApiError.notFound(`There is no branch ${branch}.`);
+  const ref = GitRefHelper.toLocalRef(branch);
+  if (found.upstream && !found.upstreamGone) {
+    const upstream = GitRefHelper.splitRemoteName(found.upstream, remotes);
+    if (upstream.remote) {
+      return {
+        remote: upstream.remote,
+        headName: upstream.localName,
+        ref,
+        pushed: true,
+        ahead: found.ahead,
+      };
+    }
+  }
+  return {
+    remote: GitRefHelper.pickDefaultRemote(remotes),
+    headName: branch,
+    ref,
+    pushed: false,
+    ahead: 0,
+  };
+}
+
+async function getRemoteUrlOf(repoPath, remote) {
+  return (await runGit(repoPath, ['remote', 'get-url', remote])).trim();
+}
+
+// Enough for a description anyone would read through.
+const MAX_DRAFT_COMMITS = 50;
+
+/**
+ * What a new pull request for `branch` starts out as: the branches it could go into on
+ * the same remote, the one to offer (the remote's default branch, else main or master),
+ * and a title and description from the commits it would bring in. `base` picks another
+ * branch to work those out against.
+ */
+export async function getPullRequestDraft(repoPath, { branch, remote: isRemote, base }) {
+  const head = await findPullRequestHead(repoPath, { branch, remote: isRemote });
+  if (!head.remote) throw ApiError.gitFailure('This repository has no remote.');
+  const remoteUrl = await getRemoteUrlOf(repoPath, head.remote);
+  const host = describeRemoteHost(remoteUrl);
+  if (!host) {
+    throw ApiError.badRequest(`Gitty Up cannot open pull requests on ${head.remote}.`);
+  }
+
+  const { remote: remoteBranches } = await listBranchRefs(repoPath);
+  const bases = remoteBranches
+    .filter(
+      (candidate) => candidate.remote === head.remote && candidate.localName !== head.headName,
+    )
+    .map(({ localName }) => localName);
+  const remoteDefault = await remoteDefaultBranch(repoPath, head.remote);
+  const defaultBase =
+    (bases.includes(remoteDefault) ? remoteDefault : null) ??
+    GitRefHelper.pickMainBranch(bases) ??
+    bases[0] ??
+    null;
+  if (base !== undefined) assertRef(base);
+  const chosenBase = base ?? defaultBase;
+
+  const subjects =
+    chosenBase && bases.includes(chosenBase)
+      ? (
+          await runGit(repoPath, [
+            'log',
+            '--no-merges',
+            '--format=%s',
+            `--max-count=${MAX_DRAFT_COMMITS}`,
+            `${GitRefHelper.toRemoteRef(`${head.remote}/${chosenBase}`)}..${head.ref}`,
+            '--',
+          ])
+        )
+          .split('\n')
+          .filter(Boolean)
+      : [];
+
+  return {
+    branch,
+    remote: head.remote,
+    headName: head.headName,
+    pushed: head.pushed,
+    ahead: head.ahead,
+    host: { ...host, canCreate: await canCreatePullRequests(repoPath, remoteUrl) },
+    bases,
+    defaultBase,
+    base: chosenBase,
+    commitCount: subjects.length,
+    // The newest commit names it, and the description lists them all, oldest first.
+    title: subjects[0] ?? head.headName,
+    body: subjects
+      .toReversed()
+      .map((subject) => `- ${subject}`)
+      .join('\n'),
+  };
+}
+
+/**
+ * Opens a pull request for `branch` into `base` on the remote it is pushed to: on the
+ * host, where its API allows, or else by giving the page that starts it. See
+ * createPullRequest in pullRequests.js. A branch that isn't on its remote is refused,
+ * as this never pushes.
+ */
+export async function openPullRequest(
+  repoPath,
+  { branch, remote: isRemote, base, title, body = '', draft = false },
+) {
+  const head = await findPullRequestHead(repoPath, { branch, remote: isRemote });
+  if (!head.pushed) {
+    throw ApiError.gitFailure(`Push ${branch} before opening a pull request for it.`);
+  }
+  assertRef(base);
+  if (base === head.headName) {
+    throw ApiError.badRequest('A pull request needs a base branch other than its own.');
+  }
+  return createPullRequest(repoPath, await getRemoteUrlOf(repoPath, head.remote), {
+    base,
+    head: head.headName,
+    title,
+    body,
+    draft,
+  });
 }
 
 /** When each branch was last checked out or left. A repository with no commits has no reflog. */
@@ -270,15 +461,89 @@ export async function getSummary(repoPath) {
   };
 }
 
+/** The repository's tags, newest first, with the commit each points at. */
+export async function getTags(repoPath) {
+  return parseTags(
+    await runGit(repoPath, [
+      'for-each-ref',
+      '--sort=-creatordate',
+      `--format=${TAG_FORMAT}`,
+      'refs/tags',
+    ]),
+  );
+}
+
 export async function getStashes(repoPath) {
   return parseStashes(await runGit(repoPath, ['stash', 'list', `--format=${STASH_FORMAT}`]));
 }
 
+const MAX_REFLOG_ENTRIES = 5_000;
+
+/**
+ * The reflog of `ref`, newest first: HEAD's, or a local branch's, by name or as
+ * refs/heads/<name>. Each entry says whether its commit is `reachable`, still on a
+ * branch, remote branch or tag. The ones that are not are the lost work, such as commits
+ * left behind by a reset or amend. A deleted branch's own reflog goes with it, but HEAD's
+ * still lists the commits that were checked out or made on it.
+ *
+ * Reachability costs one command however long the list is. `rev-list` walks back from the
+ * entries' commits, stopping wherever it meets a ref, so it lists only commits no ref
+ * reaches. An entry is lost when its commit is among them. Commits whose objects are gone
+ * (garbage collected) are skipped by `--ignore-missing`, and so show as reachable.
+ */
+export async function getReflog(repoPath, { ref = 'HEAD', limit = 200 } = {}) {
+  assertRef(ref);
+  const max = Math.min(Math.max(Number.parseInt(limit, 10) || 200, 1), MAX_REFLOG_ENTRIES);
+  const isHead = ref === 'HEAD';
+  const branch = ref.replace(/^refs\/heads\//, '');
+  const fullRef = isHead ? 'HEAD' : GitRefHelper.toLocalRef(branch);
+  if (!isHead) {
+    assertRef(branch);
+    if (!(await refExists(repoPath, fullRef))) {
+      throw ApiError.notFound(`There is no branch called ${branch}.`);
+    }
+  } else if (!(await refExists(repoPath, 'HEAD'))) {
+    return [];
+  }
+
+  const output = await runGit(repoPath, [
+    'log',
+    '-g',
+    '--date=iso-strict',
+    `--format=${REFLOG_FORMAT}`,
+    `--max-count=${max}`,
+    fullRef,
+    '--',
+  ]);
+  const entries = parseReflog(output, isHead ? 'HEAD' : branch);
+  if (entries.length === 0) return entries;
+
+  const unique = [...new Set(entries.map(({ hash }) => hash))];
+  const listed = await runGit(
+    repoPath,
+    [
+      'rev-list',
+      '--ignore-missing',
+      // Everything a ref reaches is hidden. The second --not makes the entries' own
+      // commits the ones to list again.
+      '--not',
+      '--branches',
+      '--remotes',
+      '--tags',
+      '--not',
+      '--stdin',
+    ],
+    { input: unique.join('\n') },
+  );
+  const lost = new Set(listed.split('\n').filter(Boolean));
+  return entries.map((entry) => ({ ...entry, reachable: !lost.has(entry.hash) }));
+}
+
 export async function getDiff(
   repoPath,
-  { filePath, staged = false, untracked = false, fullFile = false },
+  { filePath, staged = false, untracked = false, fullFile = false, ignoreWhitespace = false },
 ) {
-  const flags = diffFlags(fullFile);
+  const flags = diffFlags({ fullFile, ignoreWhitespace });
   if (untracked) {
     // Comparing against the null device is how git shows a brand-new file.
     // It exits 1 because the two sides differ.
@@ -325,14 +590,17 @@ export async function getCommitDetails(repoPath, hash) {
   return { ...commit, message, files: parseNameStatus(files) };
 }
 
-export async function getCommitDiff(repoPath, { hash, filePath, originalPath, fullFile = false }) {
+export async function getCommitDiff(
+  repoPath,
+  { hash, filePath, originalPath, fullFile = false, ignoreWhitespace = false },
+) {
   const commit = await readCommit(repoPath, hash);
   return runGitOnPaths(repoPath, [
     'diff-tree',
     '-p',
     '-M',
     '--no-commit-id',
-    ...diffFlags(fullFile),
+    ...diffFlags({ fullFile, ignoreWhitespace }),
     ...commitRange(commit),
     '--',
     // A rename only shows as one when git can see both of its paths.
@@ -351,7 +619,8 @@ export function hashDiff(diff) {
  * indexes into the diff that `hash` identifies. Only the index changes.
  */
 export async function stageLines(repoPath, { lines, hash, ...diffOptions }) {
-  const diff = await getDiff(repoPath, diffOptions);
+  // Always the exact diff: one that ignores whitespace can't be applied.
+  const diff = await getDiff(repoPath, { ...diffOptions, ignoreWhitespace: false });
   if (hashDiff(diff) !== hash) {
     throw ApiError.gitFailure('This file has changed. Check the updated diff, then try again.');
   }
@@ -373,7 +642,7 @@ export async function stageLines(repoPath, { lines, hash, ...diffOptions }) {
  * the working tree changes: what is staged stays.
  */
 export async function discardLines(repoPath, { lines, hash, ...diffOptions }) {
-  const options = { ...diffOptions, staged: false };
+  const options = { ...diffOptions, staged: false, ignoreWhitespace: false };
   const diff = await getDiff(repoPath, options);
   if (hashDiff(diff) !== hash) {
     throw ApiError.gitFailure('This file has changed. Check the updated diff, then try again.');
@@ -662,6 +931,103 @@ export async function deleteRemoteBranch(repoPath, { name }) {
   // The full ref can't be mistaken for a tag of the same name, or for an option.
   const ref = GitRefHelper.toLocalRef(target.localName);
   await runGit(repoPath, ['push', target.remote, '--delete', ref], { timeout: NETWORK_TIMEOUT_MS });
+}
+
+/** Fails unless a tag of exactly this name exists here. */
+async function assertTagExists(repoPath, name) {
+  assertRef(name);
+  if (!(await refExists(repoPath, GitRefHelper.toTagRef(name)))) {
+    throw ApiError.badRequest(`There is no tag called ${name}.`);
+  }
+}
+
+/**
+ * Tags a commit. A `message` makes an annotated tag, which records who tagged it and when.
+ * An existing tag is never moved: git is told to refuse it. With `push`, the tag also goes to
+ * `remote`, or the default one. The remote is checked first, so a refusal leaves nothing behind.
+ */
+export async function createTag(repoPath, { name, hash, message, push: pushToRemote = false, remote }) {
+  await assertValidTagName(repoPath, name);
+  assertCommitHash(hash);
+  if (await refExists(repoPath, GitRefHelper.toTagRef(name))) {
+    throw ApiError.badRequest(`A tag called ${name} already exists.`);
+  }
+  const target = pushToRemote ? await resolvePushRemote(repoPath, remote) : null;
+
+  const note = message?.trim();
+  await runGit(repoPath, ['tag', ...(note ? ['--annotate', '--message', note] : []), name, hash]);
+  if (!target) return;
+
+  try {
+    await pushTag(repoPath, { name, remote: target });
+  } catch (error) {
+    throw ApiError.gitFailure(
+      `Created ${name}, but could not push it to ${target}. ${error.message}`,
+      error.details,
+    );
+  }
+}
+
+/**
+ * Pushes one tag, under its own name. This never forces, so git refuses a tag the remote
+ * already has at another commit rather than moving it.
+ */
+export async function pushTag(repoPath, { name, remote }) {
+  await assertTagExists(repoPath, name);
+  const target = await resolvePushRemote(repoPath, remote);
+  const ref = GitRefHelper.toTagRef(name);
+  await runGit(repoPath, ['push', target, `${ref}:${ref}`], { timeout: NETWORK_TIMEOUT_MS });
+}
+
+/** The remotes that have the tag, for asking whether to delete it from them too. */
+export async function getTagRemotes(repoPath, { name }) {
+  assertRef(name);
+  const { remotes } = await getRemoteOptions(repoPath);
+  const found = await AsyncHelper.mapWithLimit(remotes, GIT_CONCURRENCY, async (remote) => {
+    // A remote that can't be reached is left out rather than failing the others.
+    const output = await runGit(repoPath, ['ls-remote', '--tags', remote, GitRefHelper.toTagRef(name)], {
+      timeout: NETWORK_TIMEOUT_MS,
+    }).catch(() => '');
+    return output.trim() ? remote : null;
+  });
+  return found.filter(Boolean);
+}
+
+/** Deletes a tag from a remote. The local tag, if there is one, stays. */
+export async function deleteRemoteTag(repoPath, { name, remote }) {
+  assertRef(name);
+  const target = await resolvePushRemote(repoPath, remote);
+  await runGit(repoPath, ['push', target, '--delete', GitRefHelper.toTagRef(name)], {
+    timeout: NETWORK_TIMEOUT_MS,
+  });
+}
+
+/**
+ * Deletes a tag. `remotes` are remotes to delete it from as well. They go first, and the
+ * local tag only once every one of them has, so after a failure the tag is still here to
+ * try again with.
+ */
+export async function deleteTag(repoPath, { name, remotes = [] }) {
+  await assertTagExists(repoPath, name);
+  const known = (await getRemoteOptions(repoPath)).remotes;
+  const unknown = remotes.find((remote) => !known.includes(remote));
+  if (unknown !== undefined) throw ApiError.badRequest(`Unknown remote: ${unknown}`);
+
+  const failures = [];
+  for (const remote of remotes) {
+    try {
+      await deleteRemoteTag(repoPath, { name, remote });
+    } catch (error) {
+      failures.push(`${remote}: ${error.message}`);
+    }
+  }
+  if (failures.length > 0) {
+    throw ApiError.gitFailure(
+      `Could not delete ${name} from every remote, so it is still here. ${failures.join(' ')}`,
+      failures.join('\n'),
+    );
+  }
+  await runGit(repoPath, ['tag', '--delete', name]);
 }
 
 /**
@@ -1104,7 +1470,7 @@ export async function getStashDetails(repoPath, hash) {
 
 export async function getStashDiff(
   repoPath,
-  { hash, filePath, originalPath, untracked = false, fullFile = false },
+  { hash, filePath, originalPath, untracked = false, fullFile = false, ignoreWhitespace = false },
 ) {
   const parents = await readStashParents(repoPath, hash);
   if (untracked && !parents.untracked) {
@@ -1115,7 +1481,7 @@ export async function getStashDiff(
     'diff-tree',
     '-p',
     '--no-commit-id',
-    ...diffFlags(fullFile),
+    ...diffFlags({ fullFile, ignoreWhitespace }),
     ...range,
     '--',
     ...(originalPath ? [originalPath] : []),
@@ -1125,10 +1491,19 @@ export async function getStashDiff(
 
 // Worktrees
 
-/** Compares folders the way the file system does: Windows ignores case and slash style. */
+/**
+ * Compares folders the way the file system does: Windows ignores case and slash style, and
+ * a symlinked folder is the folder it points to, as git names it (on macOS, /var is
+ * /private/var). A folder that no longer exists is compared as written.
+ */
 function samePath(a, b) {
   const normalize = (folder) => {
-    const resolved = path.resolve(folder);
+    let resolved = path.resolve(folder);
+    try {
+      resolved = realpathSync.native(resolved);
+    } catch {
+      // Gone, such as a worktree whose folder was deleted: git still lists it.
+    }
     return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
   };
   return normalize(a) === normalize(b);
@@ -1282,7 +1657,7 @@ async function diffUncommitted(repoPath) {
     await runGit(repoPath, ['add', '--all'], { env });
     // With no commit named, --cached compares with HEAD, or before the first commit
     // with nothing at all, whichever hash function the repository uses.
-    return await runGit(repoPath, ['diff', '--cached', '--binary', ...diffFlags(false)], { env });
+    return await runGit(repoPath, ['diff', '--cached', '--binary', ...diffFlags()], { env });
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
@@ -1310,7 +1685,7 @@ export async function createPatch(repoPath, { source, hash, ref }) {
   } else if (source === 'stash') {
     assertStashRef(ref);
     const show = (extra) =>
-      runGit(repoPath, ['stash', 'show', '-p', '--binary', ...diffFlags(false), ...extra, ref]);
+      runGit(repoPath, ['stash', 'show', '-p', '--binary', ...diffFlags(), ...extra, ref]);
     // Older git cannot show a stash's untracked files.
     patch = await show(['--include-untracked']).catch(() => show([]));
     fileName = patchFileName('stash', ref.match(/\d+/)[0]);

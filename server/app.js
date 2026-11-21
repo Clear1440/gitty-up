@@ -3,6 +3,8 @@ import path from 'node:path';
 import express from 'express';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { localOnly } from './middleware/localOnly.js';
+import { ActivityLog } from './mcp/activityLog.js';
+import { createAiActivityRouter } from './routes/aiActivity.js';
 import { createFilesystemRouter } from './routes/filesystem.js';
 import { MCP_PATH, createMcpRouter } from './routes/mcp.js';
 import { createRepositoriesRouter } from './routes/repositories.js';
@@ -11,19 +13,29 @@ import { createUpdatesRouter } from './routes/updates.js';
 
 const CLIENT_DIR = path.resolve(import.meta.dirname, '../dist');
 
-/** `updater` is set only in the desktop app, which is the only one that can update itself. */
-export function createApp({ store, settings, updater = null }) {
+/**
+ * `updater` is set only in the desktop app, which is the only one that can update itself.
+ * `activity`, the log of what AI tools did, is kept in the home folder next to the settings.
+ */
+export function createApp({
+  store,
+  settings,
+  updater = null,
+  // Some tests make an app with no settings, and so no home folder to keep the log in.
+  activity = settings ? new ActivityLog(settings.defaultDataDir) : null,
+}) {
   const app = express();
   app.disable('x-powered-by');
   app.use(localOnly);
   // Before the JSON parser below, as it parses its own and answers errors in JSON-RPC.
-  app.use(MCP_PATH, createMcpRouter({ settings, store }));
+  app.use(MCP_PATH, createMcpRouter({ settings, store, activity }));
   // A resolved conflict sends the whole file back, which can be far over the 100kb default.
   app.use(express.json({ limit: '50mb' }));
 
   app.use('/api/repositories', createRepositoriesRouter(store));
   app.use('/api/filesystem', createFilesystemRouter());
   app.use('/api/settings', createSettingsRouter({ settings, store }));
+  if (activity) app.use('/api/ai-activity', createAiActivityRouter({ activity, store }));
   app.use('/api/updates', createUpdatesRouter(updater));
   app.use('/api', notFoundHandler);
 

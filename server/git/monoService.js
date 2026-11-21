@@ -359,6 +359,23 @@ export async function getPullRequests() {
   return [];
 }
 
+/** Pull requests stay with each repository's own tab, so none of the remotes offer them. */
+export async function getRemoteHosts(mono) {
+  const { defaultRemote } = await getRemoteOptions(mono);
+  return { defaultRemote, hosts: {} };
+}
+
+const PULL_REQUESTS_ELSEWHERE =
+  "Pull requests aren't offered in a mono repo. Open the repository on its own to make one.";
+
+export async function getPullRequestDraft() {
+  throw ApiError.badRequest(PULL_REQUESTS_ELSEWHERE);
+}
+
+export async function openPullRequest() {
+  throw ApiError.badRequest(PULL_REQUESTS_ELSEWHERE);
+}
+
 /**
  * Lists commits from every member, newest first. All branches means all shared branches,
  * as the mono repo has no others. Each page merges from the start, because where one
@@ -733,6 +750,28 @@ export async function stashApply() {
 
 export async function stashPop() {
   throw ApiError.badRequest('Open the repository on its own to restore a stash.');
+}
+
+/**
+ * Tags are kept to each repository on its own: a name can mean a different commit in each
+ * repository, so tagging across a mono repo would be easy to get wrong.
+ */
+export async function getTags() {
+  return [];
+}
+
+const tagsNotForMono = () => {
+  throw ApiError.badRequest('Open the repository on its own to manage its tags.');
+};
+export const createTag = tagsNotForMono;
+export const pushTag = tagsNotForMono;
+export const deleteTag = tagsNotForMono;
+export const deleteRemoteTag = tagsNotForMono;
+export const getTagRemotes = tagsNotForMono;
+
+/** Each repository has its own reflog, so a mono repo shows none. */
+export async function getReflog() {
+  return [];
 }
 
 /** Each repository has its own working trees, so a mono repo lists none. */

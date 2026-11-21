@@ -5,7 +5,7 @@ import { useDiff } from '../../queries/git.js';
 import { ListHelper } from '../../utils/ListHelper.js';
 import { SetHelper } from '../../utils/SetHelper.js';
 import { TextHelper } from '../../utils/TextHelper.js';
-import { DiffContent, DiffViewToggle, useDiffViewMode } from './diff/DiffContent.jsx';
+import { DiffContent, DiffViewToggle, EmptyDiff, useDiffViewMode } from './diff/DiffContent.jsx';
 import { parseDiff, selectableIds } from './diff/diffRows.js';
 import { useRepositoryContext } from './RepositoryContext.js';
 import styles from './DiffView.module.css';
@@ -14,16 +14,17 @@ const NO_SELECTION = new Set();
 
 export function DiffView({ file }) {
   const { repository, run, isBusy } = useRepositoryContext();
-  const { view, changeView, fullFile } = useDiffViewMode();
-  const { data, error, isPending } = useDiff(repository.id, file, { fullFile });
+  const { view, changeView, fullFile, ignoreWhitespace } = useDiffViewMode();
+  const { data, error, isPending } = useDiff(repository.id, file, { fullFile, ignoreWhitespace });
   const hash = data?.hash;
 
   const hunks = useMemo(() => parseDiff(data?.diff ?? ''), [data]);
   const orderedIds = useMemo(() => selectableIds(hunks), [hunks]);
 
-  // Tied to one exact diff, since line ids mean nothing in any other.
+  // Tied to one exact diff, since line ids mean nothing in any other. None can be made
+  // while whitespace is ignored, as that diff's lines don't match the file.
   const [selection, setSelection] = useState({ hash: null, ids: NO_SELECTION });
-  const selected = selection.hash === hash ? selection.ids : NO_SELECTION;
+  const selected = selection.hash === hash && !ignoreWhitespace ? selection.ids : NO_SELECTION;
   const rangeStart = useRef(null);
 
   /** Selects or clears a line. `extendRange` (shift) selects every line since the last one. */
@@ -72,7 +73,7 @@ export function DiffView({ file }) {
     if (!file) return <Empty className="centered" description="Select a file to see its changes" />;
     if (isPending) return <Spin className="centered" />;
     if (error) return <Alert type="error" showIcon title={error.message} />;
-    if (!data.diff.trim()) return <Empty className="centered" description="No text changes" />;
+    if (!data.diff.trim()) return <EmptyDiff ignoreWhitespace={ignoreWhitespace} />;
     return (
       <DiffContent
         diff={data.diff}

@@ -1,5 +1,6 @@
 const LOCAL_PREFIX = 'refs/heads/';
 const REMOTE_PREFIX = 'refs/remotes/';
+const TAG_PREFIX = 'refs/tags/';
 
 /** Remote preferred whenever a repository has it, as git's own default name. */
 const PREFERRED_REMOTE = 'origin';
@@ -26,6 +27,11 @@ export class GitRefHelper {
   /** refs/remotes/name, for a remote branch such as origin/main. */
   static toRemoteRef(branch) {
     return `${REMOTE_PREFIX}${branch}`;
+  }
+
+  /** refs/tags/name: the full name, which can't be mistaken for a branch or an option. */
+  static toTagRef(tag) {
+    return `${TAG_PREFIX}${tag}`;
   }
 
   static isLocalRef(ref) {

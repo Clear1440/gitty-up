@@ -2,6 +2,7 @@ import { DeleteOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
 import clsx from 'clsx';
 import { memo } from 'react';
+import { Tooltip } from '../../../components/Tooltip.jsx';
 import styles from '../DiffView.module.css';
 
 const SIGNS = { context: ' ', added: '+', deleted: '-' };
@@ -26,8 +27,11 @@ function LineText({ line }) {
  * and shift or ctrl/cmd picks it out, to stage several at once. A click that ends a
  * text selection is left alone, so code can still be copied from the diff.
  */
-function lineClickProps(line, { onToggle, onStage, stageLabel }) {
-  if (!onStage || line.kind === 'context') return {};
+function lineClickProps(line, { onToggle, onStage, stageLabel, blockedReason }) {
+  if (line.kind === 'context') return {};
+  // Says why the line can't be clicked, where it otherwise could.
+  if (blockedReason) return { title: blockedReason };
+  if (!onStage) return {};
 
   const handleClick = (event) => {
     if (window.getSelection()?.toString()) return;
@@ -95,11 +99,20 @@ function LineActions({ line, actions }) {
   );
 }
 
+/** A hunk's button. When `blockedReason` is set, it is turned off and its tooltip says why. */
+function HunkAction({ blockedReason, disabled, ...buttonProps }) {
+  const button = (
+    <Button size="small" disabled={disabled || Boolean(blockedReason)} {...buttonProps} />
+  );
+  return blockedReason ? <Tooltip title={blockedReason}>{button}</Tooltip> : button;
+}
+
 export const HunkRow = memo(function HunkRow({
   text,
   ids,
   label,
   disabled,
+  blockedReason,
   onApply,
   onDiscard,
 }) {
@@ -109,13 +122,22 @@ export const HunkRow = memo(function HunkRow({
       {onApply && (
         <span className={styles.hunkActions}>
           {onDiscard && (
-            <Button size="small" danger disabled={disabled} onClick={() => onDiscard(ids)}>
+            <HunkAction
+              danger
+              disabled={disabled}
+              blockedReason={blockedReason}
+              onClick={() => onDiscard(ids)}
+            >
               Discard hunk
-            </Button>
+            </HunkAction>
           )}
-          <Button size="small" disabled={disabled} onClick={() => onApply(ids)}>
+          <HunkAction
+            disabled={disabled}
+            blockedReason={blockedReason}
+            onClick={() => onApply(ids)}
+          >
             {label}
-          </Button>
+          </HunkAction>
         </span>
       )}
     </div>

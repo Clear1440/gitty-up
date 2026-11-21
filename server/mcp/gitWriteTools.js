@@ -1,6 +1,5 @@
 import path from 'node:path';
 import * as git from '../git/gitService.js';
-import { runGit } from '../git/runGit.js';
 import {
   REF,
   REPOSITORY,
@@ -332,13 +331,44 @@ export const GIT_WRITE_TOOLS = [
     },
     required: ['name'],
     async run(repoPath, args) {
-      const name = readRef(args, 'name', { required: true });
-      await runGit(repoPath, ['check-ref-format', `refs/tags/${name}`]).catch(() => {
-        throw new ToolError(`"${name}" is not a valid tag name.`);
-      });
       const hash = await resolveCommit(repoPath, readRef(args, 'commit') ?? 'HEAD');
-      const message = readString(args, 'message')?.trim();
-      await runGit(repoPath, ['tag', ...(message ? ['--annotate', '--message', message] : []), name, hash]);
+      await git.createTag(repoPath, {
+        name: readRef(args, 'name', { required: true }),
+        hash,
+        message: readString(args, 'message'),
+      });
+    },
+  }),
+  writeTool({
+    name: 'delete_tag',
+    title: 'Delete tag',
+    description:
+      'Deletes a local tag. Does not delete it from any remote, so a pushed tag stays there until the user removes it.',
+    properties: { name: { type: 'string', description: 'The tag to delete, as list_tags names it.' } },
+    required: ['name'],
+    destructive: true,
+    run: (repoPath, args) => git.deleteTag(repoPath, { name: readRef(args, 'name', { required: true }) }),
+  }),
+  writeTool({
+    name: 'push_tag',
+    title: 'Push tag',
+    description:
+      'Pushes one tag to a remote, origin by default. Never forces: git refuses a tag the remote already has at another commit, and the user has to sort that out.',
+    properties: {
+      name: { type: 'string', description: 'The tag to push, as list_tags names it.' },
+      remote: { type: 'string', description: 'The remote to push to. Defaults to origin, or the first remote.' },
+    },
+    required: ['name'],
+    network: true,
+    run(repoPath, args) {
+      // Moving a tag on a remote can change what other people build from, so it is left to the user.
+      if (args.force !== undefined && args.force !== false) {
+        throw new ToolError('Force pushing is not available through MCP. Ask the user to do it in Gitty Up.');
+      }
+      return git.pushTag(repoPath, {
+        name: readRef(args, 'name', { required: true }),
+        remote: readString(args, 'remote'),
+      });
     },
   }),
   writeTool({

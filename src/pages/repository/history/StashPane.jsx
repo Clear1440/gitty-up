@@ -3,7 +3,7 @@ import { Alert, Button, Dropdown, Empty, Spin } from 'antd';
 import { useMemo, useState } from 'react';
 import { RelativeTime } from '../../../components/RelativeTime.jsx';
 import { useStashDetails, useStashDiff, useStashes } from '../../../queries/git.js';
-import { DiffContent, DiffViewToggle, useDiffViewMode } from '../diff/DiffContent.jsx';
+import { DiffContent, DiffViewToggle, EmptyDiff, useDiffViewMode } from '../diff/DiffContent.jsx';
 import { parseDiff } from '../diff/diffRows.js';
 import { FileSection } from '../FileSection.jsx';
 import { useRepositoryContext } from '../RepositoryContext.js';
@@ -15,20 +15,20 @@ import stashStyles from './StashPane.module.css';
 
 function StashFileDiff({ hash, file }) {
   const { repository } = useRepositoryContext();
-  const { view, changeView, fullFile } = useDiffViewMode();
+  const { view, changeView, fullFile, ignoreWhitespace } = useDiffViewMode();
   const { path, originalPath, untracked } = file;
   const { data, error, isPending } = useStashDiff(
     repository.id,
     hash,
     { path, originalPath, untracked },
-    { fullFile },
+    { fullFile, ignoreWhitespace },
   );
   const hunks = useMemo(() => parseDiff(data?.diff ?? ''), [data]);
 
   const renderContent = () => {
     if (isPending) return <Spin className="centered" />;
     if (error) return <Alert type="error" showIcon title={error.message} />;
-    if (!data.diff.trim()) return <Empty className="centered" description="No text changes" />;
+    if (!data.diff.trim()) return <EmptyDiff ignoreWhitespace={ignoreWhitespace} />;
     return <DiffContent diff={data.diff} hunks={hunks} view={view} />;
   };
 

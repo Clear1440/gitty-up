@@ -5,6 +5,7 @@ import {
   CloudUploadOutlined,
   DownOutlined,
   ExportOutlined,
+  FieldTimeOutlined,
   FileTextOutlined,
   InboxOutlined,
   MergeOutlined,
@@ -14,7 +15,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { App, Button, Divider, Dropdown, Space } from 'antd';
 import clsx from 'clsx';
-import { useNavigate } from 'react-router';
+import { useMatch, useNavigate } from 'react-router';
 import { AheadBehind } from '../../components/AheadBehind.jsx';
 import { Tooltip } from '../../components/Tooltip.jsx';
 import { useConfirmDanger } from '../../components/useConfirmDanger.js';
@@ -88,6 +89,7 @@ export function ActionBar() {
   const { repository, status, run, openDialog, isBusy, pendingAction } = useRepositoryContext();
   const { data: stashes = [] } = useStashes(repository.id);
   const navigate = useNavigate();
+  const onReflog = Boolean(useMatch('/repositories/:repositoryId/reflog'));
   const queryClient = useQueryClient();
   const { message } = App.useApp();
   const confirmDanger = useConfirmDanger();
@@ -287,6 +289,17 @@ export function ActionBar() {
             menuDisabled={changedFileCount === 0}
             menuItems={patchMenu}
             onClick={pickPatchFile}
+          />
+          <ActionButton
+            label="Reflog"
+            hint={
+              onReflog
+                ? 'Back to the history'
+                : 'Find commits lost to a reset, rebase, amend or deleted branch'
+            }
+            icon={<FieldTimeOutlined />}
+            type={onReflog ? 'primary' : 'default'}
+            onClick={() => navigate(onReflog ? paths.history(repository.id) : paths.reflog(repository.id))}
           />
         </>
       )}

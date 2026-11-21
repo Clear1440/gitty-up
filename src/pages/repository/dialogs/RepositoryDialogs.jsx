@@ -1,8 +1,11 @@
 import { ApplyPatchDialog } from './ApplyPatchDialog.jsx';
 import { CreateBranchDialog } from './CreateBranchDialog.jsx';
+import { CreatePullRequestDialog } from './CreatePullRequestDialog.jsx';
+import { CreateTagDialog } from './CreateTagDialog.jsx';
 import { CreateWorktreeDialog } from './CreateWorktreeDialog.jsx';
 import { DeleteBranchDialog } from './DeleteBranchDialog.jsx';
 import { DeleteRemoteBranchDialog } from './DeleteRemoteBranchDialog.jsx';
+import { DeleteTagDialog } from './DeleteTagDialog.jsx';
 import { MergeDialog } from './MergeDialog.jsx';
 import { MergeIntoDialog } from './MergeIntoDialog.jsx';
 import { PruneBranchesDialog } from './PruneBranchesDialog.jsx';
@@ -17,9 +20,12 @@ import { SwitchSpanDialog } from './SwitchSpanDialog.jsx';
 const DIALOGS = {
   applyPatch: ApplyPatchDialog,
   createBranch: CreateBranchDialog,
+  createPullRequest: CreatePullRequestDialog,
+  createTag: CreateTagDialog,
   createWorktree: CreateWorktreeDialog,
   deleteBranch: DeleteBranchDialog,
   deleteRemoteBranch: DeleteRemoteBranchDialog,
+  deleteTag: DeleteTagDialog,
   merge: MergeDialog,
   mergeInto: MergeIntoDialog,
   pruneBranches: PruneBranchesDialog,

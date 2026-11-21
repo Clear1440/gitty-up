@@ -12,7 +12,8 @@ import { queryKeys } from './queryKeys.js';
 const COMMIT_PAGE_SIZE = 100;
 /** The most commits the server sends for one request. */
 const MAX_COMMITS_PER_REQUEST = 500;
-const PULL_REQUESTS_STALE_MS = 5 * 60_000;
+// The server keeps each list for a minute too, so rereading sooner only gets the same one.
+const PULL_REQUESTS_STALE_MS = 60_000;
 /**
  * Diffs are the biggest answers there are, one per file looked at, so they are let go
  * soon after leaving them rather than kept as long as the rest. Going back to a recent
@@ -98,18 +99,21 @@ export function useCommitDetails(repositoryId, hash) {
   });
 }
 
-export function useCommitDiff(repositoryId, hash, file, { fullFile }) {
+export function useCommitDiff(repositoryId, hash, file, { fullFile, ignoreWhitespace = false }) {
   return useQuery({
-    queryKey: queryKeys.commitDiff(repositoryId, hash, { ...file, fullFile }),
+    queryKey: queryKeys.commitDiff(repositoryId, hash, { ...file, fullFile, ignoreWhitespace }),
     queryFn: cancellable(({ signal }) =>
-      gitApi.getCommitDiff(repositoryId, hash, { ...file, fullFile }, { signal }),
+      gitApi.getCommitDiff(repositoryId, hash, { ...file, fullFile, ignoreWhitespace }, { signal }),
     ),
     gcTime: DIFF_GC_MS,
     enabled: Boolean(file),
   });
 }
 
-/** Open pull requests, which change on GitHub rather than here, so these are read rarely. */
+/**
+ * Open pull requests, with their reviews and checks where the host says. These change on
+ * the host rather than here, so git actions leave them be.
+ */
 export function usePullRequests(repositoryId) {
   return useQuery({
     queryKey: queryKeys.pullRequests(repositoryId),
@@ -118,8 +122,35 @@ export function usePullRequests(repositoryId) {
   });
 }
 
+export function useTags(repositoryId, { enabled = true } = {}) {
+  return useQuery({
+    queryKey: queryKeys.tags(repositoryId),
+    queryFn: cancellable(({ signal }) => gitApi.getTags(repositoryId, { signal })),
+    enabled,
+  });
+}
+
+/** Which remotes have a tag. Read fresh each time, as someone else may have pushed or deleted it. */
+export function useTagRemotes(repositoryId, name) {
+  return useQuery({
+    queryKey: queryKeys.tagRemotes(repositoryId, name),
+    queryFn: cancellable(({ signal }) => gitApi.getTagRemotes(repositoryId, { name }, { signal })),
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  });
+}
+
 export function useStashes(repositoryId) {
   return useQuery(stashesQuery(repositoryId));
+}
+
+/** HEAD's reflog, newest first, each entry marked with whether a branch still has it. */
+export function useReflog(repositoryId) {
+  return useQuery({
+    queryKey: queryKeys.reflog(repositoryId),
+    queryFn: cancellable(({ signal }) => gitApi.getReflog(repositoryId, {}, { signal })),
+  });
 }
 
 /** The repository's working trees, the main one first. */
@@ -138,11 +169,11 @@ export function useStashDetails(repositoryId, hash) {
   });
 }
 
-export function useStashDiff(repositoryId, hash, file, { fullFile }) {
+export function useStashDiff(repositoryId, hash, file, { fullFile, ignoreWhitespace = false }) {
   return useQuery({
-    queryKey: queryKeys.stashDiff(repositoryId, hash, { ...file, fullFile }),
+    queryKey: queryKeys.stashDiff(repositoryId, hash, { ...file, fullFile, ignoreWhitespace }),
     queryFn: cancellable(({ signal }) =>
-      gitApi.getStashDiff(repositoryId, hash, { ...file, fullFile }, { signal }),
+      gitApi.getStashDiff(repositoryId, hash, { ...file, fullFile, ignoreWhitespace }, { signal }),
     ),
     gcTime: DIFF_GC_MS,
     enabled: Boolean(file),
@@ -173,11 +204,11 @@ export function useConflict(repositoryId, path) {
 }
 
 /** `file` is `{ path, staged, untracked }`, or null when nothing is selected. */
-export function useDiff(repositoryId, file, { fullFile }) {
+export function useDiff(repositoryId, file, { fullFile, ignoreWhitespace = false }) {
   return useQuery({
-    queryKey: queryKeys.diff(repositoryId, { ...file, fullFile }),
+    queryKey: queryKeys.diff(repositoryId, { ...file, fullFile, ignoreWhitespace }),
     queryFn: cancellable(({ signal }) =>
-      gitApi.getDiff(repositoryId, { ...file, fullFile }, { signal }),
+      gitApi.getDiff(repositoryId, { ...file, fullFile, ignoreWhitespace }, { signal }),
     ),
     gcTime: DIFF_GC_MS,
     enabled: Boolean(file),

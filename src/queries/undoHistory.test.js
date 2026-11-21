@@ -25,6 +25,15 @@ describe('undoStepFor', () => {
     });
   });
 
+  it('deletes a tag that was just made, unless it was pushed too', () => {
+    expect(undoStepFor('createTag', { name: 'v1', hash: 'abc1234' })).toEqual({
+      kind: 'actions',
+      actions: [{ name: 'deleteTag', input: { name: 'v1' } }],
+      label: 'Deleted the tag v1 again',
+    });
+    expect(undoStepFor('createTag', { name: 'v1', hash: 'abc1234', push: true })).toBeNull();
+  });
+
   it('unstages what was staged, and stages what was unstaged', () => {
     expect(undoStepFor('stage', { paths: ['a.txt'] }, status())).toEqual({
       kind: 'actions',
