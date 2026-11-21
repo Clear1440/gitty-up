@@ -278,6 +278,27 @@ export function parseNameStatus(output) {
   return files;
 }
 
+export const TAG_FORMAT = [
+  '%(refname:strip=2)',
+  '%(*objectname)',
+  '%(objectname)',
+  '%(creatordate:iso-strict)',
+  '%(subject)',
+].join('%00');
+
+/** Parses `git for-each-ref refs/tags` output produced with TAG_FORMAT. */
+export function parseTags(output) {
+  return output
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const [name, taggedCommit, object, date, subject] = line.split('\0');
+      // Only an annotated tag points at a commit through a tag object of its own.
+      const hash = taggedCommit || object;
+      return { name, hash, commit: hash.slice(0, 7), annotated: Boolean(taggedCommit), date, subject };
+    });
+}
+
 export const STASH_FORMAT = ['%gs', '%cI', '%H', '%P'].join('%x00');
 
 const NAMED_STASH = /^On ([^:]+): (.*)$/;
@@ -308,6 +329,57 @@ export function parseStashes(output) {
         hash,
         // The commit it was made on, then its index and, if it has any, untracked files.
         parents: parents.split(' ').filter(Boolean),
+      };
+    });
+}
+
+/** `%gD` with `--date=iso-strict` gives "HEAD@{<when>}", so the entry's own time comes too. */
+export const REFLOG_FORMAT = ['%H', '%gD', '%gs', '%cI', '%P'].join('%x00');
+
+const REFLOG_WHEN = /@\{([^}]*)\}$/;
+const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+
+/**
+ * Splits a reflog subject such as "commit (amend): fix typo" into what was done and its
+ * detail. The action is the first word, without any qualifier in brackets, except that an
+ * amend and a merge commit are named for what they are: "commit (amend)" is `amend`,
+ * "commit (merge)" is `merge`, and "merge topic: Fast-forward" is `merge` too.
+ */
+export function parseReflogSubject(subject) {
+  const colon = subject.indexOf(': ');
+  const head = colon === -1 ? subject : subject.slice(0, colon);
+  const detail = colon === -1 ? '' : subject.slice(colon + 2);
+
+  const qualifier = /\(([^)]*)\)/.exec(head)?.[1];
+  const word = head.replace(/\(.*$/, '').trim().split(/\s+/)[0];
+  if (word === 'commit' && (qualifier === 'amend' || qualifier === 'merge')) {
+    return { action: qualifier, message: detail };
+  }
+  return { action: word || 'other', message: detail };
+}
+
+/**
+ * Parses `log -g --date=iso-strict` output made with REFLOG_FORMAT, newest first.
+ * `selector` names the reflog, as in "HEAD" for HEAD@{3}. `reachable` is filled in by the
+ * caller, as only a second command can tell.
+ */
+export function parseReflog(output, selector = 'HEAD') {
+  return output
+    .split('\n')
+    .filter(Boolean)
+    .map((line, index) => {
+      const [hash, selected, subject, commitDate, parents = ''] = line.split('\0');
+      const when = REFLOG_WHEN.exec(selected ?? '')?.[1];
+      return {
+        index,
+        selector: `${selector}@{${index}}`,
+        hash,
+        shortHash: hash.slice(0, 7),
+        parents: parents.split(' ').filter(Boolean),
+        ...parseReflogSubject(subject ?? ''),
+        // Only a full ISO time: Date.parse also takes an index such as "3" as a date.
+        date: ISO_TIME.test(when ?? '') && !Number.isNaN(Date.parse(when)) ? when : commitDate,
+        reachable: true,
       };
     });
 }

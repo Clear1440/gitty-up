@@ -5,6 +5,11 @@ export function findBranchTip(commits, branch) {
   );
 }
 
+/** Finds the commit a tag marks, by its name. */
+export function findTagCommit(commits, tag) {
+  return commits.find(({ refs }) => refs.some(({ type, name }) => type === 'tag' && name === tag));
+}
+
 /** Whether a group from groupRefs stands for this branch, by its full name. */
 export function groupHasBranch({ name, local, remotes }, branch) {
   return (local && name === branch) || remotes.includes(branch);

@@ -1,6 +1,5 @@
 import path from 'node:path';
 import * as git from '../git/gitService.js';
-import { runGit } from '../git/runGit.js';
 import {
   REF,
   REPOSITORY,
@@ -332,13 +331,81 @@ export const GIT_WRITE_TOOLS = [
     },
     required: ['name'],
     async run(repoPath, args) {
-      const name = readRef(args, 'name', { required: true });
-      await runGit(repoPath, ['check-ref-format', `refs/tags/${name}`]).catch(() => {
-        throw new ToolError(`"${name}" is not a valid tag name.`);
-      });
       const hash = await resolveCommit(repoPath, readRef(args, 'commit') ?? 'HEAD');
-      const message = readString(args, 'message')?.trim();
-      await runGit(repoPath, ['tag', ...(message ? ['--annotate', '--message', message] : []), name, hash]);
+      await git.createTag(repoPath, {
+        name: readRef(args, 'name', { required: true }),
+        hash,
+        message: readString(args, 'message'),
+      });
+    },
+  }),
+  writeTool({
+    name: 'delete_tag',
+    title: 'Delete tag',
+    description:
+      'Deletes a local tag. Does not delete it from any remote, so a pushed tag stays there until the user removes it.',
+    properties: { name: { type: 'string', description: 'The tag to delete, as list_tags names it.' } },
+    required: ['name'],
+    destructive: true,
+    run: (repoPath, args) => git.deleteTag(repoPath, { name: readRef(args, 'name', { required: true }) }),
+  }),
+  writeTool({
+    name: 'push_tag',
+    title: 'Push tag',
+    description:
+      'Pushes one tag to a remote, origin by default. Never forces: git refuses a tag the remote already has at another commit, and the user has to sort that out.',
+    properties: {
+      name: { type: 'string', description: 'The tag to push, as list_tags names it.' },
+      remote: { type: 'string', description: 'The remote to push to. Defaults to origin, or the first remote.' },
+    },
+    required: ['name'],
+    network: true,
+    run(repoPath, args) {
+      // Moving a tag on a remote can change what other people build from, so it is left to the user.
+      if (args.force !== undefined && args.force !== false) {
+        throw new ToolError('Force pushing is not available through MCP. Ask the user to do it in Gitty Up.');
+      }
+      return git.pushTag(repoPath, {
+        name: readRef(args, 'name', { required: true }),
+        remote: readString(args, 'remote'),
+      });
+    },
+  }),
+  writeTool({
+    name: 'create_pull_request',
+    title: 'Create pull request',
+    description:
+      "Opens a pull request (a merge request on GitLab) for a local branch that is already pushed, on github.com, gitlab.com or bitbucket.org. It never pushes: use push first. On GitHub with a token it is created there and its link given back. Otherwise the answer is a link to the host's page with it filled in, for the user to finish in their browser. It is a draft unless draft is false. The title and description default to ones made from the branch's commits.",
+    properties: {
+      branch: { type: 'string', description: 'The local branch. Defaults to the one checked out.' },
+      base: REF("The branch to merge into, as named on the remote. Defaults to the remote's default branch."),
+      title: { type: 'string', description: 'Defaults to the subject of the newest commit it brings in.' },
+      body: { type: 'string', description: 'The description. Defaults to a list of the commits it brings in.' },
+      draft: {
+        type: 'boolean',
+        description: 'Defaults to true, so someone looks at it before it is marked ready for review.',
+      },
+    },
+    network: true,
+    async run(repoPath, args) {
+      const branch = readRef(args, 'branch') ?? (await git.getCurrentBranch(repoPath));
+      if (!branch) throw new ToolError('No branch is checked out. Say which branch to open it for.');
+      const proposal = await git.getPullRequestDraft(repoPath, { branch, base: readRef(args, 'base') });
+      if (!proposal.base) {
+        throw new ToolError('The remote has no other branch to merge into. Say which with base.');
+      }
+      const result = await git.openPullRequest(repoPath, {
+        branch,
+        base: proposal.base,
+        title: readString(args, 'title')?.trim() || proposal.title,
+        body: readString(args, 'body') ?? proposal.body,
+        draft: readBoolean(args, 'draft') ?? true,
+      });
+      if (result.created) {
+        return `Created ${result.hostName} pull request #${result.number} from ${branch} into ${proposal.base}: ${result.url}`;
+      }
+      const why = result.reason ? ` ${result.reason}` : '';
+      return `Not created from here.${why} Give the user this link to finish it on ${result.hostName}: ${result.url}`;
     },
   }),
   writeTool({

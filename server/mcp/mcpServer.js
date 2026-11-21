@@ -1,5 +1,6 @@
 import { ApiError } from '../errors.js';
 import packageJson from '../../package.json' with { type: 'json' };
+import { recordToolCall } from './activityRecorder.js';
 import { GIT_TOOLS, ToolError } from './gitTools.js';
 import { GIT_WRITE_TOOLS } from './gitWriteTools.js';
 
@@ -60,7 +61,7 @@ const toText = (result) => (typeof result === 'string' ? result : JSON.stringify
  * Runs a tool. A mistake in the call, or git refusing, goes back to the AI tool as an
  * error result it can read and correct, rather than as a failed request.
  */
-async function callTool({ store, access }, params) {
+async function runTool({ store, access }, params) {
   const tool = TOOLS[access].find((candidate) => candidate.name === params?.name);
   if (!tool && WRITE_TOOL_NAMES.has(params?.name)) {
     throw new RpcError(
@@ -81,6 +82,21 @@ async function callTool({ store, access }, params) {
     const message = isExpected ? error.message : 'Unexpected error while reading the repository.';
     return { content: [{ type: 'text', text: message }], isError: true };
   }
+}
+
+/**
+ * Every tools/call comes through here, so this is where the activity log records what AI
+ * tools did, refusals included. A write tool is any of GIT_WRITE_TOOLS, so new ones are
+ * logged as writes without listing them anywhere else.
+ */
+function callTool(context, params) {
+  if (!context.activity) return runTool(context, params);
+  const name = params?.name;
+  return recordToolCall(
+    context,
+    { name, args: params?.arguments, isWrite: WRITE_TOOL_NAMES.has(name) },
+    () => runTool(context, params),
+  );
 }
 
 const METHODS = {
@@ -104,9 +120,10 @@ const isObject = (value) => typeof value === 'object' && value !== null && !Arra
 /**
  * Answers one JSON-RPC message, or resolves with null for a notification, which gets
  * no answer. Each request stands alone, so the server keeps no sessions. `access` is
- * 'read-only' or 'full', as set in the settings when the request came.
+ * 'read-only' or 'full', as set in the settings when the request came. `activity`, the
+ * log of what AI tools did, is optional.
  */
-export async function handleMessage({ store, access }, message) {
+export async function handleMessage({ store, access, activity }, message) {
   if (!isObject(message) || message.jsonrpc !== '2.0' || typeof message.method !== 'string') {
     return rpcError(isObject(message) ? (message.id ?? null) : null, RPC_ERRORS.INVALID_REQUEST, 'Not a JSON-RPC 2.0 request.');
   }
@@ -117,7 +134,7 @@ export async function handleMessage({ store, access }, message) {
   const handler = Object.hasOwn(METHODS, method) ? METHODS[method] : null;
   if (!handler) return rpcError(id, RPC_ERRORS.METHOD_NOT_FOUND, `Method not found: ${method}`);
   try {
-    return { jsonrpc: '2.0', id, result: await handler({ store, access }, params) };
+    return { jsonrpc: '2.0', id, result: await handler({ store, access, activity }, params) };
   } catch (error) {
     if (error instanceof RpcError) return rpcError(id, error.code, error.message);
     console.error(error);

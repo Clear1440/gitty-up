@@ -21,13 +21,14 @@ const PANEL_ID = 'mcp-client-snippet';
 /**
  * What to add to each AI tool's config to connect it: the apps listed on the left, and
  * the chosen one's snippet beside them. Up and down arrows move through the list too.
+ * Each snippet holds `token`, which this page can show as only this computer can see it.
  */
-export function McpSnippets({ url }) {
+export function McpSnippets({ url, token }) {
   const [index, setIndex] = useState(initialIndex);
   const tabRefs = useRef([]);
   const copy = useCopyToClipboard();
   const client = MCP_CLIENTS[index];
-  const snippet = client.snippet(url);
+  const snippet = client.snippet(url, token);
 
   const show = (nextIndex) => {
     setIndex(nextIndex);
@@ -90,7 +91,7 @@ export function McpSnippets({ url }) {
             Copy
           </Button>
         </div>
-        {client.note && <p className={styles.note}>{client.note(url)}</p>}
+        {client.note && <p className={styles.note}>{client.note(url, token)}</p>}
       </div>
     </div>
   );

@@ -10,19 +10,39 @@ export const gitApi = {
     http.get(route(id, '/commits'), { ref, limit, skip }, options),
   getCommitDetails: (id, hash, options) =>
     http.get(route(id, `/commits/${hash}`), undefined, options),
-  getCommitDiff: (id, hash, { path, originalPath, fullFile }, options) =>
-    http.get(route(id, `/commits/${hash}/diff`), { path, originalPath, fullFile }, options),
+  getCommitDiff: (id, hash, { path, originalPath, fullFile, ignoreWhitespace }, options) =>
+    http.get(
+      route(id, `/commits/${hash}/diff`),
+      { path, originalPath, fullFile, ignoreWhitespace },
+      options,
+    ),
   getRemotes: (id, options) => http.get(route(id, '/remotes'), undefined, options),
   getLastCommit: (id) => http.get(route(id, '/last-commit')),
   getPullRequests: (id, options) => http.get(route(id, '/pull-requests'), undefined, options),
+  /** Which remotes are on a host that pull requests can be opened on. */
+  getRemoteHosts: (id, options) => http.get(route(id, '/remote-hosts'), undefined, options),
+  /** What a new pull request for `branch` starts out as. `remote` marks a remote branch. */
+  getPullRequestDraft: (id, { branch, remote, base }, options) =>
+    http.get(route(id, '/pull-requests/draft'), { branch, remote, base }, options),
+  /**
+   * Opens a pull request. Resolves `{ created, url, hostName, number, reason }`: when not
+   * created, `url` is the host's page that finishes it.
+   */
+  createPullRequest: (id, { branch, remote, base, title, body, draft }) =>
+    http.post(route(id, '/pull-requests'), { branch, remote, base, title, body, draft }),
   getStashes: (id, options) => http.get(route(id, '/stashes'), undefined, options),
+  getReflog: (id, { ref, limit } = {}, options) =>
+    http.get(route(id, '/reflog'), { ref, limit }, options),
   getWorktrees: (id, options) => http.get(route(id, '/worktrees'), undefined, options),
+  getTags: (id, options) => http.get(route(id, '/tags'), undefined, options),
+  /** The remotes that have a tag. This asks each of them, so it can take a moment. */
+  getTagRemotes: (id, { name }, options) => http.get(route(id, '/tags/remotes'), { name }, options),
   getStashDetails: (id, hash, options) =>
     http.get(route(id, `/stashes/${hash}`), undefined, options),
-  getStashDiff: (id, hash, { path, originalPath, untracked, fullFile }, options) =>
+  getStashDiff: (id, hash, { path, originalPath, untracked, fullFile, ignoreWhitespace }, options) =>
     http.get(
       route(id, `/stashes/${hash}/diff`),
-      { path, originalPath, untracked, fullFile },
+      { path, originalPath, untracked, fullFile, ignoreWhitespace },
       options,
     ),
   /** `source` is "commit" with `hash`, "stash" with `ref`, or "uncommitted". */
@@ -32,8 +52,8 @@ export const gitApi = {
   startScript: (id, { name, params }) => http.post(route(id, '/scripts/runs'), { name, params }),
   scriptRunEvents: (id, runId) => http.events(route(id, `/scripts/runs/${runId}/events`)),
   stopScript: (id, runId) => http.post(route(id, `/scripts/runs/${runId}/stop`)),
-  getDiff: (id, { path, staged, untracked, fullFile }, options) =>
-    http.get(route(id, '/diff'), { path, staged, untracked, fullFile }, options),
+  getDiff: (id, { path, staged, untracked, fullFile, ignoreWhitespace }, options) =>
+    http.get(route(id, '/diff'), { path, staged, untracked, fullFile, ignoreWhitespace }, options),
   getConflict: (id, { path }, options) => http.get(route(id, '/conflict'), { path }, options),
   /** Branches that some, but not all, of a mono repo's group have. */
   getSpanningBranches: (id, options) =>
@@ -99,6 +119,13 @@ export const gitApi = {
   stashPop: (id, { ref } = {}) => http.post(route(id, '/stash/pop'), { ref }),
   stashDrop: (id, { ref }) => http.post(route(id, '/stash/drop'), { ref }),
   applyPatch: (id, { patch, mode }) => http.post(route(id, '/patch/apply'), { patch, mode }),
+
+  // Tags. `hash` is the commit to tag, and a `message` makes the tag annotated.
+  createTag: (id, { name, hash, message, push, remote }) =>
+    http.post(route(id, '/tags'), { name, hash, message, push, remote }),
+  pushTag: (id, { name, remote }) => http.post(route(id, '/tags/push'), { name, remote }),
+  /** `remotes` are the remotes to delete it from as well. */
+  deleteTag: (id, { name, remotes }) => http.post(route(id, '/tags/delete'), { name, remotes }),
 
   // Worktrees. `path` is a working tree's folder.
   addWorktree: (id, { path, branch, newBranch, startPoint }) =>

@@ -31,8 +31,13 @@ export const paths = {
   repository: (repositoryId) => `/repositories/${repositoryId}`,
   history: (repositoryId, ref) =>
     ref ? historyWith(repositoryId, { ref }) : `/repositories/${repositoryId}/history`,
+  /** Where HEAD has been, including commits no branch has any more. */
+  reflog: (repositoryId) => `/repositories/${repositoryId}/reflog`,
   /** Every branch's history, with this branch's latest commit scrolled to and marked. */
   focusBranch: (repositoryId, branch) => historyWith(repositoryId, { focus: branch }),
+  /** Every branch's history, with this tag's commit scrolled to and opened. */
+  focusTag: (repositoryId, { name, hash }) =>
+    historyWith(repositoryId, { focusTag: name, commit: hash }),
   /** The three-way editor for one conflicted file. */
   resolveConflict: (repositoryId, path) =>
     `/repositories/${repositoryId}/resolve?${new URLSearchParams({ path })}`,

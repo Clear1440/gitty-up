@@ -1,10 +1,52 @@
 import { useNavigate } from 'react-router';
 import { paths } from '../../paths.js';
+import { usePullRequests } from '../../queries/git.js';
+import { useRemoteHosts } from '../../queries/pullRequests.js';
 import { BranchHelper } from '../../utils/BranchHelper.js';
+import { LinkHelper } from '../../utils/LinkHelper.js';
 import { useCopyToClipboard } from '../../utils/useCopyToClipboard.js';
+import { PullRequestHelper } from './PullRequestHelper.js';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { StatusHelper } from './StatusHelper.js';
 import { useWorktreeActions } from './useWorktreeActions.jsx';
+
+/**
+ * Opens the branch's pull request if it has one, or else offers to create one when its
+ * remote is on a host that takes them. Pull requests stay with each repository's own
+ * tab, so a mono repo gets neither. A main line is what pull requests go into, so it
+ * isn't offered one.
+ */
+function usePullRequestItems(branch, kind) {
+  const { repository, openDialog } = useRepositoryContext();
+  const { data: pullRequests } = usePullRequests(repository.id);
+  const { data: remoteHosts } = useRemoteHosts(repository.id);
+  if (repository.isMono) return [];
+
+  const remote = PullRequestHelper.remoteOf(branch, kind, remoteHosts?.defaultRemote);
+  const host = remote ? remoteHosts?.hosts[remote] : null;
+  const term = host?.term ?? 'pull request';
+  const pullRequest = PullRequestHelper.findForBranch(pullRequests, branch, kind);
+  if (pullRequest) {
+    return [
+      {
+        key: 'open-pull-request',
+        label: `Open ${term} #${pullRequest.number}`,
+        title: PullRequestHelper.describe(pullRequest),
+        onClick: () => LinkHelper.openExternal(pullRequest.url),
+      },
+    ];
+  }
+  const isMainLine = BranchHelper.isMainBranch(PullRequestHelper.remoteNameOf(branch, kind));
+  if (!host || isMainLine) return [];
+  return [
+    {
+      key: 'create-pull-request',
+      label: `Create ${term}…`,
+      onClick: () =>
+        openDialog('createPullRequest', { branch: branch.name, remote: kind === 'remote' }),
+    },
+  ];
+}
 
 /**
  * What can be done with a branch, wherever it is shown. `kind` is 'local' or 'remote',
@@ -33,6 +75,8 @@ export function useBranchMenu(branch, kind) {
   };
 
   const copyName = () => copy(branch.name);
+
+  const pullRequestItems = usePullRequestItems(branch, kind);
 
   const worktreeItems = repository.isMono
     ? []
@@ -107,6 +151,7 @@ export function useBranchMenu(branch, kind) {
       onClick: () => openDialog('createBranch', { startPoint: branch.name }),
     },
     ...worktreeItems,
+    ...(pullRequestItems.length > 0 ? [{ type: 'divider' }, ...pullRequestItems] : []),
     { type: 'divider' },
     ...(isRemote
       ? []

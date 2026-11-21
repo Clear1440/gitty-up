@@ -55,7 +55,14 @@ describe('settings', () => {
       defaultDataDir: homeDir,
       isDefaultDataDir: true,
       appearance: { scheme: 'default', mode: 'dark' },
-      mcp: { enabled: false, access: 'read-only', repositories: ['*'], url: `${baseUrl}/mcp` },
+      mcp: {
+        enabled: false,
+        access: 'read-only',
+        repositories: ['*'],
+        token: null,
+        requireToken: true,
+        url: `${baseUrl}/mcp`,
+      },
     });
   });
 
@@ -79,6 +86,67 @@ describe('settings', () => {
     await startServer();
     const { body } = await request('GET', '/api/settings');
     expect(body.mcp).toMatchObject({ enabled: true, access: 'full', repositories: ['group:g', 'repo:a'] });
+  });
+
+  it('makes a token when the MCP server is turned on, and keeps it across restarts', async () => {
+    const { body: on } = await request('PUT', '/api/settings/mcp', { enabled: true });
+    expect(on.mcp.token).toMatch(/^[\w-]{43}$/);
+    // Changing anything else keeps it, and the API cannot set it.
+    const full = await request('PUT', '/api/settings/mcp', { access: 'full', token: 'chosen' });
+    expect(full.body.mcp.token).toBe(on.mcp.token);
+
+    await stopServer();
+    await startServer();
+    expect((await request('GET', '/api/settings')).body.mcp.token).toBe(on.mcp.token);
+    const saved = JSON.parse(await fs.readFile(path.join(homeDir, 'settings.json'), 'utf8'));
+    expect(saved.mcp.token).toBe(on.mcp.token);
+  });
+
+  it('gives a token to a server turned on before there were tokens', async () => {
+    await stopServer();
+    await fs.mkdir(homeDir, { recursive: true });
+    await fs.writeFile(
+      path.join(homeDir, 'settings.json'),
+      JSON.stringify({ mcp: { enabled: true, access: 'full', repositories: ['*'] } }),
+    );
+    await startServer();
+
+    // Two at once agree on the same one.
+    const [first, second] = await Promise.all([
+      request('GET', '/api/settings'),
+      request('GET', '/api/settings'),
+    ]);
+    expect(first.body.mcp.token).toMatch(/^[\w-]{43}$/);
+    expect(second.body.mcp.token).toBe(first.body.mcp.token);
+    expect((await request('GET', '/api/settings')).body.mcp.token).toBe(first.body.mcp.token);
+  });
+
+  it('hides the token while the MCP server is off, and keeps it for when it is back on', async () => {
+    const { body: on } = await request('PUT', '/api/settings/mcp', { enabled: true });
+    const { body: off } = await request('PUT', '/api/settings/mcp', { enabled: false });
+    expect(off.mcp.token).toBeNull();
+    const { body: again } = await request('PUT', '/api/settings/mcp', { enabled: true });
+    expect(again.mcp.token).toBe(on.mcp.token);
+  });
+
+  it('lets the token requirement be turned off and back on, keeping the token', async () => {
+    const { body: on } = await request('PUT', '/api/settings/mcp', { enabled: true });
+    expect(on.mcp.requireToken).toBe(true);
+    const { body: off } = await request('PUT', '/api/settings/mcp', { requireToken: false });
+    expect(off.mcp).toMatchObject({ requireToken: false, token: on.mcp.token });
+    const { body: back } = await request('PUT', '/api/settings/mcp', { requireToken: true });
+    expect(back.mcp).toMatchObject({ requireToken: true, token: on.mcp.token });
+    const { status } = await request('PUT', '/api/settings/mcp', { requireToken: 'no' });
+    expect(status).toBe(400);
+  });
+
+  it('regenerates the token', async () => {
+    const { body: on } = await request('PUT', '/api/settings/mcp', { enabled: true });
+    const { status, body } = await request('POST', '/api/settings/mcp/token');
+    expect(status).toBe(200);
+    expect(body.mcp.token).toMatch(/^[\w-]{43}$/);
+    expect(body.mcp.token).not.toBe(on.mcp.token);
+    expect((await request('GET', '/api/settings')).body.mcp.token).toBe(body.mcp.token);
   });
 
   it('saves the appearance across restarts', async () => {

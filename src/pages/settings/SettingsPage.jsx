@@ -1,10 +1,13 @@
 import {
   CloudDownloadOutlined,
+  CopyOutlined,
   DesktopOutlined,
   EditOutlined,
+  EyeInvisibleOutlined,
   EyeOutlined,
   FolderOpenOutlined,
   HistoryOutlined,
+  KeyOutlined,
   MoonOutlined,
   SunOutlined,
   SyncOutlined,
@@ -14,6 +17,7 @@ import {
   Alert,
   App,
   Button,
+  Checkbox,
   ColorPicker,
   Result,
   Segmented,
@@ -28,9 +32,15 @@ import { ChangelogDialog } from '../../changelog/ChangelogDialog.jsx';
 // Read when the app is built, so it is the release's own.
 import { APP_VERSION as appVersion, RELEASES } from '../../changelog/releases.js';
 import { RelativeTime } from '../../components/RelativeTime.jsx';
+import { useConfirmDanger } from '../../components/useConfirmDanger.js';
 import { updateLabel, useStartUpdate } from '../../layouts/UpdateButton.jsx';
 import { useRepositories, useRepositoryGroups } from '../../queries/repositories.js';
-import { useSetDataDir, useSetMcp, useSettings } from '../../queries/settings.js';
+import {
+  useRegenerateMcpToken,
+  useSetDataDir,
+  useSetMcp,
+  useSettings,
+} from '../../queries/settings.js';
 import { isUpdating, useCheckForUpdates, useUpdateStatus } from '../../queries/updates.js';
 import {
   CUSTOM_COLORS,
@@ -40,6 +50,8 @@ import {
   SYSTEM_MODE,
   paletteOf,
 } from '../../styles/themes.js';
+import { useCopyToClipboard } from '../../utils/useCopyToClipboard.js';
+import { AiActivity } from './AiActivity.jsx';
 import { DataFolderDialog, MOVE_OUTCOMES } from './DataFolderDialog.jsx';
 import { McpSnippets } from './McpSnippets.jsx';
 import {
@@ -349,15 +361,80 @@ function RepositoryScopeSetting({ scope, onChange }) {
   );
 }
 
+/** Stands in for the token until shown. The same length whatever the token, so it says nothing of it. */
+const HIDDEN_TOKEN = '•'.repeat(24);
+
+/**
+ * The secret AI tools send with every request. Hidden until asked for, though the configs
+ * below hold it too. Making a new one turns away every AI tool set up with the old one.
+ */
+function McpTokenSetting({ token }) {
+  const { message, notification } = App.useApp();
+  const confirmDanger = useConfirmDanger();
+  const regenerate = useRegenerateMcpToken();
+  const copy = useCopyToClipboard();
+  const [isShown, setShown] = useState(false);
+
+  const confirmRegenerate = () =>
+    confirmDanger({
+      title: 'Make a new token?',
+      content:
+        'Every AI tool set up with the current token will be turned away until you copy its config from here again.',
+      okText: 'Make a new token',
+      onOk: async () => {
+        try {
+          await regenerate.mutateAsync();
+          message.success('Made a new token. Copy the config into each AI tool again.');
+        } catch (error) {
+          notification.error({ title: 'Could not make a new token', description: error.message });
+        }
+      },
+    });
+
+  return (
+    <Setting
+      label="Your token"
+      description="It is in each config below. Anything that has it can use the MCP server, so keep it secret."
+    >
+      <div className={styles.tokenControl}>
+        <code className={styles.token} aria-label={isShown ? 'Token' : 'Token, hidden'}>
+          {isShown ? token : HIDDEN_TOKEN}
+        </code>
+        <div className={styles.dataActions}>
+          <Button
+            icon={isShown ? <EyeInvisibleOutlined /> : <EyeOutlined />}
+            aria-pressed={isShown}
+            onClick={() => setShown((shown) => !shown)}
+          >
+            {isShown ? 'Hide' : 'Show'}
+          </Button>
+          <Button icon={<CopyOutlined />} onClick={() => copy(token, 'the token')}>
+            Copy
+          </Button>
+          <Button
+            danger
+            icon={<KeyOutlined />}
+            loading={regenerate.isPending}
+            onClick={confirmRegenerate}
+          >
+            Regenerate token
+          </Button>
+        </div>
+      </div>
+    </Setting>
+  );
+}
+
 /**
  * The MCP server, which lets AI tools such as Claude Code work with the linked
  * repositories: off until turned on, then read-only unless given full access, and
- * limited to the repositories chosen.
+ * limited to the repositories chosen. AI tools send the token shown here, unless the
+ * settings let them connect without one.
  */
 function AiToolsSection({ settings }) {
   const { notification, modal } = App.useApp();
   const setMcp = useSetMcp();
-  const { enabled, access, repositories, url } = settings.mcp;
+  const { enabled, access, repositories, token, url, requireToken = true } = settings.mcp;
 
   const save = async (changes) => {
     try {
@@ -365,6 +442,23 @@ function AiToolsSection({ settings }) {
     } catch (error) {
       notification.error({ title: 'Could not change the MCP server', description: error.message });
     }
+  };
+
+  // Turning it on needs no warning. Off lets any program on this computer connect, so ask.
+  const changeRequireToken = (checked) => {
+    if (checked) {
+      save({ requireToken: true });
+      return;
+    }
+    modal.confirm({
+      title: 'Let AI tools connect without a token?',
+      content:
+        'Any program running on this computer will be able to use the MCP server, with whatever access it has here. The token is kept, so ticking the box again brings it back.',
+      okText: 'Connect without a token',
+      okButtonProps: { danger: true },
+      autoFocusButton: 'cancel',
+      onOk: () => save({ requireToken: false }),
+    });
   };
 
   const changeAccess = (nextAccess) => {
@@ -447,18 +541,53 @@ function AiToolsSection({ settings }) {
             scope={repositories}
             onChange={(scope) => save({ repositories: scope })}
           />
-          <div className={styles.settingBlock}>
-            <div className={styles.settingText}>
-              <div className={styles.settingLabel}>Connect an app</div>
-              <div className={styles.settingDescription}>
-                Pick your app, add what it shows to the app’s MCP config, then restart the app or
-                reload its servers.
+          <Setting
+            label="Token"
+            description={
+              requireToken
+                ? 'AI tools must send the token below with every request, so other programs on this computer cannot connect.'
+                : 'Any program on this computer can connect, without a token. Tick the box to turn away those not set up here.'
+            }
+          >
+            <Checkbox
+              checked={requireToken}
+              disabled={setMcp.isPending}
+              onChange={(event) => changeRequireToken(event.target.checked)}
+            >
+              Require a token
+            </Checkbox>
+          </Setting>
+          {/* The token comes with the server's answer, just after the switch is turned on. */}
+          {token && (
+            <>
+              {requireToken && <McpTokenSetting token={token} />}
+              <div className={styles.settingBlock}>
+                <div className={styles.settingText}>
+                  <div className={styles.settingLabel}>Connect an app</div>
+                  <div className={styles.settingDescription}>
+                    Pick your app, add what it shows to the app’s MCP config, then restart the app
+                    or reload its servers.
+                    {requireToken &&
+                      ' The config holds your token, so keep it out of files you share, such as a project’s config in a repository.'}
+                  </div>
+                </div>
+                <McpSnippets url={url} token={requireToken ? token : null} />
               </div>
-            </div>
-            <McpSnippets url={url} />
-          </div>
+            </>
+          )}
         </>
       )}
+      <div className={styles.settingBlock}>
+        <div className={styles.settingText}>
+          <div className={styles.settingLabel}>Activity</div>
+          <div className={styles.settingDescription}>
+            What AI tools did here, newest first. The last 500 changes are kept between launches,
+            and reads until Gitty Up closes. Some changes can be undone: Gitty Up checks nothing
+            has moved since, and asks first.
+          </div>
+        </div>
+        <AiActivity isLive={enabled} />
+      </div>
     </section>
   );
 }

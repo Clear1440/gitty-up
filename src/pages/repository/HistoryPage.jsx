@@ -1,5 +1,9 @@
 import {
+  CheckCircleFilled,
+  ClockCircleFilled,
+  CloseCircleFilled,
   CloudOutlined,
+  ExclamationCircleFilled,
   InboxOutlined,
   LaptopOutlined,
   PullRequestOutlined,
@@ -18,6 +22,7 @@ import { useBranches, useCommits, usePullRequests, useStashes } from '../../quer
 import { KeyboardHelper } from '../../utils/KeyboardHelper.js';
 import { TextHelper } from '../../utils/TextHelper.js';
 import { CommitHelper } from './CommitHelper.js';
+import { PullRequestHelper } from './PullRequestHelper.js';
 import { layoutCommitGraph } from './history/commitGraph.js';
 import { CommitGraphCell, labelOffset } from './history/CommitGraphCell.jsx';
 import { CommitPane } from './history/CommitPane.jsx';
@@ -28,6 +33,7 @@ import {
   arrangeLabels,
   branchOfGroup,
   findBranchTip,
+  findTagCommit,
   groupHasBranch,
   groupRefs,
 } from './history/groupRefs.js';
@@ -90,21 +96,32 @@ function describeRefGroup({ name, local, remotes }) {
     .join('\n');
 }
 
+/** The small mark beside a pull request's icon, by PullRequestHelper.summarize. */
+const PULL_REQUEST_STATUS = {
+  passing: { Icon: CheckCircleFilled, className: styles.prPassing },
+  failing: { Icon: CloseCircleFilled, className: styles.prFailing },
+  'changes-requested': { Icon: ExclamationCircleFilled, className: styles.prAttention },
+  pending: { Icon: ClockCircleFilled, className: styles.prPending },
+};
+
 function PullRequestLink({ pullRequest }) {
-  const { number, title, url, draft } = pullRequest;
+  const { number, url } = pullRequest;
+  const status = PULL_REQUEST_STATUS[PullRequestHelper.summarize(pullRequest)];
+  const description = PullRequestHelper.describe(pullRequest);
   return (
     <a
       className={styles.refPullRequest}
       href={url}
       target="_blank"
       rel="noreferrer"
-      title={`${draft ? 'Draft pull request' : 'Pull request'} #${number}: ${title}`}
-      aria-label={`Open pull request #${number}`}
+      title={description}
+      aria-label={[`Open pull request #${number}`, ...description.split('\n').slice(1)].join('. ')}
       // A click here opens the pull request, not the commit it sits on or a checkout.
       onClick={(event) => event.stopPropagation()}
       onDoubleClick={(event) => event.stopPropagation()}
     >
       <PullRequestOutlined />
+      {status && <status.Icon className={clsx(styles.prStatus, status.className)} />}
     </a>
   );
 }
@@ -379,10 +396,16 @@ export function HistoryPage() {
   const { state: navigationState } = useLocation();
   const focusedBranch = ref ? null : searchParams.get('focus');
   const focusRequest = navigationState?.focusBranch;
-  const focusedHash = focusedBranch ? findBranchTip(commits ?? [], focusedBranch)?.hash : undefined;
+  // A tag picked in the sidebar is scrolled to the same way, though it has no label to pulse.
+  const focusedTag = ref || focusedBranch ? null : searchParams.get('focusTag');
+  const focusedName = focusedBranch ?? focusedTag;
+  const focusedCommit = focusedBranch
+    ? findBranchTip(commits ?? [], focusedBranch)
+    : focusedTag && findTagCommit(commits ?? [], focusedTag);
+  const focusedHash = focusedCommit?.hash;
   // Pages load newest first, so a quiet branch can be further back than what is showing.
   const isSearching =
-    Boolean(focusedBranch) &&
+    Boolean(focusedName) &&
     !focusedHash &&
     hasNextPage &&
     (commits?.length ?? 0) < MAX_COMMITS_SEARCHED;
@@ -522,6 +545,7 @@ export function HistoryPage() {
       (current) => {
         const next = new URLSearchParams(current);
         next.set('focus', branch);
+        next.delete('focusTag');
         next.set('commit', hash);
         return next;
       },
@@ -579,13 +603,13 @@ export function HistoryPage() {
           <header className={styles.header}>
             <h2 className={styles.heading}>{ref ?? allBranchesLabel}</h2>
             {ref && showAllBranches}
-            {focusedBranch && !focusedHash && !isSearching && !isFetchingNextPage && (
+            {focusedName && !focusedHash && !isSearching && !isFetchingNextPage && (
               <>
                 <span className={styles.focusNote}>
-                  {focusedBranch} is not in the commits loaded here.
+                  {focusedName} is not in the commits loaded here.
                 </span>
-                <Link to={paths.history(repository.id, focusedBranch)}>
-                  <Button size="small">Show only this branch</Button>
+                <Link to={paths.history(repository.id, focusedName)}>
+                  <Button size="small">{focusedTag ? 'Show only this tag' : 'Show only this branch'}</Button>
                 </Link>
               </>
             )}

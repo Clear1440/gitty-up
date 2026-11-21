@@ -692,6 +692,12 @@ describe('merging and stashing', () => {
     const { unstaged } = await getStatus();
     expect(unstaged.map(({ path: file }) => file)).toContain('web/readme.txt');
   });
+
+  it('shows no reflog, as each repository keeps its own', async () => {
+    const { status, body } = await request('GET', `${mono.route}/reflog`);
+    expect(status).toBe(200);
+    expect(body).toEqual([]);
+  });
 });
 
 describe('what is kept to one repository', () => {
@@ -699,6 +705,19 @@ describe('what is kept to one repository', () => {
     expect((await request('GET', `${mono.route}/last-commit`)).body).toBe(null);
     const { status } = await request('POST', `${mono.route}/undo-commit`, { hash: 'abc1234' });
     expect(status).toBe(400);
+  });
+
+  it('lists no tags and leaves tagging to each repository', async () => {
+    expect((await request('GET', `${mono.route}/tags`)).body).toEqual([]);
+    const hash = git(mono.api.work, 'rev-parse', 'HEAD');
+    for (const [route, body] of [
+      ['/tags', { name: 'v1', hash }],
+      ['/tags/push', { name: 'v1' }],
+      ['/tags/delete', { name: 'v1' }],
+    ]) {
+      expect((await request('POST', `${mono.route}${route}`, body)).status).toBe(400);
+    }
+    expect(git(mono.api.work, 'tag', '--list')).toBe('');
   });
 
   it('cannot be cloned over', async () => {

@@ -151,13 +151,48 @@ as a single repository. Use **Open as mono repo** on the group's heading.
   message goes to every repository with something staged.
 - Checkout and new branches are all or nothing. Other actions run in every repository and say
   which ones failed.
-- Amend, undoing a commit and pull request labels stay with each repository's own tab.
+- Amend, undoing a commit and pull requests (their labels, and opening or creating one) stay
+  with each repository's own tab.
+- Tags are not offered either, as a name can mean a different commit in each repository.
 - Merge, merge into, rebase and stashes are not offered either, as they would quietly change
   several repositories at once. Open a repository on its own to use them. If a repository was
   left mid-merge elsewhere, the banner can still abort or continue it.
 
 `server/git/monoService.js` does this. It matches `gitService.js` function for function, so the
 routes and most of the client work with a mono repo without knowing it is one.
+
+## Pull requests
+
+A branch with an open pull request has a pull request icon on its label in the history, which
+opens it. On GitHub, a mark beside it sums up the reviews and the checks on its newest commit
+(failing, changes requested, running, or all clear), and its tooltip has the details. The
+branch's menu has **Open pull request**, or **Create pull request…** when its remote is on a
+host Gitty Up knows and it has none yet.
+
+Creating one picks the branch to merge into (the remote's default branch, else main or
+master), and fills in a title and description from the commits it brings in. A branch that
+isn't pushed, or has commits that aren't, says so and offers to push first. Nothing is pushed
+without asking, and nothing is force pushed. On GitHub with a token, the pull request is
+created from the app. Otherwise the host's own page opens in the browser, filled in as far as
+it allows.
+
+| Host                      | Labels              | Status | Create         | Token                                     |
+| ------------------------- | ------------------- | ------ | -------------- | ----------------------------------------- |
+| GitHub (github.com)       | Open pull requests  | Yes    | In the app     | `GH_TOKEN`, then `GITHUB_TOKEN`, then git |
+| GitLab (gitlab.com)       | Open merge requests | No     | In the browser | `GITLAB_TOKEN`, then git                  |
+| Bitbucket (bitbucket.org) | Open pull requests  | No     | In the browser | `BITBUCKET_TOKEN`, then git               |
+
+"Then git" means the password git would push to that host with, from `git credential fill`
+with `GCM_INTERACTIVE=never`, so a sign-in window never opens. GitHub and GitLab take it as a
+bearer token. Bitbucket only uses it with its username, as an app password; `BITBUCKET_TOKEN`
+is sent as a bearer token. Without a token, only public repositories are listed, and GitHub
+shows no status (that needs its GraphQL API, which needs a token).
+
+Each host is an adapter in `server/git/hosts/` that reads its remote URLs (HTTPS and SSH),
+lists open pull requests, builds the page that starts one and, optionally, creates one. Add a
+host by writing another and listing it in `hosts/index.js`. Self-hosted servers, such as
+GitHub Enterprise, match none of them, so their remotes get no pull requests. The list for a
+repository is kept for a minute, and any failure only means no labels.
 
 ## AI tools (MCP)
 
@@ -166,6 +201,23 @@ the repositories you have linked. Turn it on under **Settings › AI tools**, wh
 config to add to Claude Code, Claude Desktop, opencode, Cursor, VS Code, Windsurf, Codex or
 Gemini CLI. It speaks Streamable HTTP at `http://127.0.0.1:4317/mcp` (the settings show the real
 port), and is off until turned on.
+
+AI tools must send a token with every request, as `Authorization: Bearer <token>`. It is made
+the first time the server is turned on, saved as `mcp.token` in `settings.json`, and each config
+the settings show already has it. Requests are checked in this order: from this machine, then
+turned on (a server that is off answers 403 and says so, token or not), then the token (missing
+or wrong answers 401, asking for the config again from the settings). The token is checked before
+the request is read or logged, so a refused request never shows in **Activity**. Turning the
+server off keeps the token, so AI tools set up before still connect when it is back on.
+**Regenerate token** makes a new one, and every AI tool then needs its config copied again.
+
+**Require a token** is on by default. Unticking it, after a warning, lets any program on this
+machine connect without one, as `mcp.requireToken: false`, and the snippets leave the header
+out. The token is kept, so ticking it again turns away anything without it once more.
+
+The config holds the token, so it is a secret: keep it out of files you share or commit, such
+as a project's `.mcp.json`, `.cursor/mcp.json` or `.vscode/mcp.json`. The settings point each
+app at its config for every project, which stays in your home folder.
 
 Once it is on, **Access** is **Read-only tools** by default, which offers only the tools that
 read. **Full access** adds git commands. **Repositories** limits which linked repositories AI tools
@@ -189,19 +241,69 @@ read-only tools:
 | `compare_refs`         | What a branch has that its base does not, as a pull request shows it |
 | `list_files`           | The files tracked at a ref                                          |
 | `read_file`            | A file as committed at a ref                                        |
+| `get_reflog`           | Where HEAD or a branch has pointed, marking commits on no branch     |
+| `list_pull_requests`   | Open pull requests on GitHub, GitLab or Bitbucket, with status      |
 | `list_tags`, `list_stashes`, `list_worktrees` | Just that                                    |
+
+`get_commit_diff`, `get_uncommitted_diff` and `compare_refs` take `ignore_whitespace`, as the
+app's **Ignore whitespace** does. `get_reflog` is how an AI tool finds lost work: an entry with
+`reachable: false` is a commit no branch, remote branch or tag holds, such as one left behind
+by a reset, rebase, amend or deleted branch. With full access, `create_branch` with that hash as
+its `start_point` brings it back without changing anything else. `list_pull_requests` asks the
+hosting service, so it is the one read tool marked as reaching outside this machine.
 
 Full access adds `fetch`, `pull`, `push`, `checkout`, `checkout_commit`, `create_branch`,
 `rename_branch`, `delete_branch`, `merge`, `rebase`, `abort_operation`, `continue_operation`,
 `stage`, `unstage`, `discard`, `commit`, `cherry_pick`, `revert`, `reset`, `create_tag`,
-`stash_save`, `stash_apply`, `stash_pop`, `stash_drop`, `add_worktree` and `remove_worktree`.
+`delete_tag`, `push_tag`, `create_pull_request`, `stash_save`, `stash_apply`, `stash_pop`, `stash_drop`,
+`add_worktree` and `remove_worktree`.
 They go through `gitService.js`, with the same checks as the app's own buttons, and each answers
-with where the repository stands afterwards. `push` never forces: force pushing is left to the
-user, in the app. Those that can lose work are marked destructive, so
+with where the repository stands afterwards. `push` and `push_tag` never force: force pushing is left to the
+user, in the app. `delete_tag` deletes the local tag only, never one on a remote.
+`create_pull_request` never pushes: it opens a pull request for a branch already on its remote,
+as a draft unless told otherwise, or gives back the host's page for the user to finish it on
+when it can't be made from here. Those that can lose work are marked destructive, so
 AI tools that honor the hint ask first.
 
-The server lives in `server/mcp/` (`gitTools.js` reads, `gitWriteTools.js` changes), and
-`server/routes/mcp.js` serves it.
+### Activity
+
+Every tool call is logged, and **Settings › AI tools › Activity** shows the log: when, the tool,
+the repository, whether it worked and how long it took, and its arguments, with long text cut
+short and nothing that could be a file's contents or a diff. Changes are shown unless
+**Everything** is picked. For a write tool, the log also records where `HEAD` and the checked out
+branch stood before and after.
+
+Calls that change a repository are kept in `ai-activity.json` in the home folder (`~/.gitty-up`,
+or `GITTY_UP_DATA_DIR`), up to the last 500. Calls that only read come far more often, so the last
+200 are kept in memory only, and are gone when the server stops. Logging happens in
+`callTool`, the one place every call passes through, and a failure to log never fails the call.
+The app reads, clears and undoes the log at `/api/ai-activity`; AI tools cannot reach it.
+
+Some changes can be undone from the log, after asking. Each undo first checks the repository is
+still as the call left it, and refuses, changing nothing, if not:
+
+| Tool | Undo |
+| ---- | ---- |
+| `commit`, `reset` (soft) | Moves the branch back with `git reset --soft`, so what was committed comes back staged |
+| `merge`, `rebase`, `pull`, `cherry_pick`, `revert`, `reset` (hard) | Moves the branch back with `git reset --keep`, which keeps uncommitted changes, or refuses if they are in the way |
+| `checkout`, `checkout_commit` | Checks the branch from before back out |
+| `create_branch` | Deletes the branch, checking out the previous one first if needed |
+| `create_tag` | Deletes the tag here. Remotes are never touched |
+| `stash_save` | Pops the stash, if it is still the latest |
+
+A branch must still be checked out and at the commit the call left it on, a new branch or tag
+must still point where it was made, and nothing can be mid-merge or mid-rebase. Anything else,
+such as `push`, `discard`, `delete_branch` or `stash_drop`, has no undo. Undo is the user's own
+action, so it is not limited to the repositories AI tools may use. `server/mcp/activityUndo.js`
+lists the undos. A new tool in `gitWriteTools.js` is logged as a write with no other change,
+and has no undo until one is added there.
+
+The server lives in `server/mcp/` (`gitTools.js` reads, `gitWriteTools.js` changes,
+`activityLog.js` and `activityRecorder.js` the log, `mcpToken.js` the token), and
+`server/routes/mcp.js` serves it. The app reads the token with the rest of the settings at
+`/api/settings`, which gives it only while the server is on, and makes a new one with
+`POST /api/settings/mcp/token`. The snippets for each app are in
+`src/pages/settings/mcpClients.js`.
 
 ## Scripts (`.gitty`)
 
@@ -366,10 +468,22 @@ The server can run git on any folder and has no login, so it must stay private t
 - Git runs without a shell, and refs starting with `-` are refused, so input cannot become a
   command or an option.
 - The MCP server for AI tools is off until turned on in the settings, and has the same
-  local-only checks. Any AI tool on this machine can then read every repository it is allowed,
-  which is all of them unless limited under **Repositories**, including files committed to them. Its git commands are offered only with **Full access**, which
-  lets any such tool change every linked repository, so it starts read-only and warns before
-  allowing that.
+  local-only checks. It also wants a token, a random secret made by `node:crypto` and compared in
+  constant time, so another program on this machine cannot connect unless it has the token.
+  **Require a token** can turn that off, which lets any program on this machine connect, so
+  the settings warn first. The token is in `settings.json` and in the config of each AI tool you set up, so anything
+  that can read those files can connect: keep the config out of shared repositories, and
+  regenerate the token if it leaks. The token is never logged. An AI tool with the token can
+  read every repository it is allowed, which is all of them unless limited under
+  **Repositories**, including files committed to them. Its git commands are offered only with
+  **Full access**, which lets it change every such repository, so it starts read-only and
+  warns before allowing that.
+- Every call an AI tool makes is logged in `ai-activity.json` in the home folder, so you can see
+  what it did. The log keeps tool names, repositories and short arguments, such as commit
+  messages and file paths, but never file contents or diffs. Only the app can read, clear or
+  undo it, through its own API, which has the same local-only checks.
+- Tokens for pull requests are only sent to the API of the host they are for, such as
+  `api.github.com` for `GH_TOKEN` or a github.com credential, and are never logged.
 - Scripts from a `.gitty` file are the exception: they run whatever the file says, with your
   permissions, so only run scripts from repositories and shared files you trust. Only scripts the
   file lists can run, and it is reread before each one.

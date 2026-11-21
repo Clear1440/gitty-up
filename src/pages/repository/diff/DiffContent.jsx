@@ -1,6 +1,8 @@
-import { Segmented } from 'antd';
+import { ColumnWidthOutlined } from '@ant-design/icons';
+import { Button, Empty, Segmented } from 'antd';
 import clsx from 'clsx';
 import { useMemo, useState } from 'react';
+import { Tooltip } from '../../../components/Tooltip.jsx';
 import { useStoredState } from '../../../utils/useStoredState.js';
 import styles from '../DiffView.module.css';
 import { HunkRow, LineRow, PairRow } from './DiffRows.jsx';
@@ -9,6 +11,7 @@ import { annotateWordChanges } from './wordDiff.js';
 
 const MAX_ROWS = 3_000;
 const VIEW_STORAGE_KEY = 'gitty-up.diff-view';
+const WHITESPACE_STORAGE_KEY = 'gitty-up.diff-ignore-whitespace';
 const NO_SELECTION = new Set();
 
 const CONTEXTS = [
@@ -23,14 +26,38 @@ const LAYOUTS = [
 
 /**
  * How diffs show, remembered between sessions: `view.context` is just the hunks or the
- * full file, and `view.layout` inline or side by side. `changeView` takes either part.
+ * full file, `view.layout` inline or side by side, and `view.ignoreWhitespace` whether
+ * changes to spaces and tabs are left out. `changeView` takes any of them.
  */
 export function useDiffViewMode() {
   const [stored, setStored] = useStoredState(VIEW_STORAGE_KEY, 'hunk');
-  const view = toDiffView(stored);
-  const changeView = (change) => setStored({ ...view, ...change });
+  const [ignoreWhitespace, setIgnoreWhitespace] = useStoredState(WHITESPACE_STORAGE_KEY, false, {
+    isValid: (value) => typeof value === 'boolean',
+  });
+  const layout = toDiffView(stored);
+  const view = { ...layout, ignoreWhitespace };
+  const changeView = ({ ignoreWhitespace: nextIgnore, ...change }) => {
+    if (nextIgnore !== undefined) setIgnoreWhitespace(nextIgnore);
+    if (Object.keys(change).length > 0) setStored({ ...layout, ...change });
+  };
   // Only hunk context shows git's hunks. The full file needs every line to lay out.
-  return { view, changeView, fullFile: view.context === 'full' };
+  return { view, changeView, fullFile: view.context === 'full', ignoreWhitespace };
+}
+
+function WhitespaceToggle({ ignored, onChange }) {
+  return (
+    <Tooltip title={ignored ? 'Show whitespace changes' : 'Ignore whitespace changes'}>
+      <Button
+        size="small"
+        icon={<ColumnWidthOutlined />}
+        aria-label="Ignore whitespace"
+        aria-pressed={ignored}
+        color={ignored ? 'primary' : 'default'}
+        variant={ignored ? 'filled' : 'outlined'}
+        onClick={() => onChange(!ignored)}
+      />
+    </Tooltip>
+  );
 }
 
 export function DiffViewToggle({ view, onChange }) {
@@ -50,7 +77,40 @@ export function DiffViewToggle({ view, onChange }) {
         value={view.layout}
         onChange={(layout) => onChange({ layout })}
       />
+      <WhitespaceToggle
+        ignored={Boolean(view.ignoreWhitespace)}
+        onChange={(ignoreWhitespace) => onChange({ ignoreWhitespace })}
+      />
     </span>
+  );
+}
+
+/**
+ * In place of a diff with nothing in it. With whitespace ignored, that is almost always
+ * a file whose only changes are to spaces and tabs.
+ */
+export function EmptyDiff({ ignoreWhitespace }) {
+  return (
+    <Empty
+      className="centered"
+      description={
+        ignoreWhitespace
+          ? 'Only whitespace changed. Turn off Ignore whitespace to see it.'
+          : 'No text changes'
+      }
+    />
+  );
+}
+
+/**
+ * Why single lines and hunks can't be staged from a diff that ignores whitespace: its
+ * lines no longer match the file, so a patch built from them could go wrong.
+ */
+function whitespaceBlockReason(verb, canDiscard) {
+  const verbs = canDiscard ? `${verb.toLowerCase()} or discard` : verb.toLowerCase();
+  return (
+    "Whitespace is ignored, so these lines don't match the file. " +
+    `Turn off Ignore whitespace to ${verbs} single lines and hunks.`
   );
 }
 
@@ -101,7 +161,8 @@ function useActiveLine() {
  * Renders a parsed diff in one of the views. Without `onApply` it is read-only, with
  * nothing to click or select and no hunk actions. With it, a click on a changed line
  * calls `onApply` with just that line, and a shift or ctrl click calls `onToggle`. With
- * `onDiscard` too, hunks and lines offer to throw their changes away.
+ * `onDiscard` too, hunks and lines offer to throw their changes away. While
+ * `view.ignoreWhitespace` is on, those actions stay in sight but are turned off.
  */
 export function DiffContent({
   diff,
@@ -123,19 +184,22 @@ export function DiffContent({
     return onApply ? allRows : allRows.filter((row) => row.type !== 'hunk' || row.text);
   }, [annotated, view, onApply]);
   const { activeId, handlers } = useActiveLine();
+  const blockedReason =
+    onApply && view?.ignoreWhitespace
+      ? whitespaceBlockReason(lineLabel ?? 'Stage', Boolean(onDiscard))
+      : null;
 
-  const actions = useMemo(
-    () =>
-      onApply && !disabled
-        ? {
-            onToggle,
-            onStage: (id) => onApply([id]),
-            onDiscard,
-            stageLabel: lineLabel ?? 'Stage',
-          }
-        : {},
-    [onApply, onDiscard, onToggle, disabled, lineLabel],
-  );
+  const actions = useMemo(() => {
+    if (blockedReason) return { blockedReason };
+    return onApply && !disabled
+      ? {
+          onToggle,
+          onStage: (id) => onApply([id]),
+          onDiscard,
+          stageLabel: lineLabel ?? 'Stage',
+        }
+      : {};
+  }, [onApply, onDiscard, onToggle, disabled, lineLabel, blockedReason]);
 
   if (hunks.length === 0) return <PlainDiff diff={diff} />;
 
@@ -143,7 +207,7 @@ export function DiffContent({
     <>
       <div
         className={clsx(styles.diff, layout === 'split' && styles.splitDiff)}
-        {...(onApply ? handlers : {})}
+        {...(onApply && !blockedReason ? handlers : {})}
       >
         {rows.slice(0, MAX_ROWS).map((row) => {
           if (row.type === 'hunk') {
@@ -154,6 +218,7 @@ export function DiffContent({
                 ids={row.ids}
                 label={hunkLabel}
                 disabled={disabled}
+                blockedReason={blockedReason}
                 onApply={onApply}
                 onDiscard={onDiscard}
               />

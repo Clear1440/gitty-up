@@ -3,6 +3,7 @@ import {
   arrangeLabels,
   branchOfGroup,
   findBranchTip,
+  findTagCommit,
   groupHasBranch,
   groupRefs,
   orderForStack,
@@ -13,6 +14,18 @@ const remote = (name, remoteName = 'origin') => ({
   name: `${remoteName}/${name}`,
   remote: remoteName,
   localName: name,
+});
+
+describe('findTagCommit', () => {
+  const commits = [
+    { hash: 'a', refs: [{ type: 'head', name: 'v1' }] },
+    { hash: 'b', refs: [{ type: 'branch', name: 'v2' }, { type: 'tag', name: 'v1' }] },
+  ];
+
+  it('finds the commit a tag marks, not a branch of the same name', () => {
+    expect(findTagCommit(commits, 'v1').hash).toBe('b');
+    expect(findTagCommit(commits, 'v2')).toBeUndefined();
+  });
 });
 
 describe('findBranchTip', () => {

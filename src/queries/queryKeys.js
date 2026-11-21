@@ -10,10 +10,24 @@ export const queryKeys = {
   status: (id) => [ROOT, 'detail', id, 'status'],
   branches: (id) => [ROOT, 'detail', id, 'branches'],
   remotes: (id) => [ROOT, 'detail', id, 'remotes'],
+  remoteHosts: (id) => [ROOT, 'detail', id, 'remote-hosts'],
+  /** Inside `repository`, so pushing the branch from the dialog rereads whether it is pushed. */
+  pullRequestDraft: (id, branch, remote, base) => [
+    ROOT,
+    'detail',
+    id,
+    'pull-request-draft',
+    branch,
+    remote,
+    base ?? null,
+  ],
   commits: (id, ref) => [ROOT, 'detail', id, 'commits', ref ?? 'all-branches'],
   commit: (id, hash) => [ROOT, 'detail', id, 'commit', hash],
   commitDiff: (id, hash, file) => [ROOT, 'detail', id, 'commit', hash, 'diff', file],
+  tags: (id) => [ROOT, 'detail', id, 'tags'],
   stashes: (id) => [ROOT, 'detail', id, 'stashes'],
+  /** Inside `repository`, so any git action rereads it: a reset or amend adds to it. */
+  reflog: (id) => [ROOT, 'detail', id, 'reflog'],
   worktrees: (id) => [ROOT, 'detail', id, 'worktrees'],
   stash: (id, hash) => [ROOT, 'detail', id, 'stash', hash],
   stashDiff: (id, hash, file) => [ROOT, 'detail', id, 'stash', hash, 'diff', file],
@@ -28,11 +42,14 @@ export const queryKeys = {
    * resolving a conflict would then refetch, and fail to find, the conflict just resolved.
    */
   conflict: (id, path) => [ROOT, 'conflict', id, path],
+  /** Outside `repository` on purpose: it asks the remotes, which git actions must not redo. */
+  tagRemotes: (id, name) => [ROOT, 'tag-remotes', id, name],
   /** Outside `repository` on purpose: git actions must not spend GitHub's rate limit. */
   pullRequests: (id) => [ROOT, 'pull-requests', id],
   directories: (path) => ['directories', path ?? null],
   repositoryScan: (path) => ['repository-scan', path],
   settings: () => ['settings'],
+  aiActivity: () => ['ai-activity'],
   updates: () => ['updates'],
 };
 

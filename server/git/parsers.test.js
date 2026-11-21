@@ -5,6 +5,8 @@ import {
   parseCheckouts,
   parseCommits,
   parseNameStatus,
+  parseReflog,
+  parseReflogSubject,
   parseStashes,
   parseStatus,
 } from './parsers.js';
@@ -279,5 +281,76 @@ describe('parseCheckouts', () => {
 
   it('handles an empty reflog', () => {
     expect(parseCheckouts('').size).toBe(0);
+  });
+});
+
+describe('parseReflogSubject', () => {
+  it('names the action by its first word', () => {
+    expect(parseReflogSubject('commit: Add thing')).toEqual({
+      action: 'commit',
+      message: 'Add thing',
+    });
+    expect(parseReflogSubject('checkout: moving from main to topic').action).toBe('checkout');
+    expect(parseReflogSubject('cherry-pick: Fix it').action).toBe('cherry-pick');
+    expect(parseReflogSubject('reset: moving to HEAD~1')).toEqual({
+      action: 'reset',
+      message: 'moving to HEAD~1',
+    });
+  });
+
+  it('drops the qualifier in brackets, but names amends and merge commits', () => {
+    expect(parseReflogSubject('commit (initial): First').action).toBe('commit');
+    expect(parseReflogSubject('commit (amend): Better').action).toBe('amend');
+    expect(parseReflogSubject('commit (merge): Merge branch topic').action).toBe('merge');
+    expect(parseReflogSubject('rebase (pick): Fix it')).toEqual({
+      action: 'rebase',
+      message: 'Fix it',
+    });
+    expect(parseReflogSubject('pull --rebase (finish): returning to refs/heads/main').action).toBe(
+      'pull',
+    );
+    expect(parseReflogSubject('merge topic: Fast-forward').action).toBe('merge');
+  });
+
+  it('copes with a subject that has no message', () => {
+    expect(parseReflogSubject('rebase (finish)')).toEqual({ action: 'rebase', message: '' });
+  });
+});
+
+describe('parseReflog', () => {
+  const line = (hash, when, subject) => [hash, `HEAD@{${when}}`, subject, '2020-01-01T00:00:00Z'].join('\0');
+
+  it('numbers entries from the newest and uses the time of the reflog entry', () => {
+    const entries = parseReflog(
+      [
+        line('a'.repeat(40), '2026-11-20T10:00:00+00:00', 'commit (amend): Better'),
+        line('b'.repeat(40), '2026-11-20T09:00:00+00:00', 'reset: moving to HEAD~1'),
+      ].join('\n'),
+    );
+
+    expect(entries[0]).toMatchObject({
+      index: 0,
+      selector: 'HEAD@{0}',
+      shortHash: 'aaaaaaa',
+      action: 'amend',
+      message: 'Better',
+      date: '2026-11-20T10:00:00+00:00',
+      reachable: true,
+    });
+    expect(entries[1]).toMatchObject({ index: 1, selector: 'HEAD@{1}', action: 'reset' });
+  });
+
+  it('names a branch reflog by the branch', () => {
+    const [entry] = parseReflog(line('c'.repeat(40), '2026-11-20T10:00:00+00:00', 'commit: x'), 'topic');
+    expect(entry.selector).toBe('topic@{0}');
+  });
+
+  it('falls back to the commit date when the entry has no usable time', () => {
+    const [entry] = parseReflog(line('d'.repeat(40), '3', 'commit: x'));
+    expect(entry.date).toBe('2020-01-01T00:00:00Z');
+  });
+
+  it('handles an empty reflog', () => {
+    expect(parseReflog('')).toEqual([]);
   });
 });

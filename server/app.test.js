@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -679,6 +680,21 @@ describe('branches', () => {
     expect(body).toEqual([]);
   });
 
+  it('offers no pull requests on a remote that is on no known host', async () => {
+    const hosts = await request('GET', `${repo.api}/remote-hosts`);
+    expect(hosts.status).toBe(200);
+    expect(hosts.body).toEqual({ defaultRemote: 'origin', hosts: {} });
+
+    const draft = await request('GET', `${repo.api}/pull-requests/draft?branch=main`);
+    expect(draft.status).toBe(400);
+  });
+
+  it('asks for a branch, base and title before opening a pull request', async () => {
+    const missing = await request('POST', `${repo.api}/pull-requests`, { branch: 'main' });
+    expect(missing.status).toBe(400);
+    expect(missing.body.error.message).toBe('"base" is required.');
+  });
+
   it('rejects names git would read as options or refuse', async () => {
     const dash = await request('POST', `${repo.api}/branches`, { name: '--force' });
     const spaces = await request('POST', `${repo.api}/branches`, { name: 'has spaces' });
@@ -1013,6 +1029,14 @@ describe('looking inside a commit', () => {
     expect(await diffOf('long.txt', { fullFile: true })).toContain(' line 0');
   });
 
+  it('can leave out changes to whitespace', async () => {
+    await writeAndCommit(repo.work, 'code.txt', 'if (a) {\n  call(a);\n}\n', 'Add code');
+    await writeAndCommit(repo.work, 'code.txt', 'if (a) {\n    call(a);  \n}\n', 'Reindent');
+
+    expect(await diffOf('code.txt')).toContain('+    call(a);  ');
+    expect(await diffOf('code.txt', { ignoreWhitespace: true })).toBe('');
+  });
+
   it('shows the very first commit, which has no parent', async () => {
     const root = git(repo.work, 'rev-list', '--max-parents=0', 'HEAD');
 
@@ -1251,6 +1275,33 @@ describe('staging parts of a file', () => {
     expect(status).toBe(409);
     expect(body.error.message).toMatch(/has changed/);
     expect(stagedDiff()).toBe('');
+  });
+
+  it('can leave out changes to whitespace, but never stages from that diff', async () => {
+    const edited = NUMBERS.with(1, '  line 2').with(24, 'twenty-fifth');
+    await write('numbers.txt', edited);
+
+    const { diff, hash } = await readDiff('numbers.txt', { ignoreWhitespace: true });
+    expect(diff).not.toMatch(/^[-+]\s*line 2$/m);
+    expect(diff).toContain('+twenty-fifth');
+
+    const lines = diff.split('\n').flatMap((text, index) => (text === '+twenty-fifth' ? [index] : []));
+    const { status } = await request('POST', `${repo.api}/stage-lines`, {
+      path: 'numbers.txt',
+      hash,
+      lines,
+      ignoreWhitespace: true,
+    });
+
+    expect(status).toBe(409);
+    expect(stagedDiff()).toBe('');
+  });
+
+  it('shows nothing when whitespace is all that changed and is ignored', async () => {
+    await write('numbers.txt', NUMBERS.map((line) => `${line} `));
+
+    expect((await readDiff('numbers.txt')).diff).toContain('+line 1 ');
+    expect((await readDiff('numbers.txt', { ignoreWhitespace: true })).diff).toBe('');
   });
 
   it('refuses a selection with no changed lines in it', async () => {
@@ -1586,6 +1637,85 @@ describe('stashing', () => {
   });
 });
 
+describe('the reflog', () => {
+  const reflog = async (query = '') => (await request('GET', `${repo.api}/reflog${query}`)).body;
+
+  it('lists HEAD newest first, with what was done', async () => {
+    await writeAndCommit(repo.work, 'a.txt', 'a\n', 'Second');
+    git(repo.work, 'switch', '-c', 'topic');
+
+    const entries = await reflog();
+    expect(entries.map(({ action, message }) => ({ action, message }))).toEqual([
+      { action: 'checkout', message: 'moving from main to topic' },
+      { action: 'commit', message: 'Second' },
+      { action: 'commit', message: 'Initial commit' },
+    ]);
+    expect(entries[0]).toMatchObject({ index: 0, selector: 'HEAD@{0}', reachable: true });
+    expect(entries[0].shortHash).toBe(entries[0].hash.slice(0, 7));
+  });
+
+  it('marks commits no branch reaches after a reset, an amend and a deleted branch', async () => {
+    await writeAndCommit(repo.work, 'a.txt', 'a\n', 'Reset away');
+    const resetAway = git(repo.work, 'rev-parse', 'HEAD');
+    git(repo.work, 'reset', '--hard', 'HEAD~1');
+
+    git(repo.work, 'switch', '-c', 'doomed');
+    await writeAndCommit(repo.work, 'b.txt', 'b\n', 'On a deleted branch');
+    const onDoomed = git(repo.work, 'rev-parse', 'HEAD');
+    git(repo.work, 'switch', 'main');
+    git(repo.work, 'branch', '-D', 'doomed');
+
+    await writeAndCommit(repo.work, 'c.txt', 'c\n', 'Before the amend');
+    const beforeAmend = git(repo.work, 'rev-parse', 'HEAD');
+    git(repo.work, 'commit', '--amend', '-m', 'Amended');
+
+    const entries = await reflog();
+    const lost = entries.filter(({ reachable }) => !reachable).map(({ hash }) => hash);
+    expect(lost).toEqual(expect.arrayContaining([resetAway, onDoomed, beforeAmend]));
+    // The amended commit is on main, as is everything pushed before.
+    expect(entries[0]).toMatchObject({ action: 'amend', reachable: true });
+    expect(entries.at(-1)).toMatchObject({ message: 'Initial commit', reachable: true });
+  });
+
+  it('counts a commit on a remote branch as reachable', async () => {
+    await writeAndCommit(repo.work, 'a.txt', 'a\n', 'Pushed');
+    git(repo.work, 'push');
+    git(repo.work, 'reset', '--hard', 'HEAD~1');
+
+    const pushed = (await reflog()).find(({ message }) => message === 'Pushed');
+    expect(pushed.reachable).toBe(true);
+  });
+
+  it('can be limited, and read for one branch', async () => {
+    await writeAndCommit(repo.work, 'a.txt', 'a\n', 'Second');
+    expect(await reflog('?limit=1')).toHaveLength(1);
+
+    const branchEntries = await reflog('?ref=main');
+    expect(branchEntries[0]).toMatchObject({ selector: 'main@{0}', message: 'Second' });
+    expect((await reflog('?ref=refs/heads/main'))[0].selector).toBe('main@{0}');
+  });
+
+  it('refuses a ref that is an option, and a branch that does not exist', async () => {
+    expect((await request('GET', `${repo.api}/reflog?ref=--all`)).status).toBe(400);
+    expect((await request('GET', `${repo.api}/reflog?ref=nope`)).status).toBe(404);
+  });
+
+  it('recovers a lost commit onto a new branch', async () => {
+    await writeAndCommit(repo.work, 'a.txt', 'a\n', 'Reset away');
+    const resetAway = git(repo.work, 'rev-parse', 'HEAD');
+    git(repo.work, 'reset', '--hard', 'HEAD~1');
+
+    const { status } = await request('POST', `${repo.api}/branches`, {
+      name: 'rescued',
+      startPoint: resetAway,
+      switchTo: false,
+    });
+    expect(status).toBeLessThan(300);
+    expect(git(repo.work, 'rev-parse', 'rescued')).toBe(resetAway);
+    expect((await reflog()).find(({ hash }) => hash === resetAway).reachable).toBe(true);
+  });
+});
+
 describe('managing individual stashes', () => {
   async function stashFile(file, message) {
     await fs.writeFile(path.join(repo.work, file), `${message}\n`);
@@ -1794,6 +1924,16 @@ describe('previewing a stash', () => {
     expect(untracked.diff).toContain('+fresh');
   });
 
+  it('can leave out changes to whitespace', async () => {
+    await fs.writeFile(path.join(repo.work, 'readme.txt'), '  one\n');
+    await request('POST', `${repo.api}/stash`, { message: 'indent' });
+    const { body: stashes } = await request('GET', `${repo.api}/stashes`);
+    const diffUrl = `${repo.api}/stashes/${stashes[0].hash}/diff?path=readme.txt`;
+
+    expect((await request('GET', diffUrl)).body.diff).toContain('+  one');
+    expect((await request('GET', `${diffUrl}&ignoreWhitespace=true`)).body.diff).toBe('');
+  });
+
   it('refuses a hash that is not one', async () => {
     const { status } = await request('GET', `${repo.api}/stashes/--all`);
     expect(status).toBe(400);
@@ -1910,7 +2050,9 @@ describe('patches', () => {
 
 describe('worktrees', () => {
   const siblingOf = (name) => path.join(path.dirname(repo.work), name);
-  const sameFolder = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+  // Real paths, as git gives them: on macOS the temp folder is a symlink into /private.
+  const realFolder = (folder) => realpathSync.native(path.resolve(folder)).toLowerCase();
+  const sameFolder = (a, b) => realFolder(a) === realFolder(b);
 
   it('lists the main working tree, marked as the one open', async () => {
     const { body } = await request('GET', `${repo.api}/worktrees`);
@@ -2226,6 +2368,101 @@ describe('stashing a clean tree', () => {
     const { status, body } = await request('POST', `${repo.api}/stash`, {});
     expect(status).toBe(409);
     expect(body.error.message).toContain('no changes to stash');
+  });
+});
+
+describe('tags', () => {
+  const head = () => git(repo.work, 'rev-parse', 'HEAD');
+  const remoteTags = () => git(repo.remote, 'tag', '--list');
+  const create = (body) => request('POST', `${repo.api}/tags`, { hash: head(), ...body });
+
+  it('creates a plain tag and an annotated one, and lists them', async () => {
+    expect((await create({ name: 'v1' })).status).toBe(204);
+    expect((await create({ name: 'v2', message: '  Second release  ' })).status).toBe(204);
+
+    const { body } = await request('GET', `${repo.api}/tags`);
+    expect(body.map(({ name, annotated }) => ({ name, annotated })).sort((a, b) => a.name.localeCompare(b.name))).toEqual([
+      { name: 'v1', annotated: false },
+      { name: 'v2', annotated: true },
+    ]);
+    expect(body[0].hash).toBe(head());
+    expect(git(repo.work, 'tag', '--list', '--format=%(contents:subject)', 'v2')).toBe('Second release');
+    // Nothing was pushed.
+    expect(remoteTags()).toBe('');
+  });
+
+  it('refuses an existing name, an invalid one and one git would read as an option', async () => {
+    await create({ name: 'v1' });
+    const again = await create({ name: 'v1' });
+    expect(again.status).toBe(400);
+    expect(again.body.error.message).toBe('A tag called v1 already exists.');
+
+    for (const name of ['--force', 'bad name', 'a..b', 'x.lock']) {
+      expect((await create({ name })).status).toBe(400);
+    }
+    expect((await create({ name: 'ok', hash: '--all' })).status).toBe(400);
+    expect(git(repo.work, 'tag', '--list')).toBe('v1');
+  });
+
+  it('can push the new tag at once, and keeps nothing if the remote is unknown', async () => {
+    const unknown = await create({ name: 'nope', push: true, remote: 'elsewhere' });
+    expect(unknown.status).toBe(400);
+    expect(git(repo.work, 'tag', '--list')).toBe('');
+
+    expect((await create({ name: 'v1', push: true })).status).toBe(204);
+    expect(remoteTags()).toBe('v1');
+  });
+
+  it('pushes one tag, never the others, and never moves one the remote has', async () => {
+    await create({ name: 'one' });
+    await create({ name: 'two' });
+    expect((await request('POST', `${repo.api}/tags/push`, { name: 'one' })).status).toBe(204);
+    expect(remoteTags()).toBe('one');
+
+    // The same name at another commit is refused rather than forced.
+    await writeAndCommit(repo.work, 'next.txt', 'x\n', 'Next');
+    git(repo.work, 'tag', '--force', 'one', 'HEAD');
+    const moved = await request('POST', `${repo.api}/tags/push`, { name: 'one' });
+    expect(moved.status).toBe(409);
+    expect(git(repo.remote, 'rev-parse', 'one')).not.toBe(head());
+
+    expect((await request('POST', `${repo.api}/tags/push`, { name: 'missing' })).status).toBe(400);
+    expect((await request('POST', `${repo.api}/tags/push`, { name: '--all' })).status).toBe(400);
+  });
+
+  it('deletes a tag here, leaving the remote alone unless asked', async () => {
+    await create({ name: 'v1', push: true });
+    await create({ name: 'v2', push: true });
+
+    const { body: remotes } = await request('GET', `${repo.api}/tags/remotes?name=v1`);
+    expect(remotes).toEqual(['origin']);
+    expect((await request('GET', `${repo.api}/tags/remotes?name=nothing`)).body).toEqual([]);
+
+    expect((await request('POST', `${repo.api}/tags/delete`, { name: 'v1' })).status).toBe(204);
+    expect(git(repo.work, 'tag', '--list')).toBe('v2');
+    expect(remoteTags()).toContain('v1');
+
+    const both = await request('POST', `${repo.api}/tags/delete`, { name: 'v2', remotes: ['origin'] });
+    expect(both.status).toBe(204);
+    expect(git(repo.work, 'tag', '--list')).toBe('');
+    expect(remoteTags()).toBe('v1');
+  });
+
+  it('refuses to delete a missing tag or from an unknown remote, changing nothing', async () => {
+    await create({ name: 'v1' });
+    expect((await request('POST', `${repo.api}/tags/delete`, { name: 'ghost' })).status).toBe(400);
+    const unknown = await request('POST', `${repo.api}/tags/delete`, { name: 'v1', remotes: ['elsewhere'] });
+    expect(unknown.status).toBe(400);
+    expect((await request('POST', `${repo.api}/tags/delete`, { name: 'v1', remotes: 'origin' })).status).toBe(400);
+    expect(git(repo.work, 'tag', '--list')).toBe('v1');
+  });
+
+  it('has no remote to push to in a repository without one', async () => {
+    git(repo.work, 'remote', 'remove', 'origin');
+    expect((await create({ name: 'v1', push: true })).status).toBe(409);
+    expect(git(repo.work, 'tag', '--list')).toBe('');
+    await create({ name: 'v1' });
+    expect((await request('POST', `${repo.api}/tags/push`, { name: 'v1' })).status).toBe(409);
   });
 });
 

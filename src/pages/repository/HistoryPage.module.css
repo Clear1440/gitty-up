@@ -373,6 +373,25 @@
   color: var(--color-text);
 }
 
+/* Reviews and checks, as a small mark tucked against the pull request's icon. */
+.prStatus {
+  margin-left: 1px;
+  font-size: var(--font-size-xs);
+}
+
+.prPassing {
+  color: var(--color-success);
+}
+
+.prFailing {
+  color: var(--color-danger);
+}
+
+.prAttention,
+.prPending {
+  color: var(--color-warning);
+}
+
 /*
  * Three pulses of one second, each fading out as it spreads, so nothing is left behind.
  * Above its neighbours, which would otherwise paint over it. The extra selector outranks

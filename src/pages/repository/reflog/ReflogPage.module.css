@@ -1,0 +1,156 @@
+.layout {
+  display: grid;
+  flex: 1;
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+}
+
+.withPane {
+  grid-template-columns: minmax(0, 1fr) min(var(--commit-pane-width, 50%), 75%);
+}
+
+.scrollArea {
+  min-width: 0;
+  min-height: 0;
+  padding: 0 var(--space-4) var(--space-4);
+  overflow: auto;
+  border-top: 1px solid var(--color-border);
+}
+
+.error {
+  margin: var(--space-4);
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-3) 0 var(--space-2);
+}
+
+.heading {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+}
+
+.note {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 84px 84px minmax(120px, 1fr) auto 64px auto 28px;
+  align-items: center;
+  column-gap: var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.row:hover,
+.row:focus-within {
+  background: var(--color-surface-hover);
+}
+
+.selected,
+.selected:hover,
+.selected:focus-within {
+  background: var(--color-primary-subtle);
+}
+
+.time,
+.action {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.action {
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+}
+
+/* Lost commits are what this page is for, so their rows read first. */
+.lost .action {
+  font-weight: var(--font-weight-semibold);
+}
+
+.message {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.message:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.notOnBranch {
+  margin: 0;
+}
+
+.hash {
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.recover {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 96px;
+}
+
+.menu {
+  opacity: 0;
+}
+
+.row:hover .menu,
+.row:focus-within .menu,
+.menu:global(.ant-dropdown-open) {
+  opacity: 1;
+}
+
+@media (max-width: 820px) {
+  .row {
+    grid-template-columns: 72px minmax(0, 1fr) auto 28px;
+  }
+
+  .action,
+  .hash,
+  .notOnBranch {
+    display: none;
+  }
+}

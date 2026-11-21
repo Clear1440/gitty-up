@@ -1,85 +1,123 @@
-import { runGit } from './runGit.js';
+import { ApiError } from '../errors.js';
+import { github } from './hosts/github.js';
+import { findRemoteHost } from './hosts/index.js';
 
-const API_URL = 'https://api.github.com';
-const REQUEST_TIMEOUT_MS = 10_000;
-const CREDENTIAL_TIMEOUT_MS = 10_000;
-// One page: a repository with more open pull requests than this loses icons, not features.
-const PAGE_SIZE = 100;
+/**
+ * How long a repository's list of pull requests is kept. Switching tabs or windows rereads
+ * it, and hosts limit how often they may be asked.
+ */
+const CACHE_MS = 60_000;
 
-const GITHUB_REMOTE =
-  /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)([^/]+)\/([^/]+?)(?:\.git)?\/?$/i;
+/** `repoPath\0remoteUrl` → `{ expires, promise }`. The promise never rejects. */
+const cache = new Map();
 
 /** Reads the owner and repository from a remote URL, or null if it isn't on GitHub. */
 export function parseGitHubRemote(url) {
-  const match = GITHUB_REMOTE.exec(url?.trim() ?? '');
-  return match ? { owner: match[1], repo: match[2] } : null;
+  return github.parse(url);
 }
 
 /**
- * The token to call GitHub with, or null to go without, which only reaches public
- * repositories. Failing that, this asks git for what it would push with. Nobody is
- * there to answer a sign-in window, so the credential manager must never open one.
+ * The hosting service a remote URL is on, as `{ id, name, term, prefills }`, or null if
+ * Gitty Up doesn't know it. Needs no network.
  */
-async function findToken(repoPath) {
-  const fromEnvironment = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
-  if (fromEnvironment) return fromEnvironment;
-
-  try {
-    const output = await runGit(repoPath, ['credential', 'fill'], {
-      input: 'protocol=https\nhost=github.com\n\n',
-      timeout: CREDENTIAL_TIMEOUT_MS,
-      env: { GCM_INTERACTIVE: 'never' },
-    });
-    return /^password=(.+)$/m.exec(output)?.[1].trim() ?? null;
-  } catch {
-    return null;
-  }
+export function describeRemoteHost(url) {
+  const found = findRemoteHost(url);
+  if (!found) return null;
+  const { id, name, term, prefills } = found.host;
+  return { id, name, term, prefills };
 }
 
-/**
- * Lists a repository's open pull requests, as `{ number, title, url, branch, draft }`.
- * These only decorate the history, so any failure leaves it with none to show.
- */
-export async function listPullRequests(repoPath, remoteUrl) {
-  const github = parseGitHubRemote(remoteUrl);
-  if (!github) return [];
-
-  const { owner, repo } = github;
-  const fullName = `${owner}/${repo}`.toLowerCase();
-  const token = await findToken(repoPath);
-
+async function readPullRequests(repoPath, { host, repository }) {
   try {
-    const response = await fetch(
-      `${API_URL}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=open&per_page=${PAGE_SIZE}`,
-      {
-        headers: {
-          Accept: 'application/vnd.github+json',
-          'User-Agent': 'gitty-up',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      },
-    );
-    if (!response.ok) {
-      console.warn(`Could not list pull requests for ${fullName}: HTTP ${response.status}`);
-      return [];
-    }
-
-    const pullRequests = await response.json();
-    return (
-      pullRequests
-        // A fork's branch can share its name with one of ours without being it.
-        .filter(({ head }) => head.repo?.full_name?.toLowerCase() === fullName)
-        .map(({ number, title, html_url: url, head, draft }) => ({
-          number,
-          title,
-          url,
-          branch: head.ref,
-          draft: Boolean(draft),
-        }))
-    );
+    const credential = await host.findCredential(repoPath);
+    return await host.list(repository, credential);
   } catch (error) {
-    console.warn(`Could not list pull requests for ${fullName}: ${error.message}`);
+    console.warn(`Could not list pull requests for ${host.describe(repository)}: ${error.message}`);
     return [];
   }
+}
+
+function forgetExpired(now) {
+  for (const [key, entry] of cache) {
+    if (entry.expires <= now) cache.delete(key);
+  }
+}
+
+/** Forgets the pull requests read for a repository, so a new one shows at once. */
+export function forgetPullRequests(repoPath) {
+  for (const key of cache.keys()) {
+    if (key.startsWith(`${repoPath}\0`)) cache.delete(key);
+  }
+}
+
+/** Forgets every list read so far. For tests. */
+export function clearPullRequestCache() {
+  cache.clear();
+}
+
+/**
+ * Lists a repository's open pull requests, as `{ number, title, url, branch, draft,
+ * review, checks }`. `review` and `checks` are null when the host didn't say. These only
+ * decorate the history, so any failure leaves it with none to show. A list is reused
+ * for a minute, as is a failure, so a host that is down isn't asked again at once.
+ */
+export async function listPullRequests(repoPath, remoteUrl) {
+  const found = findRemoteHost(remoteUrl);
+  if (!found) return [];
+
+  const key = `${repoPath}\0${remoteUrl}`;
+  const now = Date.now();
+  const cached = cache.get(key);
+  if (cached && cached.expires > now) return cached.promise;
+
+  forgetExpired(now);
+  const promise = readPullRequests(repoPath, found);
+  cache.set(key, { expires: now + CACHE_MS, promise });
+  return promise;
+}
+
+/** Whether a pull request on this remote can be made from here, rather than in the browser. */
+export async function canCreatePullRequests(repoPath, remoteUrl) {
+  const found = findRemoteHost(remoteUrl);
+  if (!found?.host.create) return false;
+  return Boolean(await found.host.findCredential(repoPath));
+}
+
+/**
+ * Opens a pull request from `head` into `base`, both named as they are on the remote.
+ * Where the host's API can and a token allows, it is created here, giving
+ * `{ created: true, number, url, hostName }`. Otherwise this gives
+ * `{ created: false, url, hostName, reason }`: the host's page that starts it, filled in
+ * as far as the host allows, for the browser to finish. `reason` says why, if anything
+ * went wrong. Nothing is ever pushed.
+ */
+export async function createPullRequest(repoPath, remoteUrl, { base, head, title, body, draft }) {
+  const found = findRemoteHost(remoteUrl);
+  if (!found) throw ApiError.badRequest('Gitty Up cannot open pull requests on this remote.');
+  const { host, repository } = found;
+  const input = { base, head, title, body, draft };
+  const inBrowser = (reason = null) => ({
+    created: false,
+    url: host.newPullRequestUrl(repository, input),
+    hostName: host.name,
+    reason,
+  });
+
+  if (!host.create) return inBrowser();
+  const credential = await host.findCredential(repoPath);
+  if (!credential) return inBrowser();
+
+  let result;
+  try {
+    result = await host.create(repository, credential, input);
+  } catch (error) {
+    console.warn(
+      `Could not create a pull request on ${host.describe(repository)}: ${error.message}`,
+    );
+    return inBrowser(`${host.name} could not create it from here, so finish it in your browser.`);
+  }
+  if (result.refused) throw ApiError.hostRefused(`${host.name} said: ${result.refused}`);
+
+  forgetPullRequests(repoPath);
+  return { created: true, number: result.number, url: result.url, hostName: host.name };
 }

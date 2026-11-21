@@ -34,6 +34,15 @@ export class ValidationHelper {
     return paths === undefined ? undefined : ValidationHelper.requirePaths(paths);
   }
 
+  /** A list of strings, such as remote names. Empty when the field was left out. */
+  static optionalNames(names, field) {
+    if (names === undefined || names === null) return [];
+    if (!Array.isArray(names) || !names.every((name) => typeof name === 'string' && name.trim())) {
+      throw ApiError.badRequest(`"${field}" must be a list of names.`);
+    }
+    return names;
+  }
+
   /** A non-empty list of line numbers. */
   static requireLines(lines) {
     const isValid = Array.isArray(lines) && lines.length > 0 && lines.every(Number.isInteger);

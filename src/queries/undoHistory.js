@@ -25,6 +25,9 @@ const KEEPS_HISTORY = new Set([
   'ignore',
   'rewordLastCommit',
   'renameBranch',
+  'createTag',
+  'pushTag',
+  'deleteTag',
   'addWorktree',
   'removeWorktree',
   'lockWorktree',
@@ -100,6 +103,14 @@ export function undoStepFor(name, input = {}, statusBefore = null) {
           },
         ],
         label: `Renamed ${input.newName} back to ${input.name}`,
+      };
+    case 'createTag':
+      // Once pushed, deleting it here would leave it on the remote, which isn't what undo means.
+      if (input.push) return null;
+      return {
+        kind: 'actions',
+        actions: [{ name: 'deleteTag', input: { name: input.name } }],
+        label: `Deleted the tag ${input.name} again`,
       };
     case 'commit':
       return { kind: 'commit' };

@@ -130,6 +130,38 @@ function createGitRouter() {
     response.json(await request.service.getPullRequests(request.target));
   });
 
+  // Which remotes are on a host that pull requests can be opened on. Reads no network.
+  router.get('/remote-hosts', async (request, response) => {
+    response.json(await request.service.getRemoteHosts(request.target));
+  });
+
+  router.get('/pull-requests/draft', async (request, response) => {
+    const { branch, remote, base } = request.query;
+    response.json(
+      await request.service.getPullRequestDraft(request.target, {
+        branch: ValidationHelper.requireString(branch, 'branch'),
+        remote: remote === 'true',
+        base: base || undefined,
+      }),
+    );
+  });
+
+  // Answers `{ created, url, hostName, number?, reason? }`. When not created, the client
+  // opens `url` for the user to finish it on the host.
+  router.post('/pull-requests', async (request, response) => {
+    const { branch, remote, base, title, body, draft } = request.body ?? {};
+    response.json(
+      await request.service.openPullRequest(request.target, {
+        branch: ValidationHelper.requireString(branch, 'branch'),
+        remote: remote === true,
+        base: ValidationHelper.requireString(base, 'base'),
+        title: ValidationHelper.requireTrimmedString(title, 'title'),
+        body: typeof body === 'string' ? body : '',
+        draft: draft === true,
+      }),
+    );
+  });
+
   router.get('/commits', async (request, response) => {
     const { ref, limit, skip } = request.query;
     response.json(
@@ -148,12 +180,13 @@ function createGitRouter() {
   });
 
   router.get('/commits/:hash/diff', async (request, response) => {
-    const { path: filePath, originalPath, fullFile } = request.query;
+    const { path: filePath, originalPath, fullFile, ignoreWhitespace } = request.query;
     const diff = await request.service.getCommitDiff(request.target, {
       hash: request.params.hash,
       filePath: ValidationHelper.requireString(filePath, 'path'),
       originalPath: originalPath || undefined,
       fullFile: fullFile === 'true',
+      ignoreWhitespace: ignoreWhitespace === 'true',
     });
     response.json({ diff });
   });
@@ -243,18 +276,39 @@ function createGitRouter() {
     response.json(await request.service.getStashes(request.target));
   });
 
+  router.get('/tags', async (request, response) => {
+    response.json(await request.service.getTags(request.target));
+  });
+
+  // A GET, as it only reads. It asks each remote, so it can take a moment.
+  router.get('/tags/remotes', async (request, response) => {
+    const name = ValidationHelper.requireString(request.query.name, 'name');
+    response.json(await request.service.getTagRemotes(request.target, { name }));
+  });
+
+  router.get('/reflog', async (request, response) => {
+    const { ref, limit } = request.query;
+    response.json(
+      await request.service.getReflog(request.target, {
+        ref: ref || undefined,
+        limit: limit || undefined,
+      }),
+    );
+  });
+
   router.get('/stashes/:hash', async (request, response) => {
     response.json(await request.service.getStashDetails(request.target, request.params.hash));
   });
 
   router.get('/stashes/:hash/diff', async (request, response) => {
-    const { path: filePath, originalPath, untracked, fullFile } = request.query;
+    const { path: filePath, originalPath, untracked, fullFile, ignoreWhitespace } = request.query;
     const diff = await request.service.getStashDiff(request.target, {
       hash: request.params.hash,
       filePath: ValidationHelper.requireString(filePath, 'path'),
       originalPath: originalPath || undefined,
       untracked: untracked === 'true',
       fullFile: fullFile === 'true',
+      ignoreWhitespace: ignoreWhitespace === 'true',
     });
     response.json({ diff });
   });
@@ -266,12 +320,13 @@ function createGitRouter() {
   });
 
   router.get('/diff', async (request, response) => {
-    const { path: filePath, staged, untracked, fullFile } = request.query;
+    const { path: filePath, staged, untracked, fullFile, ignoreWhitespace } = request.query;
     const diff = await request.service.getDiff(request.target, {
       filePath: ValidationHelper.requireString(filePath, 'path'),
       staged: staged === 'true',
       untracked: untracked === 'true',
       fullFile: fullFile === 'true',
+      ignoreWhitespace: ignoreWhitespace === 'true',
     });
     response.json({ diff, hash: git.hashDiff(diff) });
   });
@@ -451,6 +506,29 @@ function createGitRouter() {
     service.undoCommit(target, {
       hash: ValidationHelper.requireString(hash, 'hash'),
       allowPushed: allowPushed === true,
+    }),
+  );
+
+  // Tags
+  action(router, '/tags', (service, target, { name, hash, message, push, remote }) =>
+    service.createTag(target, {
+      name: ValidationHelper.requireString(name, 'name'),
+      hash: ValidationHelper.requireString(hash, 'hash'),
+      message: typeof message === 'string' ? message : undefined,
+      push: push === true,
+      remote: remote || undefined,
+    }),
+  );
+  action(router, '/tags/push', (service, target, { name, remote }) =>
+    service.pushTag(target, {
+      name: ValidationHelper.requireString(name, 'name'),
+      remote: remote || undefined,
+    }),
+  );
+  action(router, '/tags/delete', (service, target, { name, remotes }) =>
+    service.deleteTag(target, {
+      name: ValidationHelper.requireString(name, 'name'),
+      remotes: ValidationHelper.optionalNames(remotes, 'remotes'),
     }),
   );
 

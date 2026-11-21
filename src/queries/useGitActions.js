@@ -162,6 +162,22 @@ const GIT_ACTIONS = {
     title: 'Undo commit',
     success: ({ subject }) => `Undid "${subject}". Its changes and message are ready to commit.`,
   },
+  createTag: {
+    run: gitApi.createTag,
+    title: 'Create tag',
+    success: ({ name, push }) => (push ? `Created ${name} and pushed it` : `Created ${name}`),
+  },
+  pushTag: {
+    run: gitApi.pushTag,
+    title: 'Push tag',
+    success: ({ name, remote }) => `Pushed ${name}${remote ? ` to ${remote}` : ''}`,
+  },
+  deleteTag: {
+    run: gitApi.deleteTag,
+    title: 'Delete tag',
+    success: ({ name, remotes = [] }) =>
+      remotes.length > 0 ? `Deleted ${name} here and from ${remotes.join(', ')}` : `Deleted ${name}`,
+  },
   stash: { run: gitApi.stash, title: 'Stash', success: () => 'Changes stashed' },
   stashApply: { run: gitApi.stashApply, title: 'Apply stash', success: () => 'Stash applied' },
   stashPop: { run: gitApi.stashPop, title: 'Pop stash', success: () => 'Stash restored' },

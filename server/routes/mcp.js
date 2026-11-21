@@ -1,5 +1,6 @@
 import express, { Router } from 'express';
 import { RPC_ERRORS, handleMessage, rpcError } from '../mcp/mcpServer.js';
+import { bearerToken, isMcpToken } from '../mcp/mcpToken.js';
 import { scopeStore } from '../mcp/repositoryScope.js';
 
 /** Where AI tools connect, as an MCP server over Streamable HTTP. */
@@ -18,31 +19,47 @@ const sendRpcError = (response, status, code, message) =>
 
 /**
  * The MCP server: git tools for AI tools such as Claude Code. It answers only while
- * turned on in the settings, and, like every route, only to this machine. The settings
- * also say whether it may only read, or run git commands that change repositories too,
- * and which repositories it may use. All are read afresh for every request, so a change
- * applies at once.
+ * turned on in the settings, only to this machine, like every route, and only to AI tools
+ * that send the token from the settings. The settings also say whether it may only read,
+ * or run git commands that change repositories too, and which repositories it may use.
+ * All are read afresh for every request, so a change applies at once. Every tool call is
+ * recorded in `activity`, the log the settings show.
+ *
+ * The checks come in this order: local only (in app.js), then turned on, so a server that
+ * is off says so to anyone, then the token, before the body is read or anything is logged.
  *
  * Every request is answered on its own with plain JSON, which Streamable HTTP allows, so
  * there are no sessions to keep and nothing for the server to push.
  */
-export function createMcpRouter({ settings, store }) {
+export function createMcpRouter({ settings, store, activity }) {
   const router = Router();
 
-  router.use(async (_request, response, next) => {
+  router.use(async (request, response, next) => {
     const { mcp } = await settings.get();
-    if (mcp.enabled) {
-      response.locals.access = mcp.access;
-      response.locals.store = scopeStore(store, mcp.repositories);
-      next();
+    if (!mcp.enabled) {
+      sendRpcError(
+        response,
+        403,
+        RPC_ERRORS.INVALID_REQUEST,
+        'Gitty Up’s MCP server is turned off. Turn it on under Settings › AI tools.',
+      );
       return;
     }
-    sendRpcError(
-      response,
-      403,
-      RPC_ERRORS.INVALID_REQUEST,
-      'Gitty Up’s MCP server is turned off. Turn it on under Settings › AI tools.',
-    );
+    // On unless turned off in the settings, which lets any program on this machine connect.
+    const isTokenRequired = mcp.requireToken !== false;
+    if (isTokenRequired && !isMcpToken(mcp.token, bearerToken(request.get('Authorization')))) {
+      response.set('WWW-Authenticate', 'Bearer');
+      sendRpcError(
+        response,
+        401,
+        RPC_ERRORS.INVALID_REQUEST,
+        'Gitty Up did not accept this AI tool’s token. Copy the config again from Settings › AI tools in Gitty Up.',
+      );
+      return;
+    }
+    response.locals.access = mcp.access;
+    response.locals.store = scopeStore(store, mcp.repositories);
+    next();
   });
 
   router.post('/', express.json({ limit: '1mb' }), async (request, response) => {
@@ -52,7 +69,7 @@ export function createMcpRouter({ settings, store }) {
       return;
     }
     const messages = Array.isArray(body) ? body : [body];
-    const context = { store: response.locals.store, access: response.locals.access };
+    const context = { store: response.locals.store, access: response.locals.access, activity };
     const replies = (
       await Promise.all(messages.map((message) => handleMessage(context, message)))
     ).filter(Boolean);

@@ -7,6 +7,7 @@ import {
   useBranches,
   useSpanningBranches,
   useStashes,
+  useTags,
   useWorktrees,
 } from '../../queries/git.js';
 import { TextHelper } from '../../utils/TextHelper.js';
@@ -16,6 +17,8 @@ import { BranchTree, useFolderChoices } from './BranchTree.jsx';
 import { useRepositoryContext } from './RepositoryContext.js';
 import { SpanningBranchList } from './SpanningBranchList.jsx';
 import { StashList } from './StashList.jsx';
+import { TagHelper } from './TagHelper.js';
+import { TagList } from './TagList.jsx';
 import { useBranchSort } from './useBranchSort.js';
 import { WorktreeList } from './WorktreeList.jsx';
 import styles from './BranchSidebar.module.css';
@@ -79,6 +82,7 @@ export function BranchSidebar({ resizeHandle }) {
   const { data: branches, isPending } = useBranches(repository.id);
   const { data: stashes = [] } = useStashes(repository.id);
   const { data: worktrees = [] } = useWorktrees(repository.id);
+  const { data: allTags = [] } = useTags(repository.id, { enabled: !repository.isMono });
   const { data: spanningBranches = [] } = useSpanningBranches(repository.id, {
     enabled: Boolean(repository.isMono),
   });
@@ -100,6 +104,7 @@ export function BranchSidebar({ resizeHandle }) {
   );
   const remote = sortBranches(filterBranches(branches?.remote ?? [], filter), sort);
   const spanning = filterBranches(spanningBranches, filter);
+  const tags = TagHelper.filter(allTags, filter);
 
   // Counted before filtering, or the folders would come and go while typing.
   const showRemotes = new Set(branches?.remote.map(({ remote: name }) => name)).size > 1;
@@ -143,10 +148,15 @@ export function BranchSidebar({ resizeHandle }) {
       label: `Remote (${remote.length})`,
       children: renderBranches(remote, 'remote'),
     },
-    // Stashes and worktrees stay with each repository's own tab in a mono repo.
+    // Tags, stashes and worktrees stay with each repository's own tab in a mono repo.
     ...(repository.isMono
       ? []
       : [
+          {
+            key: 'tags',
+            label: `Tags (${tags.length})`,
+            children: <TagList tags={tags} filtered={allTags.length > 0} />,
+          },
           {
             key: 'stashes',
             label: `Stashes (${stashes.length})`,

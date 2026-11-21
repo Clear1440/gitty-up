@@ -4,6 +4,7 @@ import { Router } from 'express';
 import { ApiError } from '../errors.js';
 import { RepositoryStore } from '../store/repositoryStore.js';
 import { ACCESS_LEVELS } from '../mcp/mcpServer.js';
+import { createMcpToken, ensureMcpToken } from '../mcp/mcpToken.js';
 import { isRepositoryScope } from '../mcp/repositoryScope.js';
 import { mcpUrl } from './mcp.js';
 import { FileSystemHelper } from '../utils/FileSystemHelper.js';
@@ -47,8 +48,13 @@ function isSameFolder(a, b) {
   return normalize(a) === normalize(b);
 }
 
-/** `request` is the one being answered, which says where the MCP server can be reached. */
+/**
+ * `request` is the one being answered, which says where the MCP server can be reached.
+ * The token AI tools must send is given only while the server is on, and made then if it
+ * was turned on before there were tokens. Only the app can read this, like every route.
+ */
 async function describe(settings, request) {
+  if ((await settings.get()).mcp.enabled) await ensureMcpToken(settings);
   const { appearance, mcp } = await settings.get();
   const dataDir = await settings.dataDir();
   return {
@@ -56,7 +62,7 @@ async function describe(settings, request) {
     defaultDataDir: settings.defaultDataDir,
     isDefaultDataDir: isSameFolder(dataDir, settings.defaultDataDir),
     appearance,
-    mcp: { ...mcp, url: mcpUrl(request) },
+    mcp: { ...mcp, token: mcp.enabled ? mcp.token : null, url: mcpUrl(request) },
   };
 }
 
@@ -110,13 +116,16 @@ export function createSettingsRouter({ settings, store }) {
 
   /**
    * Turns the MCP server for AI tools on or off, with `enabled`, sets what it may do, with
-   * `access`, and which repositories it may use, with `repositories`. Any can be left out
-   * to keep it as it is.
+   * `access`, which repositories it may use, with `repositories`, and whether AI tools
+   * must send the token, with `requireToken`. Any can be left out to keep it as it is.
    */
   router.put('/mcp', async (request, response) => {
-    const { enabled, access, repositories } = request.body;
+    const { enabled, access, repositories, requireToken } = request.body;
     if (enabled !== undefined && typeof enabled !== 'boolean') {
       throw ApiError.badRequest('"enabled" must be true or false.');
+    }
+    if (requireToken !== undefined && typeof requireToken !== 'boolean') {
+      throw ApiError.badRequest('"requireToken" must be true or false.');
     }
     if (access !== undefined && !ACCESS_LEVELS.includes(access)) {
       throw ApiError.badRequest('"access" must be "read-only" or "full".');
@@ -127,17 +136,32 @@ export function createSettingsRouter({ settings, store }) {
       );
     }
     const current = (await settings.get()).mcp;
+    const isEnabled = enabled ?? current.enabled;
     await settings.update({
       mcp: {
         ...current,
+        // Made when first turned on, and kept when turned off, so AI tools set up before
+        // still connect when it is turned back on.
+        token: current.token ?? (isEnabled ? createMcpToken() : null),
         ...(enabled !== undefined && { enabled }),
         ...(access !== undefined && { access }),
+        ...(requireToken !== undefined && { requireToken }),
         // Everything, or a choice: "*" alongside others would only hide that they do nothing.
         ...(repositories !== undefined && {
           repositories: repositories.includes('*') ? ['*'] : [...new Set(repositories)],
         }),
       },
     });
+    response.json(await describe(settings, request));
+  });
+
+  /**
+   * Replaces the token AI tools send with a new one. Every AI tool set up with the old
+   * one is refused until given the new config.
+   */
+  router.post('/mcp/token', async (request, response) => {
+    const current = (await settings.get()).mcp;
+    await settings.update({ mcp: { ...current, token: createMcpToken() } });
     response.json(await describe(settings, request));
   });
 

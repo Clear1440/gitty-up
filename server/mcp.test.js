@@ -15,23 +15,33 @@ let baseUrl;
 let work;
 let repositoryId;
 let store;
+/** The token AI tools must send, from the settings once the server is on. */
+let token;
 let nextId = 1;
 
 const git = (cwd, ...args) =>
   execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
+/** Sends the token, if there is one yet, unless `headers` gives another Authorization or null. */
 async function post(route, body, headers = {}) {
+  const allHeaders = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json, text/event-stream',
+    ...(token && { Authorization: `Bearer ${token}` }),
+    ...headers,
+  };
+  if (allHeaders.Authorization === null) delete allHeaders.Authorization;
   const response = await fetch(`${baseUrl}${route}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json, text/event-stream',
-      ...headers,
-    },
+    headers: allHeaders,
     body: typeof body === 'string' ? body : JSON.stringify(body),
   });
   const text = await response.text();
-  return { status: response.status, body: text ? JSON.parse(text) : null };
+  return {
+    status: response.status,
+    body: text ? JSON.parse(text) : null,
+    challenge: response.headers.get('WWW-Authenticate'),
+  };
 }
 
 const setMcp = async (changes) => {
@@ -42,6 +52,8 @@ const setMcp = async (changes) => {
   });
   return response.json();
 };
+
+const ping = (headers) => post('/mcp', { jsonrpc: '2.0', id: nextId++, method: 'ping' }, headers);
 
 const rpc = (method, params) => post('/mcp', { jsonrpc: '2.0', id: nextId++, method, params });
 
@@ -103,14 +115,72 @@ describe('MCP server', () => {
     expect(body.error.message).toMatch(/turned off/);
   });
 
-  it('reports its address and state in the settings', async () => {
+  it('says it is off even to requests without the token', async () => {
+    const { status, body } = await ping({ Authorization: null });
+    expect(status).toBe(403);
+    expect(body.error.message).toMatch(/turned off/);
+  });
+
+  it('reports its address, state and token in the settings', async () => {
     const settings = await setMcp({ enabled: true });
     expect(settings.mcp).toEqual({
       enabled: true,
       access: 'read-only',
       repositories: ['*'],
+      token: expect.stringMatching(/^[\w-]{43}$/),
+      requireToken: true,
       url: `http://127.0.0.1:${server.address().port}/mcp`,
     });
+    token = settings.mcp.token;
+  });
+
+  it.each([
+    ['no token', null],
+    ['a wrong token', `Bearer ${'x'.repeat(43)}`],
+    ['a token of another length', 'Bearer short'],
+    ['the token without "Bearer"', () => token],
+    ['the token as Basic', () => `Basic ${token}`],
+  ])('refuses requests with %s, asking for the config again', async (_label, authorization) => {
+    const value = typeof authorization === 'function' ? authorization() : authorization;
+    const { status, body, challenge } = await ping({ Authorization: value });
+    expect(status).toBe(401);
+    expect(challenge).toMatch(/^Bearer/);
+    expect(body.error.code).toBe(-32600);
+    expect(body.error.message).toMatch(/Settings › AI tools/);
+    expect(body.error.message).not.toContain(token);
+  });
+
+  it('checks the token before anything else, and never logs a refused call', async () => {
+    await fetch(`${baseUrl}/api/ai-activity`, { method: 'DELETE' });
+    const refused = await post(
+      '/mcp',
+      { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'list_repositories' } },
+      { Authorization: 'Bearer wrong' },
+    );
+    expect(refused.status).toBe(401);
+    // Not even malformed JSON is read without the token.
+    expect((await post('/mcp', '{nope', { Authorization: null })).status).toBe(401);
+    const get = await fetch(`${baseUrl}/mcp`);
+    expect(get.status).toBe(401);
+    const { entries } = await (await fetch(`${baseUrl}/api/ai-activity`)).json();
+    expect(entries).toEqual([]);
+  });
+
+  it('accepts the token, whatever the case of "Bearer"', async () => {
+    expect((await ping()).status).toBe(200);
+    expect((await ping({ Authorization: `bearer ${token}` })).status).toBe(200);
+  });
+
+  it('lets AI tools in without the token while it is not required', async () => {
+    await setMcp({ requireToken: false });
+    try {
+      expect((await ping({ Authorization: null })).status).toBe(200);
+      expect((await ping({ Authorization: 'Bearer wrong' })).status).toBe(200);
+    } finally {
+      await setMcp({ requireToken: true });
+    }
+    expect((await ping({ Authorization: null })).status).toBe(401);
+    expect((await ping()).status).toBe(200);
   });
 
   it('turns away requests from websites', async () => {
@@ -233,6 +303,85 @@ describe('MCP server', () => {
     expect(staged.value).toMatch(/no uncommitted changes/);
   });
 
+  it('leaves out whitespace changes from diffs when asked', async () => {
+    // A commit that only indents the readme, made without touching the working tree.
+    const blob = execFileSync('git', ['hash-object', '-w', '--stdin'], {
+      cwd: work,
+      input: '  one\n',
+      encoding: 'utf8',
+    }).trim();
+    const tree = execFileSync('git', ['mktree'], {
+      cwd: work,
+      input: `100644 blob ${blob}\treadme.txt\n`,
+      encoding: 'utf8',
+    }).trim();
+    const indented = git(work, 'commit-tree', tree, '-p', 'main', '-m', 'Indent the readme');
+
+    const exact = await callTool('get_commit_diff', { repository: repositoryId, commit: indented });
+    expect(exact.value).toContain('+  one');
+    const ignored = await callTool('get_commit_diff', {
+      repository: repositoryId,
+      commit: indented,
+      ignore_whitespace: true,
+    });
+    expect(ignored.value).not.toContain('+  one');
+    const compared = await callTool('compare_refs', {
+      repository: repositoryId,
+      base: 'main',
+      head: indented,
+      ignore_whitespace: true,
+    });
+    expect(compared.value.filesChanged).toBe('No files differ.');
+    const uncommitted = await callTool('get_uncommitted_diff', {
+      repository: repositoryId,
+      ignore_whitespace: true,
+    });
+    expect(uncommitted.value).toContain('+two');
+  });
+
+  it('reads the reflog, marking commits that no branch holds any more', async () => {
+    // A commit made and then reset away, leaving the working tree as it was.
+    await fs.writeFile(path.join(work, 'lost.txt'), 'lost\n');
+    git(work, 'add', 'lost.txt');
+    git(work, 'commit', '-m', 'Work that gets lost');
+    const lostHash = git(work, 'rev-parse', 'HEAD');
+    git(work, 'reset', '--soft', 'HEAD~1');
+    git(work, 'rm', '--cached', '--quiet', 'lost.txt');
+    await fs.rm(path.join(work, 'lost.txt'));
+
+    const all = await callTool('get_reflog', { repository: repositoryId });
+    expect(all.isError).toBe(false);
+    expect(all.value.find((entry) => entry.hash === lostHash)).toMatchObject({
+      action: 'commit',
+      message: 'Work that gets lost',
+      reachable: false,
+    });
+    expect(all.value.some((entry) => entry.reachable)).toBe(true);
+
+    const lost = await callTool('get_reflog', { repository: repositoryId, lost_only: true });
+    expect(lost.value.length).toBeGreaterThan(0);
+    expect(lost.value.every((entry) => !entry.reachable)).toBe(true);
+
+    const limited = await callTool('get_reflog', { repository: repositoryId, limit: 1 });
+    expect(limited.value).toHaveLength(1);
+    const unknown = await callTool('get_reflog', { repository: repositoryId, branch: 'nope' });
+    expect(unknown.isError).toBe(true);
+    expect(unknown.value).toMatch(/no branch called nope/);
+  });
+
+  it('lists no pull requests for a repository on no known host, marking the tool as reaching out', async () => {
+    const { body } = await rpc('tools/list');
+    const tools = new Map(body.result.tools.map((tool) => [tool.name, tool]));
+    expect(tools.get('list_pull_requests').annotations).toMatchObject({
+      readOnlyHint: true,
+      openWorldHint: true,
+    });
+    expect(tools.get('get_reflog').annotations.openWorldHint).toBe(false);
+    const { value, isError } = await callTool('list_pull_requests', { repository: repositoryId });
+    expect(isError).toBe(false);
+    expect(value).toEqual([]);
+  });
+
   it('compares branches as a pull request would', async () => {
     const { value } = await callTool('compare_refs', {
       repository: repositoryId,
@@ -309,9 +458,66 @@ describe('MCP server', () => {
       await callTool('create_tag', { repository: repositoryId, name: 'v1.1.0', message: 'Second' });
       expect(git(work, 'tag', '--list', 'v1.1.0')).toBe('v1.1.0');
 
+      const duplicate = await callTool('create_tag', { repository: repositoryId, name: 'v1.1.0' });
+      expect(duplicate.isError).toBe(true);
+      expect(duplicate.value).toMatch(/already exists/);
+      const invalid = await callTool('create_tag', { repository: repositoryId, name: 'bad name' });
+      expect(invalid.value).toMatch(/not a valid tag name/);
+
       const back = await callTool('checkout', { repository: repositoryId, branch: 'main' });
       expect(back.value.state.branch).toBe('main');
       expect(git(work, 'log', '-1', '--format=%s', 'from-ai')).toBe('Add a second line');
+    });
+
+    it('deletes a tag locally and pushes one without forcing, marking the delete destructive', async () => {
+      const { body } = await rpc('tools/list');
+      const tools = new Map(body.result.tools.map((tool) => [tool.name, tool]));
+      expect(tools.get('delete_tag').annotations.destructiveHint).toBe(true);
+      expect(tools.get('push_tag').annotations.destructiveHint).toBe(false);
+      expect(tools.get('push_tag').inputSchema.properties).not.toHaveProperty('force');
+
+      await callTool('create_tag', { repository: repositoryId, name: 'temp', commit: 'main' });
+      const forced = await callTool('push_tag', { repository: repositoryId, name: 'temp', force: true });
+      expect(forced.isError).toBe(true);
+      expect(forced.value).toMatch(/Force pushing is not available/);
+      const noRemote = await callTool('push_tag', { repository: repositoryId, name: 'temp' });
+      expect(noRemote.isError).toBe(true);
+      expect(noRemote.value).toMatch(/no remote/);
+
+      const deleted = await callTool('delete_tag', { repository: repositoryId, name: 'temp' });
+      expect(deleted.isError).toBe(false);
+      expect(git(work, 'tag', '--list', 'temp')).toBe('');
+      const missing = await callTool('delete_tag', { repository: repositoryId, name: 'temp' });
+      expect(missing.isError).toBe(true);
+    });
+
+    it('opens pull requests only for a pushed branch, never pushing it', async () => {
+      const { body } = await rpc('tools/list');
+      const tools = new Map(body.result.tools.map((tool) => [tool.name, tool]));
+      expect(tools.get('create_pull_request').annotations).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: true,
+      });
+
+      const noRemote = await callTool('create_pull_request', { repository: repositoryId, branch: 'feature' });
+      expect(noRemote.isError).toBe(true);
+      expect(noRemote.value).toMatch(/no remote/);
+
+      // GitLab, as only GitHub is ever asked for a token, and no request leaves the machine here.
+      git(work, 'remote', 'add', 'origin', 'https://gitlab.com/example/project.git');
+      try {
+        const unpushed = await callTool('create_pull_request', {
+          repository: repositoryId,
+          branch: 'feature',
+          base: 'main',
+        });
+        expect(unpushed.isError).toBe(true);
+        expect(unpushed.value).toMatch(/Push feature/);
+        expect(git(work, 'branch', '--remotes')).toBe('');
+      } finally {
+        git(work, 'remote', 'remove', 'origin');
+      }
     });
 
     it('never force pushes', async () => {
@@ -403,5 +609,23 @@ describe('MCP server', () => {
 
     await setMcp({ enabled: false });
     expect((await rpc('ping')).status).toBe(403);
+  });
+
+  it('keeps the token while off, and refuses the old one once regenerated', async () => {
+    const off = await fetch(`${baseUrl}/api/settings`).then((response) => response.json());
+    // Kept, but not given out while off.
+    expect(off.mcp.token).toBeNull();
+    const on = await setMcp({ enabled: true });
+    expect(on.mcp.token).toBe(token);
+
+    const regenerated = await fetch(`${baseUrl}/api/settings/mcp/token`, { method: 'POST' });
+    expect(regenerated.status).toBe(200);
+    const { mcp } = await regenerated.json();
+    expect(mcp.token).toMatch(/^[\w-]{43}$/);
+    expect(mcp.token).not.toBe(token);
+
+    expect((await ping()).status).toBe(401);
+    expect((await ping({ Authorization: `Bearer ${mcp.token}` })).status).toBe(200);
+    token = mcp.token;
   });
 });
