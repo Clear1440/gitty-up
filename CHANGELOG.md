@@ -6,6 +6,8 @@ version's section.
 
 ## Unreleased
 
+## 0.4.1 - 2026-11-21
+
 ### Added
 
 - **More for AI tools to work with.** The MCP server gains tools for what agents ask most:
