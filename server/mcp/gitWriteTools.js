@@ -372,6 +372,43 @@ export const GIT_WRITE_TOOLS = [
     },
   }),
   writeTool({
+    name: 'create_pull_request',
+    title: 'Create pull request',
+    description:
+      "Opens a pull request (a merge request on GitLab) for a local branch that is already pushed, on github.com, gitlab.com or bitbucket.org. It never pushes: use push first. On GitHub with a token it is created there and its link given back. Otherwise the answer is a link to the host's page with it filled in, for the user to finish in their browser. It is a draft unless draft is false. The title and description default to ones made from the branch's commits.",
+    properties: {
+      branch: { type: 'string', description: 'The local branch. Defaults to the one checked out.' },
+      base: REF("The branch to merge into, as named on the remote. Defaults to the remote's default branch."),
+      title: { type: 'string', description: 'Defaults to the subject of the newest commit it brings in.' },
+      body: { type: 'string', description: 'The description. Defaults to a list of the commits it brings in.' },
+      draft: {
+        type: 'boolean',
+        description: 'Defaults to true, so someone looks at it before it is marked ready for review.',
+      },
+    },
+    network: true,
+    async run(repoPath, args) {
+      const branch = readRef(args, 'branch') ?? (await git.getCurrentBranch(repoPath));
+      if (!branch) throw new ToolError('No branch is checked out. Say which branch to open it for.');
+      const proposal = await git.getPullRequestDraft(repoPath, { branch, base: readRef(args, 'base') });
+      if (!proposal.base) {
+        throw new ToolError('The remote has no other branch to merge into. Say which with base.');
+      }
+      const result = await git.openPullRequest(repoPath, {
+        branch,
+        base: proposal.base,
+        title: readString(args, 'title')?.trim() || proposal.title,
+        body: readString(args, 'body') ?? proposal.body,
+        draft: readBoolean(args, 'draft') ?? true,
+      });
+      if (result.created) {
+        return `Created ${result.hostName} pull request #${result.number} from ${branch} into ${proposal.base}: ${result.url}`;
+      }
+      const why = result.reason ? ` ${result.reason}` : '';
+      return `Not created from here.${why} Give the user this link to finish it on ${result.hostName}: ${result.url}`;
+    },
+  }),
+  writeTool({
     name: 'stash_save',
     title: 'Stash changes',
     description: 'Stashes the uncommitted changes, untracked files included, or only those of some files.',

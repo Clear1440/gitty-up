@@ -17,6 +17,12 @@ version's section.
   tags to each repository.
 - **Tags for AI tools.** With full access, `delete_tag` deletes a local tag and `push_tag`
   pushes one, never forcing. `create_tag` now makes the same checks as the app's own dialog.
+- **Lost work, pull requests and whitespace for AI tools.** `get_reflog` lists where HEAD has
+  been and marks the commits no branch holds any more, so an AI tool can find work lost to a
+  reset or rebase and, with full access, bring it back with `create_branch`.
+  `list_pull_requests` reads the open pull requests with their reviews and checks, and with
+  full access `create_pull_request` opens one, as a draft, for a branch that is already pushed.
+  The diff tools take `ignore_whitespace`.
 - **Ignore whitespace.** The new button beside **Inline** and **Split** hides changes to
   spaces and tabs in every diff, as `git diff -w` does, and is remembered next time. A file
   whose only changes are whitespace says so. While it is on, single lines and hunks can't be

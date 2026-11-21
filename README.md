@@ -241,15 +241,28 @@ read-only tools:
 | `compare_refs`         | What a branch has that its base does not, as a pull request shows it |
 | `list_files`           | The files tracked at a ref                                          |
 | `read_file`            | A file as committed at a ref                                        |
+| `get_reflog`           | Where HEAD or a branch has pointed, marking commits on no branch     |
+| `list_pull_requests`   | Open pull requests on GitHub, GitLab or Bitbucket, with status      |
 | `list_tags`, `list_stashes`, `list_worktrees` | Just that                                    |
+
+`get_commit_diff`, `get_uncommitted_diff` and `compare_refs` take `ignore_whitespace`, as the
+app's **Ignore whitespace** does. `get_reflog` is how an AI tool finds lost work: an entry with
+`reachable: false` is a commit no branch, remote branch or tag holds, such as one left behind
+by a reset, rebase, amend or deleted branch. With full access, `create_branch` with that hash as
+its `start_point` brings it back without changing anything else. `list_pull_requests` asks the
+hosting service, so it is the one read tool marked as reaching outside this machine.
 
 Full access adds `fetch`, `pull`, `push`, `checkout`, `checkout_commit`, `create_branch`,
 `rename_branch`, `delete_branch`, `merge`, `rebase`, `abort_operation`, `continue_operation`,
 `stage`, `unstage`, `discard`, `commit`, `cherry_pick`, `revert`, `reset`, `create_tag`,
-`delete_tag`, `push_tag`, `stash_save`, `stash_apply`, `stash_pop`, `stash_drop`, `add_worktree` and `remove_worktree`.
+`delete_tag`, `push_tag`, `create_pull_request`, `stash_save`, `stash_apply`, `stash_pop`, `stash_drop`,
+`add_worktree` and `remove_worktree`.
 They go through `gitService.js`, with the same checks as the app's own buttons, and each answers
 with where the repository stands afterwards. `push` and `push_tag` never force: force pushing is left to the
-user, in the app. `delete_tag` deletes the local tag only, never one on a remote. Those that can lose work are marked destructive, so
+user, in the app. `delete_tag` deletes the local tag only, never one on a remote.
+`create_pull_request` never pushes: it opens a pull request for a branch already on its remote,
+as a draft unless told otherwise, or gives back the host's page for the user to finish it on
+when it can't be made from here. Those that can lose work are marked destructive, so
 AI tools that honor the hint ask first.
 
 ### Activity

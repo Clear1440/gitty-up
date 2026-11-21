@@ -14,6 +14,17 @@ const MAX_LISTED_FILES = 5_000;
 /** Pins down everything a user's config could change, as gitService does for the app. */
 const DIFF_FLAGS = ['--no-color', '--no-ext-diff', '--src-prefix=a/', '--dst-prefix=b/'];
 
+const IGNORE_WHITESPACE = {
+  type: 'boolean',
+  description: 'Leave out changes to spaces and tabs, as git diff -w does, such as code that was only reindented.',
+};
+
+/** The flags for a diff, leaving out whitespace changes when the AI tool asked. */
+const diffFlags = (args) => [
+  ...DIFF_FLAGS,
+  ...(readBoolean(args, 'ignore_whitespace') ? ['--ignore-all-space'] : []),
+];
+
 /** A mistake in what the AI tool asked for. Its message goes back to the tool to correct. */
 export class ToolError extends Error {}
 
@@ -300,6 +311,7 @@ export const GIT_TOOLS = [
         repository: REPOSITORY,
         commit: REF('Hash, branch, tag or revision such as HEAD~2.'),
         path: PATH('Only this file or folder, relative to the repository root.'),
+        ignore_whitespace: IGNORE_WHITESPACE,
       },
       required: ['repository', 'commit'],
     },
@@ -317,7 +329,7 @@ export const GIT_TOOLS = [
         '-p',
         '-M',
         '--no-commit-id',
-        ...DIFF_FLAGS,
+        ...diffFlags(args),
         ...range,
         '--',
         ...(filePath ? [filePath] : []),
@@ -339,6 +351,7 @@ export const GIT_TOOLS = [
           description: 'true for only the staged changes, false for only the unstaged ones. Leave out for both.',
         },
         path: PATH('Only this file or folder, relative to the repository root.'),
+        ignore_whitespace: IGNORE_WHITESPACE,
       },
       required: ['repository'],
     },
@@ -352,7 +365,7 @@ export const GIT_TOOLS = [
       const diff = await runGitOnPaths(repository.path, [
         'diff',
         '-M',
-        ...DIFF_FLAGS,
+        ...diffFlags(args),
         ...area,
         '--',
         ...(filePath ? [filePath] : []),
@@ -373,6 +386,7 @@ export const GIT_TOOLS = [
         head: REF('The branch or commit with the changes. Defaults to HEAD.'),
         include_patch: { type: 'boolean', description: 'Add the full unified diff, not just the files changed.' },
         path: PATH('Only this file or folder, relative to the repository root.'),
+        ignore_whitespace: IGNORE_WHITESPACE,
       },
       required: ['repository', 'base'],
     },
@@ -391,7 +405,7 @@ export const GIT_TOOLS = [
           ...pathArgs,
         ]),
         git.getRemoteOptions(repository.path),
-        runGitOnPaths(repository.path, ['diff', '--stat=200', ...DIFF_FLAGS, `${base}...${head}`, ...pathArgs]),
+        runGitOnPaths(repository.path, ['diff', '--stat=200', ...diffFlags(args), `${base}...${head}`, ...pathArgs]),
         runGit(repository.path, ['rev-list', '--count', `${head}..${base}`, '--']),
       ]);
       const result = {
@@ -405,7 +419,7 @@ export const GIT_TOOLS = [
         const patch = await runGitOnPaths(repository.path, [
           'diff',
           '-M',
-          ...DIFF_FLAGS,
+          ...diffFlags(args),
           `${base}...${head}`,
           ...pathArgs,
         ]);
@@ -529,9 +543,68 @@ export const GIT_TOOLS = [
       return git.getWorktrees(repository.path);
     },
   },
+  {
+    name: 'get_reflog',
+    title: 'Get reflog',
+    description:
+      'Where HEAD, or one local branch, has pointed, newest first: each checkout, commit, amend, reset, rebase, merge and pull, with its hash and when it happened. An entry whose reachable is false is a commit that no branch, remote branch or tag holds any more: work lost to a reset, rebase, amend or deleted branch. Read one with get_commit or get_commit_diff. With full access, create_branch with start_point set to its hash recovers it without changing anything else; cherry_pick, checkout_commit and reset can also use it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        repository: REPOSITORY,
+        branch: REF(
+          "A local branch whose own reflog to read. Leave out for HEAD's, which also has the commits of deleted branches.",
+        ),
+        lost_only: {
+          type: 'boolean',
+          description: 'Only the entries whose commit is on no branch or tag, out of those read.',
+        },
+        limit: {
+          type: 'integer',
+          description: `How many entries to read, newest first. Defaults to ${DEFAULT_LOG_LIMIT}, at most ${MAX_LOG_LIMIT}.`,
+        },
+      },
+      required: ['repository'],
+    },
+    async run(store, args) {
+      const repository = await findRepository(store, args);
+      const entries = await git.getReflog(repository.path, {
+        ref: readRef(args, 'branch') ?? 'HEAD',
+        limit: Math.max(readCount(args, 'limit', DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT), 1),
+      });
+      return readBoolean(args, 'lost_only') ? entries.filter((entry) => !entry.reachable) : entries;
+    },
+  },
+  {
+    name: 'list_pull_requests',
+    title: 'List pull requests',
+    description:
+      "The open pull requests (merge requests on GitLab) on the repository's default remote, when it is on github.com, gitlab.com or bitbucket.org: number, title, link, branch and whether it is a draft. On GitHub with a token, review is the review decision and checks whether its checks pass. A list is reused for a minute. Another host, or one that can't be reached, gives an empty list.",
+    // It asks the hosting service, over the network.
+    openWorld: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        repository: REPOSITORY,
+        branch: { type: 'string', description: 'Only the pull request for this branch, as named on the remote.' },
+      },
+      required: ['repository'],
+    },
+    async run(store, args) {
+      const repository = await findRepository(store, args);
+      const branch = readString(args, 'branch')?.trim();
+      const pullRequests = await git.getPullRequests(repository.path);
+      return branch ? pullRequests.filter((pullRequest) => pullRequest.branch === branch) : pullRequests;
+    },
+  },
 ];
 
 for (const tool of GIT_TOOLS) {
   // Tells the AI tool that calling these is safe, so it need not ask before each one.
-  tool.annotations = { title: tool.title, readOnlyHint: true, destructiveHint: false, openWorldHint: false };
+  tool.annotations = {
+    title: tool.title,
+    readOnlyHint: true,
+    destructiveHint: false,
+    openWorldHint: Boolean(tool.openWorld),
+  };
 }

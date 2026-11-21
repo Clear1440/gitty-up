@@ -303,6 +303,85 @@ describe('MCP server', () => {
     expect(staged.value).toMatch(/no uncommitted changes/);
   });
 
+  it('leaves out whitespace changes from diffs when asked', async () => {
+    // A commit that only indents the readme, made without touching the working tree.
+    const blob = execFileSync('git', ['hash-object', '-w', '--stdin'], {
+      cwd: work,
+      input: '  one\n',
+      encoding: 'utf8',
+    }).trim();
+    const tree = execFileSync('git', ['mktree'], {
+      cwd: work,
+      input: `100644 blob ${blob}\treadme.txt\n`,
+      encoding: 'utf8',
+    }).trim();
+    const indented = git(work, 'commit-tree', tree, '-p', 'main', '-m', 'Indent the readme');
+
+    const exact = await callTool('get_commit_diff', { repository: repositoryId, commit: indented });
+    expect(exact.value).toContain('+  one');
+    const ignored = await callTool('get_commit_diff', {
+      repository: repositoryId,
+      commit: indented,
+      ignore_whitespace: true,
+    });
+    expect(ignored.value).not.toContain('+  one');
+    const compared = await callTool('compare_refs', {
+      repository: repositoryId,
+      base: 'main',
+      head: indented,
+      ignore_whitespace: true,
+    });
+    expect(compared.value.filesChanged).toBe('No files differ.');
+    const uncommitted = await callTool('get_uncommitted_diff', {
+      repository: repositoryId,
+      ignore_whitespace: true,
+    });
+    expect(uncommitted.value).toContain('+two');
+  });
+
+  it('reads the reflog, marking commits that no branch holds any more', async () => {
+    // A commit made and then reset away, leaving the working tree as it was.
+    await fs.writeFile(path.join(work, 'lost.txt'), 'lost\n');
+    git(work, 'add', 'lost.txt');
+    git(work, 'commit', '-m', 'Work that gets lost');
+    const lostHash = git(work, 'rev-parse', 'HEAD');
+    git(work, 'reset', '--soft', 'HEAD~1');
+    git(work, 'rm', '--cached', '--quiet', 'lost.txt');
+    await fs.rm(path.join(work, 'lost.txt'));
+
+    const all = await callTool('get_reflog', { repository: repositoryId });
+    expect(all.isError).toBe(false);
+    expect(all.value.find((entry) => entry.hash === lostHash)).toMatchObject({
+      action: 'commit',
+      message: 'Work that gets lost',
+      reachable: false,
+    });
+    expect(all.value.some((entry) => entry.reachable)).toBe(true);
+
+    const lost = await callTool('get_reflog', { repository: repositoryId, lost_only: true });
+    expect(lost.value.length).toBeGreaterThan(0);
+    expect(lost.value.every((entry) => !entry.reachable)).toBe(true);
+
+    const limited = await callTool('get_reflog', { repository: repositoryId, limit: 1 });
+    expect(limited.value).toHaveLength(1);
+    const unknown = await callTool('get_reflog', { repository: repositoryId, branch: 'nope' });
+    expect(unknown.isError).toBe(true);
+    expect(unknown.value).toMatch(/no branch called nope/);
+  });
+
+  it('lists no pull requests for a repository on no known host, marking the tool as reaching out', async () => {
+    const { body } = await rpc('tools/list');
+    const tools = new Map(body.result.tools.map((tool) => [tool.name, tool]));
+    expect(tools.get('list_pull_requests').annotations).toMatchObject({
+      readOnlyHint: true,
+      openWorldHint: true,
+    });
+    expect(tools.get('get_reflog').annotations.openWorldHint).toBe(false);
+    const { value, isError } = await callTool('list_pull_requests', { repository: repositoryId });
+    expect(isError).toBe(false);
+    expect(value).toEqual([]);
+  });
+
   it('compares branches as a pull request would', async () => {
     const { value } = await callTool('compare_refs', {
       repository: repositoryId,
@@ -410,6 +489,35 @@ describe('MCP server', () => {
       expect(git(work, 'tag', '--list', 'temp')).toBe('');
       const missing = await callTool('delete_tag', { repository: repositoryId, name: 'temp' });
       expect(missing.isError).toBe(true);
+    });
+
+    it('opens pull requests only for a pushed branch, never pushing it', async () => {
+      const { body } = await rpc('tools/list');
+      const tools = new Map(body.result.tools.map((tool) => [tool.name, tool]));
+      expect(tools.get('create_pull_request').annotations).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: true,
+      });
+
+      const noRemote = await callTool('create_pull_request', { repository: repositoryId, branch: 'feature' });
+      expect(noRemote.isError).toBe(true);
+      expect(noRemote.value).toMatch(/no remote/);
+
+      // GitLab, as only GitHub is ever asked for a token, and no request leaves the machine here.
+      git(work, 'remote', 'add', 'origin', 'https://gitlab.com/example/project.git');
+      try {
+        const unpushed = await callTool('create_pull_request', {
+          repository: repositoryId,
+          branch: 'feature',
+          base: 'main',
+        });
+        expect(unpushed.isError).toBe(true);
+        expect(unpushed.value).toMatch(/Push feature/);
+        expect(git(work, 'branch', '--remotes')).toBe('');
+      } finally {
+        git(work, 'remote', 'remove', 'origin');
+      }
     });
 
     it('never force pushes', async () => {
