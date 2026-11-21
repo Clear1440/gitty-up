@@ -1,5 +1,5 @@
 import {
-  encodeBranchPath,
+  encodeUrlPath,
   findCredential,
   matchRemotePath,
   requestJson,
@@ -56,7 +56,7 @@ export const gitlab = {
   },
 
   /** The page of merge request `number`. */
-  pullRequestUrl: ({ path }, number) => `${WEB_URL}/${encodeBranchPath(path)}/-/merge_requests/${number}`,
+  pullRequestUrl: ({ path }, number) => `${WEB_URL}/${encodeUrlPath(path)}/-/merge_requests/${number}`,
 
   newPullRequestUrl({ path }, { base, head, title, body, draft }) {
     const query = new URLSearchParams({
@@ -65,6 +65,6 @@ export const gitlab = {
     });
     if (title) query.set('merge_request[title]', draft ? `Draft: ${title}` : title);
     if (body) query.set('merge_request[description]', body);
-    return `${WEB_URL}/${encodeBranchPath(path)}/-/merge_requests/new?${query}`;
+    return `${WEB_URL}/${encodeUrlPath(path)}/-/merge_requests/new?${query}`;
   },
 };

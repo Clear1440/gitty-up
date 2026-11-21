@@ -6,6 +6,11 @@ version's section.
 
 ## Unreleased
 
+### Fixed
+
+- The `blame` tool for AI tools works in repositories that use SHA-256 hashes, where it gave
+  back no lines at all.
+
 ## 0.4.1 - 2026-11-21
 
 ### Added

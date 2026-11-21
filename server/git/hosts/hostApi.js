@@ -97,7 +97,7 @@ export function splitRepositoryPath(path, { min, max }) {
   return isValid ? parts : null;
 }
 
-/** A branch name for a URL path, keeping its slashes as they are. */
-export function encodeBranchPath(branch) {
-  return branch.split('/').map(encodeURIComponent).join('/');
+/** A branch name or project path for a URL, each part encoded and its slashes kept as they are. */
+export function encodeUrlPath(urlPath) {
+  return urlPath.split('/').map(encodeURIComponent).join('/');
 }

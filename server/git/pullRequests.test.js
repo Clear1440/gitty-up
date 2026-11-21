@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { github } from './hosts/github.js';
 import { findRemoteHost } from './hosts/index.js';
 import {
   clearPullRequestCache,
   createPullRequest,
   describeRemoteHost,
   listPullRequests,
-  parseGitHubRemote,
 } from './pullRequests.js';
 import { runGit } from './runGit.js';
 
@@ -61,7 +61,7 @@ describe('remote parsing', () => {
     'ssh://git@github.com/acme/app.git',
     'ssh://git@github.com:22/acme/app.git',
   ])('reads %s as GitHub', (url) => {
-    expect(parseGitHubRemote(url)).toEqual({ owner: 'acme', repo: 'app' });
+    expect(github.parse(url)).toEqual({ owner: 'acme', repo: 'app' });
   });
 
   it.each([
@@ -74,7 +74,7 @@ describe('remote parsing', () => {
     '',
     null,
   ])('does not read %s as GitHub', (url) => {
-    expect(parseGitHubRemote(url)).toBeNull();
+    expect(github.parse(url)).toBeNull();
   });
 
   it.each([

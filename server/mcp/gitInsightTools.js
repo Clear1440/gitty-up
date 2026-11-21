@@ -39,7 +39,10 @@ const MAX_CONFLICT_REGIONS = 20;
 const MAX_CONFLICT_SIDE_LENGTH = 2_000;
 /** Each version of a conflicted file gets a share of the usual limit, as there are four. */
 const MAX_CONFLICT_VERSION_LENGTH = MAX_TEXT_LENGTH / 4;
-const UNCOMMITTED_HASH = /^0{40}$/;
+/** What blame gives lines not yet committed: all zeros, as long as the repository's hashes. */
+const UNCOMMITTED_HASH = /^0+$/;
+/** A blame header line: the commit, SHA-1 or SHA-256, then the line's old and new numbers. */
+const BLAME_HEADER = /^([0-9a-f]{40}|[0-9a-f]{64}) \d+ (\d+)/;
 
 const short = (hash) => hash.slice(0, 7);
 const cutLine = (text) => (text.length > MAX_MATCH_LENGTH ? `${text.slice(0, MAX_MATCH_LENGTH)}…` : text);
@@ -88,13 +91,13 @@ function parseGrep(output, commit, max) {
  * first time it appears, then the line itself after a tab. Consecutive lines from one
  * commit become one hunk.
  */
-function parseBlame(output) {
+export function parseBlame(output) {
   const commits = new Map();
   const hunks = [];
   let current = null;
   let lineNumber = 0;
   for (const line of output.split('\n')) {
-    const header = /^([0-9a-f]{40}) \d+ (\d+)/.exec(line);
+    const header = BLAME_HEADER.exec(line);
     if (header) {
       current = header[1];
       lineNumber = Number(header[2]);
@@ -377,10 +380,12 @@ export const GIT_INSIGHT_TOOLS = [
         throw new ToolError(`Could not blame ${filePath}: ${error.message}`);
       }
       const hunks = parseBlame(output);
-      let shown = 0;
+      // Whole hunks, up to the first that starts past the limit.
+      let linesBefore = 0;
       const kept = hunks.filter((hunk) => {
-        shown += hunk.end - hunk.start + 1;
-        return shown - (hunk.end - hunk.start + 1) < MAX_BLAME_LINES;
+        const isKept = linesBefore < MAX_BLAME_LINES;
+        linesBefore += hunk.end - hunk.start + 1;
+        return isKept;
       });
       return {
         path: filePath,

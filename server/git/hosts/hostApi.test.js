@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { encodeBranchPath, matchRemotePath, splitRepositoryPath } from './hostApi.js';
+import { encodeUrlPath, matchRemotePath, splitRepositoryPath } from './hostApi.js';
 
 describe('matchRemotePath', () => {
   it.each([
@@ -35,8 +35,8 @@ describe('splitRepositoryPath', () => {
   });
 });
 
-describe('encodeBranchPath', () => {
+describe('encodeUrlPath', () => {
   it('keeps slashes and encodes the rest', () => {
-    expect(encodeBranchPath('feature/a b#1')).toBe('feature/a%20b%231');
+    expect(encodeUrlPath('feature/a b#1')).toBe('feature/a%20b%231');
   });
 });

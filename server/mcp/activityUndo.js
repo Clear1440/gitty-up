@@ -222,7 +222,9 @@ export async function undoActivity({ activity, store }, id) {
   if (!repository?.path) throw ApiError.notFound(`${entry.repository.name} is no longer linked.`);
   await UNDOS[entry.tool].run(repository.path, entry);
 
-  const updated = await activity.update(id, { undone: { time: new Date().toISOString() } });
+  const undone = { time: new Date().toISOString() };
+  const updated = await activity.update(id, { undone });
   await activity.flush();
-  return updated;
+  // The log keeps only so many entries, and a burst of calls could push this one out.
+  return updated ?? { ...entry, undone };
 }

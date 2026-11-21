@@ -1,21 +1,14 @@
 import { TagOutlined } from '@ant-design/icons';
-import { useNavigate } from 'react-router';
 import { MenuRow } from '../../components/MenuRow.jsx';
 import { RelativeTime } from '../../components/RelativeTime.jsx';
-import { paths } from '../../paths.js';
-import { useRepositoryContext } from './RepositoryContext.js';
 import { TagHelper } from './TagHelper.js';
-import { useTagMenu } from './useTagMenu.js';
+import { useShowTag, useTagMenu } from './useTagMenu.js';
 import styles from './TagList.module.css';
 
 function TagRow({ tag }) {
-  const navigate = useNavigate();
-  const { repository } = useRepositoryContext();
+  const showTag = useShowTag();
   const items = useTagMenu(tag.name, { show: true });
-
-  // The time makes every click a new request, so a tag scrolled away from can be found again.
-  const show = () =>
-    navigate(paths.focusTag(repository.id, tag), { state: { focusBranch: Date.now() } });
+  const show = () => showTag(tag);
 
   return (
     <MenuRow

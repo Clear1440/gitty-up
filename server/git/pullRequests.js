@@ -1,5 +1,4 @@
 import { ApiError } from '../errors.js';
-import { github } from './hosts/github.js';
 import { findRemoteHost } from './hosts/index.js';
 
 /**
@@ -10,11 +9,6 @@ const CACHE_MS = 60_000;
 
 /** `repoPath\0remoteUrl` → `{ expires, promise }`. The promise never rejects. */
 const cache = new Map();
-
-/** Reads the owner and repository from a remote URL, or null if it isn't on GitHub. */
-export function parseGitHubRemote(url) {
-  return github.parse(url);
-}
 
 /**
  * The hosting service a remote URL is on, as `{ id, name, term, prefills }`, or null if
@@ -44,7 +38,7 @@ function forgetExpired(now) {
 }
 
 /** Forgets the pull requests read for a repository, so a new one shows at once. */
-export function forgetPullRequests(repoPath) {
+function forgetPullRequests(repoPath) {
   for (const key of cache.keys()) {
     if (key.startsWith(`${repoPath}\0`)) cache.delete(key);
   }

@@ -11,6 +11,17 @@ const CHECKS_TEXT = {
   none: 'No checks',
 };
 
+/**
+ * A local branch's live upstream, such as origin/topic, as `{ remote, name }`, or null
+ * when it has none, or it is gone.
+ */
+function splitUpstream(branch) {
+  if (!branch.upstream || branch.upstreamGone) return null;
+  const slash = branch.upstream.indexOf('/');
+  if (slash <= 0) return null;
+  return { remote: branch.upstream.slice(0, slash), name: branch.upstream.slice(slash + 1) };
+}
+
 /** Pull requests from the server, and how a branch shows its own. */
 export class PullRequestHelper {
   /**
@@ -43,21 +54,13 @@ export class PullRequestHelper {
    */
   static remoteNameOf(branch, kind) {
     if (kind === 'remote') return branch.localName;
-    if (branch.upstream && !branch.upstreamGone) {
-      const slash = branch.upstream.indexOf('/');
-      if (slash > 0) return branch.upstream.slice(slash + 1);
-    }
-    return branch.name;
+    return splitUpstream(branch)?.name ?? branch.name;
   }
 
   /** The remote a pull request for the branch would be opened on, or null. */
   static remoteOf(branch, kind, defaultRemote) {
     if (kind === 'remote') return branch.remote ?? null;
-    if (branch.upstream && !branch.upstreamGone) {
-      const slash = branch.upstream.indexOf('/');
-      if (slash > 0) return branch.upstream.slice(0, slash);
-    }
-    return defaultRemote ?? null;
+    return splitUpstream(branch)?.remote ?? defaultRemote ?? null;
   }
 
   /** The open pull request for a branch, from a list of them, or null. */

@@ -176,10 +176,14 @@ export async function getRemoteOptions(repoPath) {
   return { remotes, defaultRemote: GitRefHelper.pickDefaultRemote(remotes) };
 }
 
+async function getRemoteUrlOf(repoPath, remote) {
+  return (await runGit(repoPath, ['remote', 'get-url', remote])).trim();
+}
+
+/** The default remote's URL, or null when there is no remote. */
 async function getRemoteUrl(repoPath) {
   const remote = await getDefaultRemote(repoPath);
-  if (!remote) return null;
-  return (await runGit(repoPath, ['remote', 'get-url', remote])).trim();
+  return remote ? getRemoteUrlOf(repoPath, remote) : null;
 }
 
 export async function getPullRequests(repoPath) {
@@ -213,11 +217,11 @@ export async function getLastFetchTime(repoPath) {
 export async function getRemoteHosts(repoPath) {
   const remotes = await getRemotes(repoPath);
   const urls = await Promise.all(
-    remotes.map((remote) => runGit(repoPath, ['remote', 'get-url', remote]).catch(() => '')),
+    remotes.map((remote) => getRemoteUrlOf(repoPath, remote).catch(() => '')),
   );
   const hosts = {};
   remotes.forEach((remote, index) => {
-    const host = describeRemoteHost(urls[index].trim());
+    const host = describeRemoteHost(urls[index]);
     if (host) hosts[remote] = host;
   });
   return { defaultRemote: GitRefHelper.pickDefaultRemote(remotes), hosts };
@@ -272,10 +276,6 @@ async function findPullRequestHead(repoPath, { branch, remote: isRemote = false 
   };
 }
 
-async function getRemoteUrlOf(repoPath, remote) {
-  return (await runGit(repoPath, ['remote', 'get-url', remote])).trim();
-}
-
 // Enough for a description anyone would read through.
 const MAX_DRAFT_COMMITS = 50;
 
@@ -286,6 +286,7 @@ const MAX_DRAFT_COMMITS = 50;
  * branch to work those out against.
  */
 export async function getPullRequestDraft(repoPath, { branch, remote: isRemote, base }) {
+  if (base !== undefined) assertRef(base);
   const head = await findPullRequestHead(repoPath, { branch, remote: isRemote });
   if (!head.remote) throw ApiError.gitFailure('This repository has no remote.');
   const remoteUrl = await getRemoteUrlOf(repoPath, head.remote);
@@ -306,7 +307,6 @@ export async function getPullRequestDraft(repoPath, { branch, remote: isRemote, 
     GitRefHelper.pickMainBranch(bases) ??
     bases[0] ??
     null;
-  if (base !== undefined) assertRef(base);
   const chosenBase = base ?? defaultBase;
 
   const subjects =

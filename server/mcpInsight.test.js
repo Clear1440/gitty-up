@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from './app.js';
-import { readMergeMessage } from './mcp/gitInsightTools.js';
+import { parseBlame, readMergeMessage } from './mcp/gitInsightTools.js';
 import { RepositoryStore } from './store/repositoryStore.js';
 import { SettingsStore } from './store/settingsStore.js';
 
@@ -216,6 +216,21 @@ describe('MCP tools for agents', () => {
       expect(disk.value.hunks).toEqual([
         { start: 2, end: 2, commit: null, uncommitted: true, text: 'console.log(greeting, "again");' },
       ]);
+    });
+
+    it('reads blame in a repository with SHA-256 hashes', async () => {
+      const sha256 = path.join(sandbox, 'sha256');
+      await fs.mkdir(sha256);
+      git(sha256, 'init', '--initial-branch=main', '--object-format=sha256');
+      configureRepo(sha256);
+      await writeAndCommit(sha256, 'a.txt', 'one\n', 'First');
+      await fs.writeFile(path.join(sha256, 'a.txt'), 'one\ntwo\n');
+      const hunks = parseBlame(git(sha256, 'blame', '--porcelain', '--', 'a.txt'));
+      expect(hunks).toEqual([
+        expect.objectContaining({ start: 1, end: 1, author: 'Test', subject: 'First', text: 'one' }),
+        { start: 2, end: 2, commit: null, uncommitted: true, text: 'two' },
+      ]);
+      expect(hunks[0].commit).toHaveLength(7);
     });
 
     it('explains a file it cannot blame', async () => {

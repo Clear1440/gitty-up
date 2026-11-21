@@ -1,6 +1,6 @@
 import {
   HostRequestError,
-  encodeBranchPath,
+  encodeUrlPath,
   findCredential,
   matchRemotePath,
   requestJson,
@@ -157,7 +157,7 @@ export const github = {
     const query = new URLSearchParams({ expand: '1' });
     if (title) query.set('title', title);
     if (body) query.set('body', body);
-    return `${WEB_URL}/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/compare/${encodeBranchPath(base)}...${encodeBranchPath(head)}?${query}`;
+    return `${WEB_URL}/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/compare/${encodeUrlPath(base)}...${encodeUrlPath(head)}?${query}`;
   },
 
   /**

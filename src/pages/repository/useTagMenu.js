@@ -7,12 +7,23 @@ import { StatusHelper } from './StatusHelper.js';
 import { TagHelper } from './TagHelper.js';
 
 /**
+ * Shows a tag's commit in the history, scrolled to and opened. The time makes every call
+ * a new request, so a tag scrolled away from can be found again.
+ */
+export function useShowTag() {
+  const navigate = useNavigate();
+  const { repository } = useRepositoryContext();
+  return ({ name, hash }) =>
+    navigate(paths.focusTag(repository.id, { name, hash }), { state: { focusBranch: Date.now() } });
+}
+
+/**
  * What can be done with a tag, as menu items, wherever it is shown. The sidebar and the
  * labels in the history offer the same menu. `name` is the tag's name, and `show` also
  * gives a "Show in history" item.
  */
 export function useTagMenu(name, { show = false } = {}) {
-  const navigate = useNavigate();
+  const showTag = useShowTag();
   const { repository, status, run, openDialog, isBusy } = useRepositoryContext();
   const { data: tags } = useTags(repository.id);
   const { data: remoteOptions } = useRemotes(repository.id);
@@ -28,11 +39,7 @@ export function useTagMenu(name, { show = false } = {}) {
           {
             key: 'show',
             label: 'Show in history',
-            // The time makes every click a new request, so a tag scrolled away from can be found again.
-            onClick: () =>
-              navigate(paths.focusTag(repository.id, { name, hash: tag.hash }), {
-                state: { focusBranch: Date.now() },
-              }),
+            onClick: () => showTag(tag),
           },
         ]
       : []),
