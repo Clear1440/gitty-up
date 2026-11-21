@@ -65,6 +65,10 @@ export const bitbucket = {
     );
   },
 
+  /** The page of pull request `number`. */
+  pullRequestUrl: ({ workspace, repo }, number) =>
+    `${WEB_URL}/${encodeURIComponent(workspace)}/${encodeURIComponent(repo)}/pull-requests/${number}`,
+
   newPullRequestUrl({ workspace, repo }, { base, head }) {
     const query = new URLSearchParams({ source: head, dest: base });
     return `${WEB_URL}/${encodeURIComponent(workspace)}/${encodeURIComponent(repo)}/pull-requests/new?${query}`;

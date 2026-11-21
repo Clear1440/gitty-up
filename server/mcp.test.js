@@ -228,7 +228,9 @@ describe('MCP server', () => {
     expect(names).toContain('list_repositories');
     expect(names).toContain('read_file');
     expect(names).not.toContain('commit');
-    for (const tool of body.result.tools) {
+    // Fetch only moves the remote branches, so it is offered read-only too.
+    expect(names).toContain('fetch');
+    for (const tool of body.result.tools.filter(({ name }) => name !== 'fetch')) {
       expect(tool.annotations.readOnlyHint).toBe(true);
       expect(tool.inputSchema.type).toBe('object');
     }

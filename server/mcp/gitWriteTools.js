@@ -1,6 +1,9 @@
 import path from 'node:path';
 import * as git from '../git/gitService.js';
+import { loadGittyConfig } from '../scripts/gittyConfig.js';
+import { runScript } from '../scripts/runScript.js';
 import {
+  MAX_TEXT_LENGTH,
   REF,
   REPOSITORY,
   ToolError,
@@ -78,20 +81,34 @@ function writeTool({ name, title, description, properties = {}, required = [], d
 }
 
 /**
+ * Fetching only updates the remote branches, never a local branch, the index or a file,
+ * so it is offered with read-only access too: without it, ahead and behind go stale.
+ */
+export const FETCH_TOOL = writeTool({
+  name: 'fetch',
+  title: 'Fetch',
+  description:
+    'Fetches every remote, pruning remote branches that are gone, so ahead, behind and the remote branches are up to date. Changes no local branch and no file.',
+  network: true,
+  async run(repoPath) {
+    const { changed } = await git.fetchAll(repoPath);
+    return changed ? 'Fetched new commits or branches.' : 'Already up to date.';
+  },
+});
+
+const RESOLVE_SIDES = ['ours', 'theirs'];
+
+/** The end of a script's output, where a failure explains itself, cut to fit. */
+function tailOf(output) {
+  if (output.length <= MAX_TEXT_LENGTH) return output;
+  return `[Only the end is shown.]\n${output.slice(-MAX_TEXT_LENGTH)}`;
+}
+
+/**
  * The tools that change repositories, offered only when the MCP server has full access.
  * Each goes through gitService, so it gets the same checks as the app's own buttons.
  */
 export const GIT_WRITE_TOOLS = [
-  writeTool({
-    name: 'fetch',
-    title: 'Fetch',
-    description: 'Fetches every remote, pruning remote branches that are gone. Changes no local branch.',
-    network: true,
-    async run(repoPath) {
-      const { changed } = await git.fetchAll(repoPath);
-      return changed ? 'Fetched new commits or branches.' : 'Already up to date.';
-    },
-  }),
   writeTool({
     name: 'pull',
     title: 'Pull',
@@ -239,6 +256,36 @@ export const GIT_WRITE_TOOLS = [
     title: 'Continue operation',
     description: 'Carries on with the merge, rebase, cherry-pick or revert in progress, once its conflicts are resolved and staged.',
     run: (repoPath) => git.continueOperation(repoPath),
+  }),
+  writeTool({
+    name: 'resolve_conflict',
+    title: 'Resolve conflict',
+    description:
+      'Settles one conflicted file of the merge, rebase, cherry-pick or revert in progress, and stages it: with content, the file as it should be; with side, one side\'s version whole (the way to settle a binary file); or with remove, deleting it. get_conflicts shows what each side has. Once no file is left in conflict, continue_operation carries on.',
+    properties: {
+      path: { type: 'string', description: 'The conflicted file, relative to the repository root.' },
+      content: { type: 'string', description: 'The whole file as it should be, with no conflict markers left.' },
+      side: { type: 'string', enum: RESOLVE_SIDES, description: 'Take ours or theirs whole instead.' },
+      remove: { type: 'boolean', description: 'Delete the file instead, siding with a deletion.' },
+    },
+    required: ['path'],
+    async run(repoPath, args) {
+      const filePath = readRepoPath(args, 'path', { required: true });
+      const content = args.content === undefined ? undefined : readString(args, 'content') ?? '';
+      const side = readString(args, 'side');
+      const remove = readBoolean(args, 'remove') ?? false;
+      const ways = [content !== undefined, side !== undefined, remove].filter(Boolean).length;
+      if (ways !== 1) throw new ToolError('Give exactly one of content, side or remove.');
+      if (side !== undefined && !RESOLVE_SIDES.includes(side)) throw new ToolError('"side" must be "ours" or "theirs".');
+      if (content !== undefined && /^(<{7}|>{7})( |$)/m.test(content)) {
+        throw new ToolError('content still has conflict markers. Give the file as it should end up.');
+      }
+      await git.resolveConflict(repoPath, { filePath, content, side, remove });
+      const { conflicted } = await git.getStatus(repoPath);
+      return conflicted.length === 0
+        ? `Resolved ${filePath}. No conflicts are left: continue_operation carries on.`
+        : `Resolved ${filePath}. Still in conflict: ${conflicted.map((file) => file.path).join(', ')}.`;
+    },
   }),
   writeTool({
     name: 'stage',
@@ -482,5 +529,35 @@ export const GIT_WRITE_TOOLS = [
         folder: readString(args, 'folder', { required: true }),
         force: readBoolean(args, 'force') ?? false,
       }),
+  }),
+  writeTool({
+    name: 'run_script',
+    title: 'Run script',
+    description:
+      "Runs one of the scripts in the repository's .gitty file, as list_scripts names it, and waits for it to end, up to 10 minutes: its exit code and output, the end of it when long. Scripts are the user's own commands, such as tests or builds, and can do anything those commands do, so run one only when the user asked for it or it is plainly what they set it up for.",
+    properties: {
+      name: { type: 'string', description: 'The script, as list_scripts names it.' },
+      params: {
+        type: 'object',
+        description: 'Answers to the parameters the script asks for, by name. Left out, each takes its default.',
+      },
+    },
+    required: ['name'],
+    destructive: true,
+    network: true,
+    async run(repoPath, args) {
+      const name = readString(args, 'name', { required: true });
+      const params = args.params ?? {};
+      if (typeof params !== 'object' || Array.isArray(params)) throw new ToolError('"params" must be an object.');
+      const { found, scripts } = await loadGittyConfig(repoPath);
+      if (!found) throw new ToolError('This repository has no .gitty file, so no scripts.');
+      const script = scripts.find((candidate) => candidate.name === name);
+      if (!script) {
+        const names = scripts.map((candidate) => `"${candidate.name}"`).join(', ') || 'none';
+        throw new ToolError(`.gitty has no script named "${name}". Its scripts are: ${names}.`);
+      }
+      const { exitCode, output, durationMs } = await runScript(repoPath, script, params);
+      return { exitCode, succeeded: exitCode === 0, durationMs, output: tailOf(output) };
+    },
   }),
 ];

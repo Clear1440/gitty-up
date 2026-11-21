@@ -25,6 +25,7 @@ import {
   parseTags,
   parseWorktrees,
 } from './parsers.js';
+import { findRemoteHost } from './hosts/index.js';
 import { buildPatch } from './patch.js';
 import {
   canCreatePullRequests,
@@ -183,6 +184,26 @@ async function getRemoteUrl(repoPath) {
 
 export async function getPullRequests(repoPath) {
   return listPullRequests(repoPath, await getRemoteUrl(repoPath));
+}
+
+/**
+ * The web page of pull request `number` on the default remote's host, or null when the
+ * remote is on no host Gitty Up knows. Reads no network.
+ */
+export async function getPullRequestUrl(repoPath, number) {
+  const remoteUrl = await getRemoteUrl(repoPath);
+  const found = remoteUrl && findRemoteHost(remoteUrl);
+  return found ? found.host.pullRequestUrl(found.repository, number) : null;
+}
+
+/**
+ * When the repository last fetched, as an ISO time, or null if it never has. Git touches
+ * FETCH_HEAD on every fetch and pull, so its age says how stale the remote branches are.
+ */
+export async function getLastFetchTime(repoPath) {
+  const fetchHead = (await runGit(repoPath, ['rev-parse', '--git-path', 'FETCH_HEAD'])).trim();
+  const stats = await fs.stat(path.resolve(repoPath, fetchHead)).catch(() => null);
+  return stats ? stats.mtime.toISOString() : null;
 }
 
 /**

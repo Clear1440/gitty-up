@@ -8,6 +8,25 @@ version's section.
 
 ### Added
 
+- **More for AI tools to work with.** The MCP server gains tools for what agents ask most:
+  - `search_code` finds text or a regex in a commit's files or on disk, with file and line.
+  - `blame` says who last changed each line, and `find_merge` which merge, branch and pull
+    request brought a commit in, with a link on GitHub, GitLab and Bitbucket.
+  - `search_log_across` and `find_branch_across` search the history or branches of every
+    repository, or one group, at once. `list_repositories` can be narrowed to a group, or to
+    those with changes, commits to push or pull, or a branch checked out.
+  - `read_working_file` reads a file as it is on disk, untracked ones too, but never one git
+    ignores, such as `.env`. It and `read_file` can read a range of lines.
+  - `get_log` takes `follow`, to go on back through a file's renames, and `since`. The diff
+    tools take `files_only`, to list the files changed before reading each one.
+  - `preview_merge` says what a merge would bring in and which files would conflict, without
+    merging. `get_conflicts` shows each conflict of a merge or rebase in progress, and
+    `list_scripts` the scripts in `.gitty`.
+  - `list_repositories` and `get_status` say when each repository last fetched, and **`fetch`
+    is now offered read-only too**, as it only updates remote branches.
+  - With full access, `resolve_conflict` settles a conflicted file, and `run_script` runs a
+    `.gitty` script and gives back its output.
+
 - **Create, push and delete tags.** **Create tag…** is in a commit's menu in the history. A
   message makes the tag annotated, and a checkbox pushes it to the remote straight away. Tags
   have their own section in the sidebar, and a right-click menu there and on a tag's label in
