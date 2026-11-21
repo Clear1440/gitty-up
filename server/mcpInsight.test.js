@@ -29,13 +29,21 @@ let directHash;
 const git = (cwd, ...args) =>
   execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 
-async function initRepo(folder) {
-  await fs.mkdir(folder, { recursive: true });
-  git(folder, 'init', '--initial-branch=main');
+/**
+ * Sets who commits, and pins settings a user's config could change. A clone needs this
+ * too: CI machines have no global identity to fall back on.
+ */
+function configureRepo(folder) {
   git(folder, 'config', 'user.name', 'Test');
   git(folder, 'config', 'user.email', 'test@example.com');
   git(folder, 'config', 'commit.gpgsign', 'false');
   git(folder, 'config', 'core.autocrlf', 'false');
+}
+
+async function initRepo(folder) {
+  await fs.mkdir(folder, { recursive: true });
+  git(folder, 'init', '--initial-branch=main');
+  configureRepo(folder);
 }
 
 async function writeAndCommit(cwd, file, content, message) {
@@ -133,6 +141,7 @@ beforeAll(async () => {
 
   clone = path.join(sandbox, 'clone');
   git(sandbox, 'clone', '--quiet', work, clone);
+  configureRepo(clone);
   await writeAndCommit(clone, 'clone.txt', 'clone\n', 'US2638 follow-up in the clone');
   git(clone, 'switch', '-c', 'feature/us2638-clone');
 
@@ -154,8 +163,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await new Promise((resolve) => server.close(resolve));
-  await fs.rm(sandbox, { recursive: true, force: true });
+  // Setup can fail before the server starts, and that failure is the one worth reading.
+  if (server) await new Promise((resolve) => server.close(resolve));
+  if (sandbox) await fs.rm(sandbox, { recursive: true, force: true });
 });
 
 describe('MCP tools for agents', () => {
