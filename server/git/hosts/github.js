@@ -148,6 +148,10 @@ export const github = {
     return listWithoutStatus(repository, credential);
   },
 
+  /** The page of pull request `number`. */
+  pullRequestUrl: ({ owner, repo }, number) =>
+    `${WEB_URL}/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pull/${number}`,
+
   /** The page that starts a pull request, filled in as far as GitHub's query string allows. */
   newPullRequestUrl({ owner, repo }, { base, head, title, body }) {
     const query = new URLSearchParams({ expand: '1' });

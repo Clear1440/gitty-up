@@ -1,8 +1,9 @@
 import { ApiError } from '../errors.js';
 import packageJson from '../../package.json' with { type: 'json' };
 import { recordToolCall } from './activityRecorder.js';
+import { GIT_INSIGHT_TOOLS } from './gitInsightTools.js';
 import { GIT_TOOLS, ToolError } from './gitTools.js';
-import { GIT_WRITE_TOOLS } from './gitWriteTools.js';
+import { FETCH_TOOL, GIT_WRITE_TOOLS } from './gitWriteTools.js';
 
 /** The MCP versions this server speaks, newest first. */
 export const PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
@@ -21,17 +22,22 @@ export const ACCESS_LEVELS = ['read-only', 'full'];
 
 const INSTRUCTIONS = {
   'read-only':
-    'Read-only access to the git repositories linked in Gitty Up, a desktop git client. Start with list_repositories: every other tool takes one of its repositories by id, name or folder. Nothing here can change a repository.',
+    'Read-only access to the git repositories linked in Gitty Up, a desktop git client. Start with list_repositories: every other tool takes one of its repositories by id, name or folder. Nothing here can change a branch, a file or the index: fetch only brings the remote branches up to date. search_code finds code, blame and find_merge explain where a line or commit came from, and search_log_across and find_branch_across look at many repositories at once.',
   full: 'Access to the git repositories linked in Gitty Up, a desktop git client, including git commands that change them. Start with list_repositories: every other tool takes one of its repositories by id, name or folder. Check get_status before changing a repository, and ask the user before anything that can lose work, such as discard, a hard reset or deleting a branch. Force pushing is not offered.',
 };
 
+const READ_TOOLS = [...GIT_TOOLS, ...GIT_INSIGHT_TOOLS, FETCH_TOOL];
+
 /** The tools each level of access offers. Full access adds the ones that change things. */
 const TOOLS = {
-  'read-only': GIT_TOOLS,
-  full: [...GIT_TOOLS, ...GIT_WRITE_TOOLS],
+  'read-only': READ_TOOLS,
+  full: [...READ_TOOLS, ...GIT_WRITE_TOOLS],
 };
 
+/** Tools that need full access. */
 const WRITE_TOOL_NAMES = new Set(GIT_WRITE_TOOLS.map((tool) => tool.name));
+/** Tools logged as writes: those, and fetch, which moves the remote branches. */
+const LOGGED_AS_WRITE = new Set([...WRITE_TOOL_NAMES, FETCH_TOOL.name]);
 
 class RpcError extends Error {
   constructor(code, message) {
@@ -87,14 +93,14 @@ async function runTool({ store, access }, params) {
 /**
  * Every tools/call comes through here, so this is where the activity log records what AI
  * tools did, refusals included. A write tool is any of GIT_WRITE_TOOLS, so new ones are
- * logged as writes without listing them anywhere else.
+ * logged as writes without listing them anywhere else, and so is fetch.
  */
 function callTool(context, params) {
   if (!context.activity) return runTool(context, params);
   const name = params?.name;
   return recordToolCall(
     context,
-    { name, args: params?.arguments, isWrite: WRITE_TOOL_NAMES.has(name) },
+    { name, args: params?.arguments, isWrite: LOGGED_AS_WRITE.has(name) },
     () => runTool(context, params),
   );
 }

@@ -55,6 +55,9 @@ export const gitlab = {
     );
   },
 
+  /** The page of merge request `number`. */
+  pullRequestUrl: ({ path }, number) => `${WEB_URL}/${encodeBranchPath(path)}/-/merge_requests/${number}`,
+
   newPullRequestUrl({ path }, { base, head, title, body, draft }) {
     const query = new URLSearchParams({
       'merge_request[source_branch]': head,

@@ -508,8 +508,8 @@ function AiToolsSection({ settings }) {
             label="Access"
             description={
               access === 'full'
-                ? 'Full access: AI tools can read your repositories and run git commands that change them, such as commit, branch, merge, rebase, stash, reset and push. Force pushing is never offered.'
-                : 'Read-only tools: AI tools can read status, branches, history, diffs and committed files, but cannot change anything.'
+                ? 'Full access: AI tools can read your repositories, run git commands that change them, such as commit, branch, merge, rebase, stash, reset and push, and run the scripts in your .gitty files. Force pushing is never offered.'
+                : 'Read-only tools: AI tools can read status, branches, history, diffs and files, search code and blame lines, and fetch, which only updates remote branches. They cannot change your branches or files.'
             }
             footer={
               <Alert
@@ -519,8 +519,8 @@ function AiToolsSection({ settings }) {
                 description={
                   <>
                     With full access, any AI tool connected here can change the repositories it can
-                    use without asking you: commit, reset, discard uncommitted changes, push and delete
-                    branches. Some of that cannot be undone, and an AI tool can misread a request or be
+                    use without asking you: commit, reset, discard uncommitted changes, push, delete
+                    branches and run the scripts in your .gitty files. Some of that cannot be undone, and an AI tool can misread a request or be
                     misled by text in a file or web page it reads. Only allow it for AI tools you
                     trust, and keep work you care about committed and pushed. After changing access,
                     reconnect your AI tool so it picks up the new set of tools.

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import * as git from '../git/gitService.js';
-import { COMMIT_LOG_FLAGS, parseCommits } from '../git/parsers.js';
+import { COMMIT_LOG_FLAGS, parseCommits, parseNameStatus } from '../git/parsers.js';
 import { GIT_CONCURRENCY, runGit, runGitOnPaths } from '../git/runGit.js';
 import { groupIdsOf } from '../store/repositoryStore.js';
 import { AsyncHelper } from '../utils/AsyncHelper.js';
@@ -10,6 +10,8 @@ export const MAX_TEXT_LENGTH = 100_000;
 const DEFAULT_LOG_LIMIT = 50;
 const MAX_LOG_LIMIT = 500;
 const MAX_LISTED_FILES = 5_000;
+/** What get_log walks for all_branches. */
+export const ALL_REFS = ['--branches', '--remotes', '--tags', 'HEAD'];
 
 /** Pins down everything a user's config could change, as gitService does for the app. */
 const DIFF_FLAGS = ['--no-color', '--no-ext-diff', '--src-prefix=a/', '--dst-prefix=b/'];
@@ -54,7 +56,7 @@ export function readRef(args, name, options) {
   return ref;
 }
 
-function readCount(args, name, fallback, max = Number.MAX_SAFE_INTEGER) {
+export function readCount(args, name, fallback, max = Number.MAX_SAFE_INTEGER) {
   const value = args[name];
   if (value === undefined || value === null) return fallback;
   const count = Number(value);
@@ -81,6 +83,37 @@ export function readRepoPath(args, name, options) {
   }
   return normalized || undefined;
 }
+
+/** A line number of 1 or more, or undefined when left out. */
+export function readLineNumber(args, name) {
+  const value = args[name];
+  if (value === undefined || value === null) return undefined;
+  if (!Number.isInteger(value) || value < 1) throw new ToolError(`"${name}" must be a whole number of 1 or more.`);
+  return value;
+}
+
+/**
+ * Lines `start_line` to `end_line` of `text`, numbered from 1, or all of it when neither is
+ * given. Says which lines it holds and how many the file has, so the AI tool can page on.
+ */
+export function sliceLines(text, args) {
+  const start = readLineNumber(args, 'start_line');
+  const end = readLineNumber(args, 'end_line');
+  if (start === undefined && end === undefined) return text;
+  const lines = text.split('\n');
+  // A file ending in a newline has no line after it.
+  const total = lines.at(-1) === '' ? lines.length - 1 : lines.length;
+  const from = start ?? 1;
+  const to = Math.min(end ?? total, total);
+  if (from > total) throw new ToolError(`The file has only ${total} lines.`);
+  if (to < from) throw new ToolError('"end_line" must not come before "start_line".');
+  return `[Lines ${from}-${to} of ${total}]\n${lines.slice(from - 1, to).join('\n')}`;
+}
+
+export const LINE_RANGE = {
+  start_line: { type: 'integer', minimum: 1, description: 'Only from this line on, counting from 1.' },
+  end_line: { type: 'integer', minimum: 1, description: 'Only up to this line, included.' },
+};
 
 // Repositories
 
@@ -146,10 +179,117 @@ function describeCommit(commit) {
 const describeCommits = (commits) => commits.map(describeCommit);
 
 /** Text cut to MAX_TEXT_LENGTH, saying how much was left out and how to see it. */
+const DIFF_TOO_LONG = 'Pass files_only to list the files changed, then a path to see each one.';
+
 export function limitText(text, hint) {
   if (text.length <= MAX_TEXT_LENGTH) return text;
   const omitted = text.length - MAX_TEXT_LENGTH;
   return `${text.slice(0, MAX_TEXT_LENGTH)}\n\n[Cut short: ${omitted.toLocaleString('en')} more characters. ${hint}]`;
+}
+
+/** `git diff --numstat -z` output, as lines added and deleted by path. */
+function parseNumstat(output) {
+  const fields = output.split('\0');
+  const counts = new Map();
+  for (let index = 0; index < fields.length; ) {
+    const field = fields[index];
+    index += 1;
+    if (!field) continue;
+    const [added, deleted, ...rest] = field.split('\t');
+    let filePath = rest.join('\t');
+    // A rename leaves the path empty, and gives the old and new paths as the next fields.
+    if (filePath === '') {
+      filePath = fields[index + 1];
+      index += 2;
+    }
+    const binary = added === '-';
+    counts.set(filePath, {
+      additions: binary ? null : Number(added),
+      deletions: binary ? null : Number(deleted),
+      ...(binary && { binary: true }),
+    });
+  }
+  return counts;
+}
+
+/**
+ * The files a diff touches, without the patch: each one's status, its old path when
+ * renamed, and lines added and deleted. `command` is the diff, such as ['diff', 'HEAD'],
+ * and `pathArgs` what follows it.
+ */
+async function listChangedFiles(repoPath, command, pathArgs) {
+  const [nameStatus, numstat] = await Promise.all(
+    ['--name-status', '--numstat'].map((flag) =>
+      runGitOnPaths(repoPath, [...command.slice(0, 1), flag, '-z', '-M', ...command.slice(1), ...pathArgs]),
+    ),
+  );
+  const counts = parseNumstat(numstat);
+  return parseNameStatus(nameStatus).map((file) => ({
+    path: file.path,
+    status: file.status,
+    ...(file.originalPath && { originalPath: file.originalPath }),
+    ...counts.get(file.path),
+  }));
+}
+
+const FILES_ONLY = {
+  type: 'boolean',
+  description:
+    'List the files changed, with their status and lines added and deleted, instead of the patch. Start here for a large change, then ask for each file by path.',
+};
+
+/** When the repository last fetched, so the AI tool can tell how fresh ahead and behind are. */
+async function lastFetch(repoPath) {
+  try {
+    return await git.getLastFetchTime(repoPath);
+  } catch {
+    return null;
+  }
+}
+
+/** The linked repositories in the group named, by name or id, or every one when none is. */
+export async function repositoriesIn(store, groupName) {
+  const [repositories, groups] = await Promise.all([store.list(), store.listGroups()]);
+  if (!groupName) return { repositories, groups };
+  const wanted = groupName.trim().toLowerCase();
+  const group = groups.find((candidate) => candidate.id === groupName || candidate.name.toLowerCase() === wanted);
+  if (!group) {
+    const names = groups.map((candidate) => candidate.name).join(', ') || 'none';
+    throw new ToolError(`There is no group called "${groupName}". The groups are: ${names}.`);
+  }
+  return {
+    repositories: repositories.filter((repository) => groupIdsOf(repository).includes(group.id)),
+    groups,
+  };
+}
+
+/**
+ * Commits as get_log gives them. `walk` is what to walk, such as ['HEAD'], and `follow`
+ * keeps following `filePath` back through renames.
+ */
+export async function readLog(repoPath, { walk, filePath, follow = false, grep, author, since, limit, skip = 0 }) {
+  if (!(await hasCommits(repoPath))) return [];
+  const filters = [
+    ...(grep ? [`--grep=${grep}`, '--regexp-ignore-case', '--fixed-strings'] : []),
+    ...(author ? [`--author=${author}`] : []),
+    ...(since ? [`--since=${since}`] : []),
+  ];
+  const [output, { remotes }] = await Promise.all([
+    runGitOnPaths(repoPath, [
+      'log',
+      // Following renames only works in git's default order.
+      ...(follow ? ['--follow'] : ['--date-order']),
+      ...COMMIT_LOG_FLAGS,
+      `--max-count=${limit}`,
+      `--skip=${skip}`,
+      ...filters,
+      ...walk,
+      '--',
+      ...(filePath ? [filePath] : []),
+    ]),
+    git.getRemoteOptions(repoPath),
+  ]);
+  return describeCommits(parseCommits(output, remotes));
 }
 
 // Tools
@@ -163,12 +303,27 @@ export const GIT_TOOLS = [
     name: 'list_repositories',
     title: 'List repositories',
     description:
-      'Lists the git repositories linked in Gitty Up, each with its id, name, folder, groups, current branch, how far it is ahead of and behind its upstream, how many files have changed and its last commit. Start here: the other tools take a repository from this list.',
-    inputSchema: { type: 'object', properties: {} },
-    async run(store) {
-      const [repositories, groups] = await Promise.all([store.list(), store.listGroups()]);
+      'Lists the git repositories linked in Gitty Up, each with its id, name, folder, groups, current branch, how far it is ahead of and behind its upstream, how many files have changed, its last commit, and fetchedAt: when it last fetched, which says how fresh ahead and behind are. Can be narrowed to a group, or to those with changes, or ahead, behind or on a branch. Start here: the other tools take a repository from this list.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        group: { type: 'string', description: 'Only the repositories in this group, by name or id.' },
+        dirty: { type: 'boolean', description: 'true for only those with uncommitted changes, false for only clean ones.' },
+        ahead: { type: 'boolean', description: 'true for only those with commits to push, false for none to push.' },
+        behind: { type: 'boolean', description: 'true for only those with commits to pull, false for none to pull.' },
+        branch: { type: 'string', description: 'Only those with this branch checked out.' },
+      },
+    },
+    async run(store, args) {
+      const { repositories, groups } = await repositoriesIn(store, readString(args, 'group'));
+      const dirty = readBoolean(args, 'dirty');
+      const ahead = readBoolean(args, 'ahead');
+      const behind = readBoolean(args, 'behind');
+      const branch = readString(args, 'branch')?.trim();
+      const isFiltered = [dirty, ahead, behind, branch].some((filter) => filter !== undefined);
       const groupNames = new Map(groups.map((group) => [group.id, group.name]));
-      return AsyncHelper.mapWithLimit(repositories, GIT_CONCURRENCY, async (repository) => {
+
+      const entries = await AsyncHelper.mapWithLimit(repositories, GIT_CONCURRENCY, async (repository) => {
         const entry = {
           id: repository.id,
           name: repository.name,
@@ -177,11 +332,15 @@ export const GIT_TOOLS = [
         };
         if (!repository.path) return { ...entry, available: false, remoteUrl: repository.remoteUrl };
         try {
-          const { lastCommit, ...summary } = await git.getSummary(repository.path);
+          const [{ lastCommit, ...summary }, fetchedAt] = await Promise.all([
+            git.getSummary(repository.path),
+            lastFetch(repository.path),
+          ]);
           return {
             ...entry,
             available: true,
             ...summary,
+            fetchedAt,
             lastCommit: lastCommit && describeCommit(lastCommit),
           };
         } catch {
@@ -189,13 +348,23 @@ export const GIT_TOOLS = [
           return { ...entry, available: false };
         }
       });
+      if (!isFiltered) return entries;
+      const matches = (wanted, count) => wanted === undefined || wanted === count > 0;
+      return entries.filter(
+        (entry) =>
+          entry.available &&
+          matches(dirty, entry.changeCount) &&
+          matches(ahead, entry.ahead) &&
+          matches(behind, entry.behind) &&
+          (branch === undefined || entry.branch === branch),
+      );
     },
   },
   {
     name: 'get_status',
     title: 'Get status',
     description:
-      'The working tree of a repository: its branch, upstream, commits ahead and behind, staged, unstaged, untracked and conflicted files, and any merge, rebase, cherry-pick or revert in progress.',
+      'The working tree of a repository: its branch, upstream, commits ahead and behind, staged, unstaged, untracked and conflicted files, and any merge, rebase, cherry-pick or revert in progress. fetchedAt is when it last fetched: ahead and behind are only as fresh as that, and fetch brings them up to date.',
     inputSchema: {
       type: 'object',
       properties: { repository: REPOSITORY },
@@ -203,7 +372,8 @@ export const GIT_TOOLS = [
     },
     async run(store, args) {
       const repository = await findRepository(store, args);
-      return git.getStatus(repository.path);
+      const [status, fetchedAt] = await Promise.all([git.getStatus(repository.path), lastFetch(repository.path)]);
+      return { ...status, fetchedAt };
     },
   },
   {
@@ -225,7 +395,7 @@ export const GIT_TOOLS = [
     name: 'get_log',
     title: 'Get commit history',
     description:
-      'Commits of a repository, newest first, with their parents (so the commit graph can be drawn), author, date, subject and the branches and tags on them. Walks HEAD unless given a ref, or every branch and tag with all_branches. Can be narrowed to a path, a message search or an author.',
+      'Commits of a repository, newest first, with their parents (so the commit graph can be drawn), author, date, subject and the branches and tags on them. Walks HEAD unless given a ref, or every branch and tag with all_branches. Can be narrowed to a path, a message search, an author or a date. With follow, a file\'s history goes on back through renames.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -236,8 +406,13 @@ export const GIT_TOOLS = [
           description: 'Walk every local and remote branch and tag instead of one ref.',
         },
         path: PATH('Only commits that touched this file or folder, relative to the repository root.'),
+        follow: {
+          type: 'boolean',
+          description: 'path is one file: keep following it back through renames, to before it had its name.',
+        },
         grep: { type: 'string', description: 'Only commits whose message contains this, ignoring case.' },
         author: { type: 'string', description: 'Only commits by an author whose name or email contains this.' },
+        since: { type: 'string', description: 'Only commits from this date on, such as 2026-11-01 or "2 weeks ago".' },
         limit: {
           type: 'integer',
           minimum: 1,
@@ -253,32 +428,18 @@ export const GIT_TOOLS = [
       const ref = readRef(args, 'ref') ?? 'HEAD';
       const allBranches = readBoolean(args, 'all_branches') ?? false;
       const filePath = readRepoPath(args, 'path');
-      const grep = readString(args, 'grep');
-      const author = readString(args, 'author');
-      const limit = Math.max(1, readCount(args, 'limit', DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT));
-      const skip = readCount(args, 'skip', 0);
-      if (!(await hasCommits(repository.path))) return [];
-
-      const walk = allBranches ? ['--branches', '--remotes', '--tags', 'HEAD'] : [ref];
-      const filters = [
-        ...(grep ? [`--grep=${grep}`, '--regexp-ignore-case', '--fixed-strings'] : []),
-        ...(author ? [`--author=${author}`] : []),
-      ];
-      const [output, { remotes }] = await Promise.all([
-        runGitOnPaths(repository.path, [
-          'log',
-          '--date-order',
-          ...COMMIT_LOG_FLAGS,
-          `--max-count=${limit}`,
-          `--skip=${skip}`,
-          ...filters,
-          ...walk,
-          '--',
-          ...(filePath ? [filePath] : []),
-        ]),
-        git.getRemoteOptions(repository.path),
-      ]);
-      return describeCommits(parseCommits(output, remotes));
+      const follow = readBoolean(args, 'follow') ?? false;
+      if (follow && !filePath) throw new ToolError('"follow" needs the file to follow as path.');
+      return readLog(repository.path, {
+        walk: allBranches ? ALL_REFS : [ref],
+        filePath,
+        follow,
+        grep: readString(args, 'grep'),
+        author: readString(args, 'author'),
+        since: readString(args, 'since'),
+        limit: Math.max(1, readCount(args, 'limit', DEFAULT_LOG_LIMIT, MAX_LOG_LIMIT)),
+        skip: readCount(args, 'skip', 0),
+      });
     },
   },
   {
@@ -304,13 +465,14 @@ export const GIT_TOOLS = [
     name: 'get_commit_diff',
     title: 'Get commit diff',
     description:
-      'The patch a commit made, as a unified diff, optionally for one file or folder only. A merge is compared with its first parent.',
+      'The patch a commit made, as a unified diff, optionally for one file or folder only, or with files_only the files it changed with lines added and deleted. A merge is compared with its first parent.',
     inputSchema: {
       type: 'object',
       properties: {
         repository: REPOSITORY,
         commit: REF('Hash, branch, tag or revision such as HEAD~2.'),
         path: PATH('Only this file or folder, relative to the repository root.'),
+        files_only: FILES_ONLY,
         ignore_whitespace: IGNORE_WHITESPACE,
       },
       required: ['repository', 'commit'],
@@ -324,6 +486,10 @@ export const GIT_TOOLS = [
         .split(' ')
         .filter(Boolean);
       const range = parents.length > 0 ? [parents[0], hash] : ['--root', hash];
+      const pathArgs = ['--', ...(filePath ? [filePath] : [])];
+      if (readBoolean(args, 'files_only')) {
+        return listChangedFiles(repository.path, ['diff-tree', '-r', '--no-commit-id', ...range], pathArgs);
+      }
       const diff = await runGitOnPaths(repository.path, [
         'diff-tree',
         '-p',
@@ -334,14 +500,14 @@ export const GIT_TOOLS = [
         '--',
         ...(filePath ? [filePath] : []),
       ]);
-      return limitText(diff || 'This commit changed nothing here.', 'Pass a path to see one file.');
+      return limitText(diff || 'This commit changed nothing here.', DIFF_TOO_LONG);
     },
   },
   {
     name: 'get_uncommitted_diff',
     title: 'Get uncommitted changes',
     description:
-      'The changes not yet committed, as a unified diff: staged and unstaged together by default, or only one of them. Untracked files are not in it: get_status lists them, and read_file cannot read them.',
+      'The changes not yet committed, as a unified diff, or with files_only the files changed with lines added and deleted: staged and unstaged together by default, or only one of them. Untracked files are not in it: get_status lists them, and read_working_file reads them.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -351,6 +517,7 @@ export const GIT_TOOLS = [
           description: 'true for only the staged changes, false for only the unstaged ones. Leave out for both.',
         },
         path: PATH('Only this file or folder, relative to the repository root.'),
+        files_only: FILES_ONLY,
         ignore_whitespace: IGNORE_WHITESPACE,
       },
       required: ['repository'],
@@ -362,6 +529,9 @@ export const GIT_TOOLS = [
       // Before the first commit there is no HEAD to compare with, so everything staged is new.
       const base = (await hasCommits(repository.path)) ? ['HEAD'] : ['--cached'];
       const area = staged === undefined ? base : staged ? ['--cached'] : [];
+      if (readBoolean(args, 'files_only')) {
+        return listChangedFiles(repository.path, ['diff', ...area], ['--', ...(filePath ? [filePath] : [])]);
+      }
       const diff = await runGitOnPaths(repository.path, [
         'diff',
         '-M',
@@ -370,7 +540,7 @@ export const GIT_TOOLS = [
         '--',
         ...(filePath ? [filePath] : []),
       ]);
-      return limitText(diff || 'There are no uncommitted changes here.', 'Pass a path to see one file.');
+      return limitText(diff || 'There are no uncommitted changes here.', DIFF_TOO_LONG);
     },
   },
   {
@@ -423,7 +593,7 @@ export const GIT_TOOLS = [
           `${base}...${head}`,
           ...pathArgs,
         ]);
-        result.patch = limitText(patch, 'Pass a path to see one file.');
+        result.patch = limitText(patch, DIFF_TOO_LONG);
       }
       return result;
     },
@@ -471,13 +641,14 @@ export const GIT_TOOLS = [
     name: 'read_file',
     title: 'Read file',
     description:
-      'The contents of a file as committed at a commit, branch or tag (HEAD by default). Reads what git has stored, never the working tree.',
+      'The contents of a file as committed at a commit, branch or tag (HEAD by default), whole or from start_line to end_line. Reads what git has stored: read_working_file reads the file on disk, uncommitted changes and all.',
     inputSchema: {
       type: 'object',
       properties: {
         repository: REPOSITORY,
         path: PATH('The file, relative to the repository root.'),
         ref: REF('Branch, tag or commit. Defaults to HEAD.'),
+        ...LINE_RANGE,
       },
       required: ['repository', 'path'],
     },
@@ -498,7 +669,7 @@ export const GIT_TOOLS = [
       }
       const content = await runGit(repository.path, ['cat-file', 'blob', object]);
       if (content.includes('\0')) return `${filePath} is a binary file, so it is not shown.`;
-      return limitText(content, 'The rest of the file is not shown.');
+      return limitText(sliceLines(content, args), 'The rest is not shown. Pass start_line and end_line to read it.');
     },
   },
   {

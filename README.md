@@ -240,23 +240,42 @@ read-only tools:
 | `get_uncommitted_diff` | The staged and unstaged changes                                     |
 | `compare_refs`         | What a branch has that its base does not, as a pull request shows it |
 | `list_files`           | The files tracked at a ref                                          |
-| `read_file`            | A file as committed at a ref                                        |
+| `read_file`            | A file as committed at a ref, whole or a range of lines             |
+| `read_working_file`    | A file as it is on disk, untracked too, but never one git ignores    |
+| `search_code`          | Text or a regex in a commit's files or on disk, with file and line   |
+| `blame`                | Who last changed each line, at a ref or on disk                      |
+| `find_merge`           | The merge, branch and pull request that brought a commit onto a branch |
+| `search_log_across`    | Commits by message, author or date in every repository, or one group |
+| `find_branch_across`   | Which repositories have a branch, and where each stands             |
+| `preview_merge`        | What a merge would bring in, and which files would conflict          |
+| `get_conflicts`        | Each conflict of the merge or rebase in progress, or one file's versions |
+| `list_scripts`         | The scripts in the repository's `.gitty` file                       |
+| `fetch`                | Fetches every remote. It only moves remote branches                 |
 | `get_reflog`           | Where HEAD or a branch has pointed, marking commits on no branch     |
 | `list_pull_requests`   | Open pull requests on GitHub, GitLab or Bitbucket, with status      |
 | `list_tags`, `list_stashes`, `list_worktrees` | Just that                                    |
 
 `get_commit_diff`, `get_uncommitted_diff` and `compare_refs` take `ignore_whitespace`, as the
-app's **Ignore whitespace** does. `get_reflog` is how an AI tool finds lost work: an entry with
+app's **Ignore whitespace** does, and the first two take `files_only`, which lists the files
+changed with lines added and deleted instead of the patch, so a large change can be read a file
+at a time. `list_repositories` and `get_status` give `fetchedAt`, when the repository last
+fetched, as ahead and behind are only as fresh as that. `fetch` is the one tool offered
+read-only that changes anything: it moves remote branches only, never a local branch, the index
+or a file, and is logged as a write. `read_working_file` refuses files git ignores, which keeps
+`.env` files and build output away from AI tools, and anything that leads outside the
+repository through `..` or a symlink. `get_reflog` is how an AI tool finds lost work: an entry with
 `reachable: false` is a commit no branch, remote branch or tag holds, such as one left behind
 by a reset, rebase, amend or deleted branch. With full access, `create_branch` with that hash as
 its `start_point` brings it back without changing anything else. `list_pull_requests` asks the
 hosting service, so it is the one read tool marked as reaching outside this machine.
 
-Full access adds `fetch`, `pull`, `push`, `checkout`, `checkout_commit`, `create_branch`,
+Full access adds `pull`, `push`, `checkout`, `checkout_commit`, `create_branch`,
 `rename_branch`, `delete_branch`, `merge`, `rebase`, `abort_operation`, `continue_operation`,
-`stage`, `unstage`, `discard`, `commit`, `cherry_pick`, `revert`, `reset`, `create_tag`,
-`delete_tag`, `push_tag`, `create_pull_request`, `stash_save`, `stash_apply`, `stash_pop`, `stash_drop`,
-`add_worktree` and `remove_worktree`.
+`resolve_conflict`, `stage`, `unstage`, `discard`, `commit`, `cherry_pick`, `revert`, `reset`,
+`create_tag`, `delete_tag`, `push_tag`, `create_pull_request`, `stash_save`, `stash_apply`,
+`stash_pop`, `stash_drop`, `add_worktree`, `remove_worktree` and `run_script`. `run_script` runs a
+`.gitty` script and waits for it, up to its 10-minute limit, so it can do whatever the script
+does: it is marked destructive.
 They go through `gitService.js`, with the same checks as the app's own buttons, and each answers
 with where the repository stands afterwards. `push` and `push_tag` never force: force pushing is left to the
 user, in the app. `delete_tag` deletes the local tag only, never one on a remote.
@@ -298,7 +317,7 @@ action, so it is not limited to the repositories AI tools may use. `server/mcp/a
 lists the undos. A new tool in `gitWriteTools.js` is logged as a write with no other change,
 and has no undo until one is added there.
 
-The server lives in `server/mcp/` (`gitTools.js` reads, `gitWriteTools.js` changes,
+The server lives in `server/mcp/` (`gitTools.js` and `gitInsightTools.js` read, `gitWriteTools.js` changes,
 `activityLog.js` and `activityRecorder.js` the log, `mcpToken.js` the token), and
 `server/routes/mcp.js` serves it. The app reads the token with the rest of the settings at
 `/api/settings`, which gives it only while the server is on, and makes a new one with
